@@ -8,12 +8,12 @@ import {
 
 const DashboardHeader = () => {
   return (
-    <div className="flex items-center justify-between px-8 py-6 border-b border-border">
-      <h1 className="text-2xl font-normal tracking-tight-premium text-foreground">
+    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between px-4 sm:px-6 lg:px-8 py-6 gap-4">
+      <h1 className="text-xl sm:text-2xl font-normal tracking-tight-premium text-foreground">
         Dashboard
       </h1>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
         {/* Currency Selector */}
         <button className="flex items-center gap-2 px-3 py-2 rounded-xl bg-secondary/50 border border-border hover:bg-secondary transition-colors">
           <CurrencyDollar weight="regular" className="w-4 h-4 text-primary" />

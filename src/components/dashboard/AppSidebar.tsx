@@ -37,7 +37,7 @@ const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
       initial={false}
       animate={{ width: collapsed ? 72 : 240 }}
       transition={{ duration: 0.3, ease: [0.25, 0.46, 0.45, 0.94] }}
-      className="fixed left-0 top-0 h-screen z-50 flex flex-col bg-card/60 backdrop-blur-xl border-r border-glass-border"
+      className="hidden md:flex fixed left-0 top-0 h-screen z-50 flex-col bg-card/60 backdrop-blur-xl border-r border-glass-border"
     >
       {/* Collapse Toggle Button */}
       <button

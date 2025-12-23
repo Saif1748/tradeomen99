@@ -18,10 +18,12 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
       <motion.main
         initial={false}
         animate={{
-          marginLeft: sidebarCollapsed ? 72 : 240,
+          marginLeft: typeof window !== 'undefined' && window.innerWidth >= 768 
+            ? (sidebarCollapsed ? 72 : 240) 
+            : 0,
         }}
         transition={{ duration: 0.3, ease: [0.25, 0.46, 0.45, 0.94] }}
-        className="min-h-screen"
+        className="min-h-screen md:ml-[72px]"
       >
         {children}
       </motion.main>
