@@ -38,7 +38,15 @@ export function Navbar() {
           <div className="flex items-center justify-between h-16 lg:h-20">
             {/* Logo */}
             <a href="#" className="flex items-center">
-              <img src={logo} alt="TradeOmen" className="h-7 sm:h-8 w-auto" />
+              <img
+                src={logo}
+                alt="TradeOmen"
+                className={`w-auto transition-all duration-300 ${
+                  isScrolled
+                    ? "h-8 sm:h-9"
+                    : "h-10 sm:h-11 lg:h-12"
+                }`}
+              />
             </a>
 
             {/* Desktop Navigation */}
@@ -47,7 +55,7 @@ export function Navbar() {
                 <a
                   key={link.label}
                   href={link.href}
-                  className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors tracking-normal-premium"
+                  className="text-sm font-normal text-muted-foreground hover:text-foreground transition-colors tracking-normal-premium"
                 >
                   {link.label}
                 </a>
@@ -56,10 +64,10 @@ export function Navbar() {
 
             {/* Desktop CTAs */}
             <div className="hidden lg:flex items-center gap-4">
-              <button className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors tracking-normal-premium">
+              <button className="text-sm font-normal text-muted-foreground hover:text-foreground transition-colors tracking-normal-premium">
                 Login
               </button>
-              <button className="glow-button px-5 py-2.5 rounded-full text-sm font-medium text-primary-foreground">
+              <button className="glow-button px-5 py-2.5 rounded-full text-sm font-normal text-primary-foreground">
                 Get Started
               </button>
             </div>

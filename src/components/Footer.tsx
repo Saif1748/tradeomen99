@@ -28,13 +28,17 @@ const socialLinks = [
 
 export function Footer() {
   return (
-    <footer className="border-t border-border bg-card/30">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+<footer className="border-t border-border bg-card/30">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 lg:py-24">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-8 lg:gap-12">
           {/* Brand */}
           <div className="col-span-2 md:col-span-1">
-            <a href="#" className="inline-block mb-4">
-              <img src={logo} alt="TradeOmen" className="h-7 w-auto" />
+            <a href="#" className="inline-block mb-6">
+              <img
+                src={logo}
+                alt="TradeOmen"
+                className="w-auto h-10 sm:h-11 lg:h-12"
+              />
             </a>
             <p className="text-sm text-muted-foreground leading-body mb-6">
               AI-powered trading journal that helps you trade smarter and grow your portfolio.
@@ -55,7 +59,7 @@ export function Footer() {
 
           {/* Product */}
           <div>
-            <h4 className="font-medium mb-4">Product</h4>
+            <h4 className="font-normal text-foreground mb-5">Product</h4>
             <ul className="space-y-3">
               {footerLinks.product.map((link) => (
                 <li key={link.label}>
@@ -72,7 +76,7 @@ export function Footer() {
 
           {/* Company */}
           <div>
-            <h4 className="font-medium mb-4">Company</h4>
+            <h4 className="font-normal text-foreground mb-5">Company</h4>
             <ul className="space-y-3">
               {footerLinks.company.map((link) => (
                 <li key={link.label}>
@@ -89,7 +93,7 @@ export function Footer() {
 
           {/* Legal */}
           <div>
-            <h4 className="font-medium mb-4">Legal</h4>
+            <h4 className="font-normal text-foreground mb-5">Legal</h4>
             <ul className="space-y-3">
               {footerLinks.legal.map((link) => (
                 <li key={link.label}>
