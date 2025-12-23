@@ -8,7 +8,7 @@ const fadeInUp = {
 
 export function HeroSection() {
   return (
-    <section className="relative pt-32 pb-20 lg:pt-40 lg:pb-32 overflow-hidden">
+    <section className="relative pt-36 pb-24 lg:pt-48 lg:pb-40 overflow-hidden">
       {/* Background Effects */}
       <div className="absolute inset-0 hero-gradient" />
       <div className="absolute inset-0 mesh-gradient" />
@@ -35,10 +35,10 @@ export function HeroSection() {
             initial="initial"
             animate="animate"
             transition={{ duration: 0.6, delay: 0.1, ease: [0.25, 0.46, 0.45, 0.94] }}
-            className="text-4xl sm:text-5xl lg:text-7xl font-medium tracking-tight-premium leading-hero"
+            className="text-4xl sm:text-5xl lg:text-7xl font-light tracking-tight-premium leading-hero"
           >
             Trade Smarter with{" "}
-            <span className="font-semibold text-gradient-primary">
+            <span className="font-medium text-gradient-primary">
               AI-Powered Insights
             </span>
           </motion.h1>
@@ -49,7 +49,7 @@ export function HeroSection() {
             initial="initial"
             animate="animate"
             transition={{ duration: 0.6, delay: 0.2, ease: [0.25, 0.46, 0.45, 0.94] }}
-            className="mt-6 text-lg sm:text-xl font-normal text-muted-foreground tracking-normal-premium leading-body max-w-2xl mx-auto"
+            className="mt-8 text-lg sm:text-xl font-light text-muted-foreground tracking-normal-premium leading-body max-w-2xl mx-auto"
           >
             TradeOmen combines artificial intelligence with cutting-edge trading
             strategies to help you maximize your investments with precision and ease.
@@ -61,9 +61,9 @@ export function HeroSection() {
             initial="initial"
             animate="animate"
             transition={{ duration: 0.6, delay: 0.3, ease: [0.25, 0.46, 0.45, 0.94] }}
-            className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4"
+            className="mt-12 flex flex-col sm:flex-row items-center justify-center gap-4"
           >
-            <button className="glow-button px-8 py-4 rounded-full text-base font-medium text-primary-foreground inline-flex items-center gap-2 group">
+            <button className="glow-button px-8 py-4 rounded-full text-base font-normal text-primary-foreground inline-flex items-center gap-2 group">
               Get Started
               <ArrowRight 
                 size={18} 
@@ -73,7 +73,7 @@ export function HeroSection() {
             </button>
             <a 
               href="#how-it-works"
-              className="px-8 py-4 rounded-full text-base font-medium text-foreground border border-border hover:bg-secondary/50 transition-colors inline-flex items-center gap-2"
+              className="px-8 py-4 rounded-full text-base font-normal text-foreground border border-border hover:bg-secondary/50 transition-colors inline-flex items-center gap-2"
             >
               Learn how it works
             </a>
@@ -86,7 +86,7 @@ export function HeroSection() {
           initial="initial"
           animate="animate"
           transition={{ duration: 0.8, delay: 0.5, ease: [0.25, 0.46, 0.45, 0.94] }}
-          className="mt-20 lg:mt-24 relative mockup-glow"
+          className="mt-24 lg:mt-32 relative mockup-glow"
         >
           <div className="glass-card p-2 sm:p-4">
             <div className="bg-background/50 rounded-xl overflow-hidden">
@@ -106,7 +106,7 @@ export function HeroSection() {
                   ].map((stat, i) => (
                     <div key={i} className="glass-card p-4">
                       <p className="text-xs text-muted-foreground">{stat.label}</p>
-                      <p className="text-xl sm:text-2xl font-semibold mt-1">{stat.value}</p>
+                      <p className="text-xl sm:text-2xl font-medium mt-1">{stat.value}</p>
                       <p className="text-xs text-green-400 mt-1">{stat.change}</p>
                     </div>
                   ))}

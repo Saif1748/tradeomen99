@@ -31,17 +31,17 @@ export function TestimonialsSection() {
   const [activeIndex, setActiveIndex] = useState(0);
 
   return (
-    <section id="testimonials" className="py-20 lg:py-32">
+    <section id="testimonials" className="py-28 lg:py-40">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <AnimatedSection className="text-center mb-16">
-          <h2 className="text-3xl lg:text-5xl font-medium tracking-tight-premium leading-section">
+        <AnimatedSection className="text-center mb-20">
+          <h2 className="text-3xl lg:text-5xl font-light tracking-tight-premium leading-section">
             Trusted by Thousands of{" "}
-            <span className="text-gradient-primary">Traders</span>
+            <span className="text-gradient-primary font-medium">Traders</span>
           </h2>
         </AnimatedSection>
 
         <AnimatedSection delay={0.1} className="max-w-3xl mx-auto">
-          <div className="glass-card p-8 lg:p-12 relative">
+          <div className="glass-card p-10 lg:p-14 relative">
             <Quotes
               size={48}
               weight="fill"
@@ -57,7 +57,7 @@ export function TestimonialsSection() {
                 transition={{ duration: 0.3 }}
                 className="relative z-10"
               >
-                <p className="text-lg lg:text-xl font-normal text-foreground leading-body mb-8">
+                <p className="text-lg lg:text-xl font-light text-foreground leading-body mb-10">
                   "{testimonials[activeIndex].quote}"
                 </p>
                 
@@ -68,12 +68,8 @@ export function TestimonialsSection() {
                     className="w-12 h-12 rounded-full object-cover"
                   />
                   <div>
-                    <p className="font-medium text-foreground">
-                      {testimonials[activeIndex].name}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {testimonials[activeIndex].role}
-                    </p>
+                    <p className="font-normal text-foreground">{testimonials[activeIndex].name}</p>
+                    <p className="text-sm text-muted-foreground font-light">{testimonials[activeIndex].role}</p>
                   </div>
                   <div className="ml-auto flex gap-1">
                     {Array.from({ length: testimonials[activeIndex].rating }).map((_, i) => (
@@ -85,8 +81,7 @@ export function TestimonialsSection() {
             </AnimatePresence>
           </div>
 
-          {/* Navigation Dots */}
-          <div className="flex justify-center gap-2 mt-8">
+          <div className="flex justify-center gap-3 mt-10">
             {testimonials.map((_, index) => (
               <button
                 key={index}

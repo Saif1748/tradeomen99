@@ -30,26 +30,26 @@ export function FAQSection() {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
 
   return (
-    <section id="faq" className="py-20 lg:py-32 bg-card/30">
+    <section id="faq" className="py-28 lg:py-40 bg-card/30">
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
-        <AnimatedSection className="text-center mb-16">
-          <h2 className="text-3xl lg:text-5xl font-medium tracking-tight-premium leading-section">
-            Frequently Asked <span className="text-gradient-primary">Questions</span>
+        <AnimatedSection className="text-center mb-20">
+          <h2 className="text-3xl lg:text-5xl font-light tracking-tight-premium leading-section">
+            Frequently Asked <span className="text-gradient-primary font-medium">Questions</span>
           </h2>
-          <p className="mt-4 text-lg text-muted-foreground tracking-normal-premium">
+          <p className="mt-6 text-lg text-muted-foreground font-light tracking-normal-premium">
             Everything you need to know about TradeOmen
           </p>
         </AnimatedSection>
 
-        <div className="space-y-4">
+        <div className="space-y-5">
           {faqs.map((faq, index) => (
             <AnimatedSection key={index} delay={index * 0.05}>
               <div className="glass-card rounded-xl overflow-hidden">
                 <button
                   onClick={() => setOpenIndex(openIndex === index ? null : index)}
-                  className="w-full p-6 flex items-center justify-between text-left"
+                  className="w-full p-7 flex items-center justify-between text-left"
                 >
-                  <span className="font-medium pr-4">{faq.question}</span>
+                  <span className="font-normal pr-4">{faq.question}</span>
                   <CaretDown
                     size={20}
                     weight="bold"
@@ -67,7 +67,7 @@ export function FAQSection() {
                       exit={{ height: 0, opacity: 0 }}
                       transition={{ duration: 0.3 }}
                     >
-                      <p className="px-6 pb-6 text-muted-foreground leading-body">
+                      <p className="px-7 pb-7 text-muted-foreground font-light leading-body">
                         {faq.answer}
                       </p>
                     </motion.div>

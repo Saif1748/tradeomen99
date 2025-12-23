@@ -55,52 +55,52 @@ const plans = [
 
 export function PricingSection() {
   return (
-    <section id="pricing" className="py-20 lg:py-32">
+    <section id="pricing" className="py-28 lg:py-40">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <AnimatedSection className="text-center mb-16">
-          <h2 className="text-3xl lg:text-5xl font-medium tracking-tight-premium leading-section">
-            Simple, Transparent <span className="text-gradient-primary">Pricing</span>
+        <AnimatedSection className="text-center mb-20">
+          <h2 className="text-3xl lg:text-5xl font-light tracking-tight-premium leading-section">
+            Simple, Transparent <span className="text-gradient-primary font-medium">Pricing</span>
           </h2>
-          <p className="mt-4 text-lg text-muted-foreground tracking-normal-premium max-w-2xl mx-auto">
+          <p className="mt-6 text-lg text-muted-foreground font-light tracking-normal-premium max-w-2xl mx-auto">
             Start free and upgrade as you grow. No hidden fees.
           </p>
         </AnimatedSection>
 
-        <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+        <div className="grid md:grid-cols-3 gap-10 max-w-5xl mx-auto">
           {plans.map((plan, index) => (
             <AnimatedSection key={plan.name} delay={index * 0.1}>
               <div
-                className={`glass-card p-8 h-full flex flex-col relative ${
+                className={`glass-card p-10 h-full flex flex-col relative ${
                   plan.popular ? "border-2 border-primary" : ""
                 }`}
               >
                 {plan.popular && (
-                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 px-4 py-1 bg-primary text-primary-foreground text-xs font-medium rounded-full">
+                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 px-4 py-1 bg-primary text-primary-foreground text-xs font-normal rounded-full">
                     Most Popular
                   </span>
                 )}
                 
-                <div className="mb-6">
-                  <h3 className="text-xl font-medium mb-1">{plan.name}</h3>
-                  <p className="text-sm text-muted-foreground">{plan.description}</p>
+                <div className="mb-8">
+                  <h3 className="text-xl font-normal mb-2">{plan.name}</h3>
+                  <p className="text-sm text-muted-foreground font-light">{plan.description}</p>
                 </div>
                 
-                <div className="mb-6">
-                  <span className="text-4xl font-bold">{plan.price}</span>
-                  <span className="text-muted-foreground">{plan.period}</span>
+                <div className="mb-8">
+                  <span className="text-4xl font-medium">{plan.price}</span>
+                  <span className="text-muted-foreground font-light">{plan.period}</span>
                 </div>
                 
-                <ul className="space-y-3 mb-8 flex-1">
+                <ul className="space-y-4 mb-10 flex-1">
                   {plan.features.map((feature) => (
                     <li key={feature} className="flex items-start gap-3">
                       <Check size={18} weight="bold" className="text-primary mt-0.5 shrink-0" />
-                      <span className="text-sm text-muted-foreground">{feature}</span>
+                      <span className="text-sm text-muted-foreground font-light">{feature}</span>
                     </li>
                   ))}
                 </ul>
                 
                 <button
-                  className={`w-full py-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2 group ${
+                  className={`w-full py-3.5 rounded-xl font-normal transition-all flex items-center justify-center gap-2 group ${
                     plan.popular
                       ? "glow-button text-primary-foreground"
                       : "border border-border hover:bg-secondary/50 text-foreground"
