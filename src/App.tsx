@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
 import Dashboard from "./pages/Dashboard";
 import Auth from "./pages/Auth";
+import Calendar from "./pages/Calendar";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -22,7 +23,7 @@ const App = () => (
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/trades" element={<Dashboard />} />
           <Route path="/strategies" element={<Dashboard />} />
-          <Route path="/calendar" element={<Dashboard />} />
+          <Route path="/calendar" element={<Calendar />} />
           <Route path="/reports" element={<Dashboard />} />
           <Route path="/markets" element={<Dashboard />} />
           <Route path="/ai-chat" element={<Dashboard />} />
