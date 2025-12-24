@@ -78,7 +78,7 @@ const MiniCalendar = () => {
   };
 
   return (
-    <div className="glass-card p-5 rounded-2xl">
+    <div className="glass-card card-glow p-5 rounded-2xl">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-light text-foreground">{monthName}</h3>

@@ -18,7 +18,7 @@ const MetricCard = ({
   trendValue,
 }: MetricCardProps) => {
   return (
-    <div className="glass-card p-5 rounded-2xl">
+    <div className="glass-card card-glow p-5 rounded-2xl hover:scale-[1.02] transition-transform duration-300">
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-2">
           <span className="text-sm font-light text-muted-foreground">
