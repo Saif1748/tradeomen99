@@ -42,7 +42,7 @@ const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
       {/* Collapse Toggle Button */}
       <button
         onClick={onToggle}
-        className="absolute -right-3 top-6 w-6 h-6 rounded-full bg-secondary border border-border flex items-center justify-center hover:bg-primary/20 transition-colors z-10"
+        className="absolute -right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-secondary border border-border flex items-center justify-center hover:bg-primary/20 transition-colors z-10"
       >
         <motion.div
           animate={{ rotate: collapsed ? 180 : 0 }}
