@@ -136,7 +136,7 @@ const ChartCard = ({ title, type, data }: ChartCardProps) => {
   };
 
   return (
-    <div className="glass-card p-5 rounded-2xl">
+    <div className="glass-card card-glow p-5 rounded-2xl">
       <div className="flex items-center gap-2 mb-4">
         <span className="text-sm font-light text-foreground">{title}</span>
         <Info weight="regular" className="w-3.5 h-3.5 text-muted-foreground/60" />

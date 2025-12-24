@@ -8,7 +8,7 @@ const trades = [
 
 const RecentTrades = () => {
   return (
-    <div className="glass-card p-5 rounded-2xl">
+    <div className="glass-card card-glow p-5 rounded-2xl">
       <div className="flex items-center justify-between mb-5">
         <h3 className="text-sm font-light text-foreground">Recent Trades</h3>
         <button className="text-xs font-light text-primary hover:underline">
