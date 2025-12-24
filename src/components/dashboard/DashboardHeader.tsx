@@ -8,7 +8,7 @@ import {
 
 const DashboardHeader = () => {
   return (
-    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between px-4 sm:px-6 lg:px-8 py-6 gap-4">
+    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between px-4 sm:px-6 lg:px-8 pt-6 pb-2 gap-4">
       <h1 className="text-xl sm:text-2xl font-normal tracking-tight-premium text-foreground">
         Dashboard
       </h1>

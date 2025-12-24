@@ -40,7 +40,7 @@ const Dashboard = () => {
     <DashboardLayout>
       <DashboardHeader />
 
-      <div className="p-4 sm:p-6 lg:p-8 space-y-6">
+      <div className="px-4 sm:px-6 lg:px-8 pb-6 pt-4 space-y-6">
         {/* Metrics Row */}
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3 sm:gap-4">
           <MetricCard
