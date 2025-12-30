@@ -7,6 +7,7 @@ import Index from "./pages/Index";
 import Dashboard from "./pages/Dashboard";
 import Auth from "./pages/Auth";
 import Calendar from "./pages/Calendar";
+import Trades from "./pages/Trades";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -21,7 +22,7 @@ const App = () => (
           <Route path="/" element={<Index />} />
           <Route path="/auth" element={<Auth />} />
           <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/trades" element={<Dashboard />} />
+          <Route path="/trades" element={<Trades />} />
           <Route path="/strategies" element={<Dashboard />} />
           <Route path="/calendar" element={<Calendar />} />
           <Route path="/reports" element={<Dashboard />} />
