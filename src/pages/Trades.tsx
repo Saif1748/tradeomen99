@@ -187,6 +187,7 @@ const Trades = () => {
         onOpenChange={setDetailOpen}
         onEdit={handleEditTrade}
         onDelete={handleDeleteTrade}
+        allTrades={trades}
       />
 
       {/* Add Trade Modal */}

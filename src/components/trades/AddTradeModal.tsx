@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { X, Plus } from "@phosphor-icons/react";
+import { useState, useMemo } from "react";
+import { Plus } from "@phosphor-icons/react";
 import { Trade, strategies, tradeTypes, defaultTags } from "@/lib/tradesData";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { toast } from "sonner";
 
 interface AddTradeModalProps {
   open: boolean;
@@ -82,12 +83,57 @@ const AddTradeModal = ({ open, onOpenChange, onAddTrade }: AddTradeModalProps) =
     const entry = new Date(entryDate);
     const exit = new Date(exitDate);
     const diffMs = exit.getTime() - entry.getTime();
+    if (diffMs < 0) return "0m";
     const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
     const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
     return diffHours > 0 ? `${diffHours}h ${diffMins}m` : `${diffMins}m`;
   };
 
+  // Validation errors
+  const validationErrors = useMemo(() => {
+    const errors: string[] = [];
+    const entry = parseFloat(entryPrice) || 0;
+    const sl = parseFloat(stopLoss) || 0;
+    const tgt = parseFloat(target) || 0;
+
+    // Exit date validation
+    if (entryDate && exitDate) {
+      const entryDateTime = new Date(entryDate);
+      const exitDateTime = new Date(exitDate);
+      if (exitDateTime < entryDateTime) {
+        errors.push("Exit date cannot be before entry date");
+      }
+    }
+
+    // Stop loss validation
+    if (sl > 0 && entry > 0) {
+      if (side === "LONG" && sl >= entry) {
+        errors.push("Stop loss must be below entry price for long positions");
+      }
+      if (side === "SHORT" && sl <= entry) {
+        errors.push("Stop loss must be above entry price for short positions");
+      }
+    }
+
+    // Target validation
+    if (tgt > 0 && entry > 0) {
+      if (side === "LONG" && tgt <= entry) {
+        errors.push("Target must be above entry price for long positions");
+      }
+      if (side === "SHORT" && tgt >= entry) {
+        errors.push("Target must be below entry price for short positions");
+      }
+    }
+
+    return errors;
+  }, [entryDate, exitDate, entryPrice, stopLoss, target, side]);
+
   const handleSubmit = () => {
+    if (validationErrors.length > 0) {
+      validationErrors.forEach((error) => toast.error(error));
+      return;
+    }
+
     const entry = parseFloat(entryPrice) || 0;
     const exit = parseFloat(exitPrice) || entry;
     const sl = parseFloat(stopLoss) || 0;
@@ -96,7 +142,11 @@ const AddTradeModal = ({ open, onOpenChange, onAddTrade }: AddTradeModalProps) =
     const fee = parseFloat(fees) || 0;
 
     const pnl =
-      side === "LONG" ? (exit - entry) * qty - fee : (entry - exit) * qty - fee;
+      status === "open"
+        ? 0
+        : side === "LONG"
+        ? (exit - entry) * qty - fee
+        : (entry - exit) * qty - fee;
 
     const risk = Math.abs(entry - sl) * qty;
     const rMultiple = risk > 0 ? pnl / risk : 0;
@@ -107,7 +157,7 @@ const AddTradeModal = ({ open, onOpenChange, onAddTrade }: AddTradeModalProps) =
       type,
       side,
       entryPrice: entry,
-      exitPrice: exit,
+      exitPrice: status === "open" ? entry : exit,
       stopLoss: sl,
       target: tgt,
       quantity: qty,
@@ -118,7 +168,7 @@ const AddTradeModal = ({ open, onOpenChange, onAddTrade }: AddTradeModalProps) =
       tags: selectedTags,
       notes,
       status,
-      holdTime: calculateHoldTime(),
+      holdTime: status === "open" ? "-" : calculateHoldTime(),
       risk,
     };
 
@@ -131,22 +181,10 @@ const AddTradeModal = ({ open, onOpenChange, onAddTrade }: AddTradeModalProps) =
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg bg-card border-border max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <DialogTitle className="text-xl font-medium">Log Trade</DialogTitle>
-              <p className="text-sm text-muted-foreground mt-1">
-                Quick entry — additional fields are optional.
-              </p>
-            </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="text-muted-foreground hover:text-foreground"
-              onClick={() => onOpenChange(false)}
-            >
-              <X weight="regular" className="w-5 h-5" />
-            </Button>
-          </div>
+          <DialogTitle className="text-xl font-medium">Log Trade</DialogTitle>
+          <p className="text-sm text-muted-foreground">
+            Quick entry — additional fields are optional.
+          </p>
         </DialogHeader>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-4">
@@ -168,6 +206,7 @@ const AddTradeModal = ({ open, onOpenChange, onAddTrade }: AddTradeModalProps) =
               <Label className="text-sm font-medium mb-3 block">Trade Status</Label>
               <div className="grid grid-cols-2 gap-2">
                 <Button
+                  type="button"
                   variant={status === "open" ? "default" : "outline"}
                   className={`${
                     status === "open"
@@ -179,6 +218,7 @@ const AddTradeModal = ({ open, onOpenChange, onAddTrade }: AddTradeModalProps) =
                   Open
                 </Button>
                 <Button
+                  type="button"
                   variant={status === "closed" ? "default" : "outline"}
                   className={`${
                     status === "closed"
@@ -227,6 +267,7 @@ const AddTradeModal = ({ open, onOpenChange, onAddTrade }: AddTradeModalProps) =
                 <Label className="text-sm font-medium mb-2 block">Direction</Label>
                 <div className="grid grid-cols-2 gap-1">
                   <Button
+                    type="button"
                     size="sm"
                     variant={side === "LONG" ? "default" : "outline"}
                     className={`${
@@ -239,6 +280,7 @@ const AddTradeModal = ({ open, onOpenChange, onAddTrade }: AddTradeModalProps) =
                     Long
                   </Button>
                   <Button
+                    type="button"
                     size="sm"
                     variant={side === "SHORT" ? "default" : "outline"}
                     className={`${
@@ -298,54 +340,59 @@ const AddTradeModal = ({ open, onOpenChange, onAddTrade }: AddTradeModalProps) =
               </div>
             </div>
 
-            {/* Exit */}
-            <div>
-              <Label className="text-sm font-medium mb-3 block">Exit</Label>
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <Label className="text-xs text-muted-foreground mb-1.5 block">
-                    Date & Time
-                  </Label>
-                  <Input
-                    type="datetime-local"
-                    value={exitDate}
-                    onChange={(e) => setExitDate(e.target.value)}
-                    className="bg-secondary/50 border-border/50"
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs text-muted-foreground mb-1.5 block">
-                    Exit Price (USD)
-                  </Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    placeholder="0.00"
-                    value={exitPrice}
-                    onChange={(e) => setExitPrice(e.target.value)}
-                    className="bg-secondary/50 border-border/50"
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs text-muted-foreground mb-1.5 block">
-                    Fees (USD)
-                  </Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    placeholder="0"
-                    value={fees}
-                    onChange={(e) => setFees(e.target.value)}
-                    className="bg-secondary/50 border-border/50"
-                  />
+            {/* Exit - Only show when status is closed */}
+            {status === "closed" && (
+              <div>
+                <Label className="text-sm font-medium mb-3 block">Exit</Label>
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <Label className="text-xs text-muted-foreground mb-1.5 block">
+                      Date & Time
+                    </Label>
+                    <Input
+                      type="datetime-local"
+                      value={exitDate}
+                      onChange={(e) => setExitDate(e.target.value)}
+                      min={entryDate}
+                      className="bg-secondary/50 border-border/50"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground mb-1.5 block">
+                      Exit Price (USD)
+                    </Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      placeholder="0.00"
+                      value={exitPrice}
+                      onChange={(e) => setExitPrice(e.target.value)}
+                      className="bg-secondary/50 border-border/50"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground mb-1.5 block">
+                      Fees (USD)
+                    </Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      placeholder="0"
+                      value={fees}
+                      onChange={(e) => setFees(e.target.value)}
+                      className="bg-secondary/50 border-border/50"
+                    />
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
-            {/* Hold Time */}
-            <div className="text-sm text-muted-foreground">
-              Hold Time: <span className="text-foreground">{calculateHoldTime()}</span>
-            </div>
+            {/* Hold Time - Only show when status is closed */}
+            {status === "closed" && (
+              <div className="text-sm text-muted-foreground">
+                Hold Time: <span className="text-foreground">{calculateHoldTime()}</span>
+              </div>
+            )}
           </TabsContent>
 
           <TabsContent value="levels" className="space-y-6 mt-6">
@@ -361,6 +408,11 @@ const AddTradeModal = ({ open, onOpenChange, onAddTrade }: AddTradeModalProps) =
                   onChange={(e) => setStopLoss(e.target.value)}
                   className="bg-secondary/50 border-border/50"
                 />
+                {stopLoss && entryPrice && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {side === "LONG" ? "Must be below" : "Must be above"} entry price
+                  </p>
+                )}
               </div>
               <div>
                 <Label className="text-sm font-medium mb-2 block">Target</Label>
@@ -372,6 +424,11 @@ const AddTradeModal = ({ open, onOpenChange, onAddTrade }: AddTradeModalProps) =
                   onChange={(e) => setTarget(e.target.value)}
                   className="bg-secondary/50 border-border/50"
                 />
+                {target && entryPrice && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {side === "LONG" ? "Must be above" : "Must be below"} entry price
+                  </p>
+                )}
               </div>
             </div>
 
@@ -410,10 +467,11 @@ const AddTradeModal = ({ open, onOpenChange, onAddTrade }: AddTradeModalProps) =
                   placeholder="Add a tag..."
                   value={tagInput}
                   onChange={(e) => setTagInput(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleAddTag()}
+                  onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), handleAddTag())}
                   className="bg-secondary/50 border-border/50"
                 />
                 <Button
+                  type="button"
                   variant="outline"
                   size="icon"
                   onClick={handleAddTag}
@@ -471,7 +529,7 @@ const AddTradeModal = ({ open, onOpenChange, onAddTrade }: AddTradeModalProps) =
                 <p className="text-sm text-muted-foreground mb-3">
                   Drag & drop images here or click to upload
                 </p>
-                <Button variant="outline" className="border-border/50">
+                <Button type="button" variant="outline" className="border-border/50">
                   Browse Files
                 </Button>
               </div>
@@ -479,16 +537,33 @@ const AddTradeModal = ({ open, onOpenChange, onAddTrade }: AddTradeModalProps) =
           </TabsContent>
         </Tabs>
 
+        {/* Validation Errors */}
+        {validationErrors.length > 0 && (
+          <div className="mt-4 p-3 rounded-lg bg-rose-500/10 border border-rose-500/30">
+            {validationErrors.map((error, index) => (
+              <p key={index} className="text-sm text-rose-400">
+                {error}
+              </p>
+            ))}
+          </div>
+        )}
+
         {/* Footer */}
-        <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-border/50">
+        <div className="flex items-center justify-end gap-3 mt-6 pt-4 border-t border-border/50">
           <Button
-            variant="ghost"
+            type="button"
+            variant="outline"
             onClick={() => onOpenChange(false)}
-            className="text-muted-foreground"
+            className="border-border/50"
           >
             Cancel
           </Button>
-          <Button onClick={handleSubmit} className="glow-button text-white">
+          <Button
+            type="button"
+            onClick={handleSubmit}
+            className="glow-button text-white"
+            disabled={validationErrors.length > 0}
+          >
             Log Trade
           </Button>
         </div>
