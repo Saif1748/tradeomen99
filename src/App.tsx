@@ -8,6 +8,7 @@ import Dashboard from "./pages/Dashboard";
 import Auth from "./pages/Auth";
 import Calendar from "./pages/Calendar";
 import Trades from "./pages/Trades";
+import AIChat from "./pages/AIChat";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -27,7 +28,7 @@ const App = () => (
           <Route path="/calendar" element={<Calendar />} />
           <Route path="/reports" element={<Dashboard />} />
           <Route path="/markets" element={<Dashboard />} />
-          <Route path="/ai-chat" element={<Dashboard />} />
+          <Route path="/ai-chat" element={<AIChat />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
