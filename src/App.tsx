@@ -9,6 +9,7 @@ import Auth from "./pages/Auth";
 import Calendar from "./pages/Calendar";
 import Trades from "./pages/Trades";
 import Strategies from "./pages/Strategies";
+import Reports from "./pages/Reports";
 import AIChat from "./pages/AIChat";
 import NotFound from "./pages/NotFound";
 
@@ -27,7 +28,7 @@ const App = () => (
           <Route path="/trades" element={<Trades />} />
           <Route path="/strategies" element={<Strategies />} />
           <Route path="/calendar" element={<Calendar />} />
-          <Route path="/reports" element={<Dashboard />} />
+          <Route path="/reports" element={<Reports />} />
           <Route path="/markets" element={<Dashboard />} />
           <Route path="/ai-chat" element={<AIChat />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
