@@ -8,6 +8,7 @@ import Dashboard from "./pages/Dashboard";
 import Auth from "./pages/Auth";
 import Calendar from "./pages/Calendar";
 import Trades from "./pages/Trades";
+import Strategies from "./pages/Strategies";
 import AIChat from "./pages/AIChat";
 import NotFound from "./pages/NotFound";
 
@@ -24,7 +25,7 @@ const App = () => (
           <Route path="/auth" element={<Auth />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/trades" element={<Trades />} />
-          <Route path="/strategies" element={<Dashboard />} />
+          <Route path="/strategies" element={<Strategies />} />
           <Route path="/calendar" element={<Calendar />} />
           <Route path="/reports" element={<Dashboard />} />
           <Route path="/markets" element={<Dashboard />} />
