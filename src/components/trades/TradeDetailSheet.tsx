@@ -104,14 +104,6 @@ const TradeDetailSheet = ({
                 >
                   <Trash weight="regular" className="w-4 h-4" />
                 </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="text-muted-foreground hover:text-foreground h-8 w-8"
-                  onClick={() => onOpenChange(false)}
-                >
-                  <X weight="regular" className="w-4 h-4" />
-                </Button>
               </div>
             </div>
 
