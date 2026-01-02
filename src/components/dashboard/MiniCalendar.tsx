@@ -64,7 +64,7 @@ const MiniCalendar = () => {
           {hasTrading && (
             <span
               className={`text-[9px] font-light ${
-                isProfit ? "text-emerald-400" : "text-rose-400"
+                isProfit ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
               }`}
             >
               {isProfit ? "+" : ""}${Math.abs(tradingData.pnl)}

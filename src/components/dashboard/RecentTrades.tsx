@@ -34,15 +34,15 @@ const RecentTrades = () => {
             <span
               className={`text-xs px-2 py-0.5 rounded w-fit ${
                 trade.type === "Long"
-                  ? "bg-emerald-400/10 text-emerald-400"
-                  : "bg-rose-400/10 text-rose-400"
+                  ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                  : "bg-rose-500/10 text-rose-600 dark:text-rose-400"
               }`}
             >
               {trade.type}
             </span>
             <span
               className={`text-right font-normal ${
-                trade.pnl >= 0 ? "text-emerald-400" : "text-rose-400"
+                trade.pnl >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
               }`}
             >
               {trade.pnl >= 0 ? "+" : ""}${Math.abs(trade.pnl).toFixed(2)}

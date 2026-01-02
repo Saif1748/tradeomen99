@@ -75,8 +75,8 @@ const TradesStatsCards = ({ trades }: TradesStatsCardsProps) => {
                 className={`text-2xl font-normal tracking-tight-premium ${
                   card.title === "Best Trade" || card.title === "Total P&L"
                     ? stats.totalPnl >= 0
-                      ? "text-emerald-400"
-                      : "text-rose-400"
+                      ? "text-emerald-600 dark:text-emerald-400"
+                      : "text-rose-600 dark:text-rose-400"
                     : "text-foreground"
                 }`}
               >
@@ -92,8 +92,8 @@ const TradesStatsCards = ({ trades }: TradesStatsCardsProps) => {
               <span
                 className={`text-xs font-light px-2 py-1 rounded-lg ${
                   card.trend === "up"
-                    ? "text-emerald-400 bg-emerald-400/10"
-                    : "text-rose-400 bg-rose-400/10"
+                    ? "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10"
+                    : "text-rose-600 dark:text-rose-400 bg-rose-500/10"
                 }`}
               >
                 {card.trendValue}

@@ -78,7 +78,8 @@ const TradesTable = ({
 
   return (
     <div className="space-y-4">
-      <div className="glass-card rounded-2xl overflow-hidden">
+      {/* Desktop Table View */}
+      <div className="glass-card rounded-2xl overflow-hidden hidden lg:block">
         <Table>
           <TableHeader>
             <TableRow className="border-border/50 hover:bg-transparent">
@@ -153,8 +154,8 @@ const TradesTable = ({
                     variant="outline"
                     className={`${
                       trade.side === "LONG"
-                        ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-400"
-                        : "border-rose-500/50 bg-rose-500/10 text-rose-400"
+                        ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                        : "border-rose-500/50 bg-rose-500/10 text-rose-600 dark:text-rose-400"
                     }`}
                   >
                     {trade.side}
@@ -162,7 +163,7 @@ const TradesTable = ({
                 </TableCell>
                 <TableCell
                   className={`font-medium ${
-                    trade.pnl >= 0 ? "text-emerald-400" : "text-rose-400"
+                    trade.pnl >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
                   }`}
                 >
                   {trade.pnl >= 0 ? "+" : ""}$
@@ -173,7 +174,7 @@ const TradesTable = ({
                 </TableCell>
                 <TableCell
                   className={`${
-                    trade.rMultiple >= 0 ? "text-emerald-400" : "text-rose-400"
+                    trade.rMultiple >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
                   }`}
                 >
                   {trade.rMultiple >= 0 ? "+" : ""}
@@ -205,6 +206,53 @@ const TradesTable = ({
             ))}
           </TableBody>
         </Table>
+      </div>
+
+      {/* Mobile/Tablet Card View */}
+      <div className="lg:hidden space-y-3">
+        {paginatedTrades.map((trade) => (
+          <div
+            key={trade.id}
+            onClick={() => onTradeClick(trade)}
+            className="glass-card p-4 rounded-xl cursor-pointer hover:bg-secondary/30 transition-colors"
+          >
+            <div className="flex items-start justify-between mb-3">
+              <div>
+                <p className="font-medium text-foreground">{trade.symbol}</p>
+                <p className="text-xs text-muted-foreground">{format(trade.date, "MMM d, yyyy")}</p>
+              </div>
+              <span
+                className={`text-lg font-semibold ${
+                  trade.pnl >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
+                }`}
+              >
+                {trade.pnl >= 0 ? "+" : ""}${Math.abs(trade.pnl).toFixed(2)}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Badge
+                variant="outline"
+                className={`text-xs ${
+                  trade.side === "LONG"
+                    ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                    : "border-rose-500/50 bg-rose-500/10 text-rose-600 dark:text-rose-400"
+                }`}
+              >
+                {trade.side}
+              </Badge>
+              <span className="text-xs text-muted-foreground">{trade.type}</span>
+              <span className="text-xs text-muted-foreground">•</span>
+              <span className="text-xs text-muted-foreground">{trade.strategy}</span>
+              <span
+                className={`text-xs ml-auto ${
+                  trade.rMultiple >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
+                }`}
+              >
+                {trade.rMultiple >= 0 ? "+" : ""}{trade.rMultiple.toFixed(2)}R
+              </span>
+            </div>
+          </div>
+        ))}
       </div>
 
       {/* Pagination */}
