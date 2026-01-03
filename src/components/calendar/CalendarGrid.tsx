@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { DayData } from "@/lib/calendarData";
 import CalendarDayCell from "./CalendarDayCell";
 import DayDetailModal from "./DayDetailModal";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 interface CalendarGridProps {
   year: number;
@@ -11,10 +12,12 @@ interface CalendarGridProps {
 }
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const WEEKDAYS_SHORT = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
 const CalendarGrid = ({ year, month, monthData, colorMode }: CalendarGridProps) => {
   const [selectedDay, setSelectedDay] = useState<DayData | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const isMobile = useIsMobile();
 
   const calendarDays = useMemo(() => {
     const firstDay = new Date(year, month, 1);
@@ -76,10 +79,10 @@ const CalendarGrid = ({ year, month, monthData, colorMode }: CalendarGridProps) 
     <>
       {/* Weekday Headers */}
       <div className="grid grid-cols-7 gap-1 sm:gap-2 mb-2">
-        {WEEKDAYS.map((day) => (
+        {(isMobile ? WEEKDAYS_SHORT : WEEKDAYS).map((day, index) => (
           <div
-            key={day}
-            className="text-center text-xs sm:text-sm font-medium text-muted-foreground py-2"
+            key={index}
+            className="text-center text-[10px] sm:text-sm font-medium text-muted-foreground py-1 sm:py-2"
           >
             {day}
           </div>

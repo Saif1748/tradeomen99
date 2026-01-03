@@ -208,47 +208,45 @@ const TradesTable = ({
         </Table>
       </div>
 
-      {/* Mobile/Tablet Card View */}
-      <div className="lg:hidden space-y-3">
+      {/* Mobile/Tablet Card View - Optimized for scanability */}
+      <div className="lg:hidden space-y-2">
         {paginatedTrades.map((trade) => (
           <div
             key={trade.id}
             onClick={() => onTradeClick(trade)}
-            className="glass-card p-4 rounded-xl cursor-pointer hover:bg-secondary/30 transition-colors"
+            className="glass-card px-3 py-2.5 rounded-xl cursor-pointer hover:bg-secondary/30 transition-colors"
           >
-            <div className="flex items-start justify-between mb-3">
-              <div>
-                <p className="font-medium text-foreground">{trade.symbol}</p>
-                <p className="text-xs text-muted-foreground">{format(trade.date, "MMM d, yyyy")}</p>
+            {/* Row 1: Symbol + Date | P&L (dominant) */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="font-semibold text-foreground truncate">{trade.symbol}</span>
+                <Badge
+                  variant="outline"
+                  className={`text-[10px] px-1.5 py-0 h-4 ${
+                    trade.side === "LONG"
+                      ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                      : "border-rose-500/50 bg-rose-500/10 text-rose-600 dark:text-rose-400"
+                  }`}
+                >
+                  {trade.side}
+                </Badge>
               </div>
               <span
-                className={`text-lg font-semibold ${
+                className={`text-lg font-bold tabular-nums ${
                   trade.pnl >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
                 }`}
               >
-                {trade.pnl >= 0 ? "+" : ""}${Math.abs(trade.pnl).toFixed(2)}
+                {trade.pnl >= 0 ? "+" : ""}${Math.abs(trade.pnl).toFixed(0)}
               </span>
             </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <Badge
-                variant="outline"
-                className={`text-xs ${
-                  trade.side === "LONG"
-                    ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                    : "border-rose-500/50 bg-rose-500/10 text-rose-600 dark:text-rose-400"
-                }`}
-              >
-                {trade.side}
-              </Badge>
-              <span className="text-xs text-muted-foreground">{trade.type}</span>
-              <span className="text-xs text-muted-foreground">•</span>
-              <span className="text-xs text-muted-foreground">{trade.strategy}</span>
-              <span
-                className={`text-xs ml-auto ${
-                  trade.rMultiple >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
-                }`}
-              >
-                {trade.rMultiple >= 0 ? "+" : ""}{trade.rMultiple.toFixed(2)}R
+            {/* Row 2: Metadata - compact */}
+            <div className="flex items-center gap-1.5 mt-1 text-[11px] text-muted-foreground">
+              <span>{format(trade.date, "MMM d")}</span>
+              <span>•</span>
+              <span>{trade.strategy}</span>
+              <span>•</span>
+              <span className={trade.rMultiple >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}>
+                {trade.rMultiple >= 0 ? "+" : ""}{trade.rMultiple.toFixed(1)}R
               </span>
             </div>
           </div>
@@ -257,39 +255,44 @@ const TradesTable = ({
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
-            Showing {startIndex + 1}-{Math.min(startIndex + ITEMS_PER_PAGE, trades.length)} of {trades.length} trades
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+          <p className="text-xs sm:text-sm text-muted-foreground">
+            {startIndex + 1}-{Math.min(startIndex + ITEMS_PER_PAGE, trades.length)} of {trades.length}
           </p>
           <Pagination>
-            <PaginationContent>
+            <PaginationContent className="gap-1">
               <PaginationItem>
                 <PaginationPrevious
                   onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  className={currentPage === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                  className={`h-8 ${currentPage === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}`}
                 />
               </PaginationItem>
-              {getPageNumbers().map((page, index) =>
-                page === "ellipsis" ? (
-                  <PaginationItem key={`ellipsis-${index}`}>
-                    <PaginationEllipsis />
-                  </PaginationItem>
-                ) : (
-                  <PaginationItem key={page}>
-                    <PaginationLink
-                      onClick={() => setCurrentPage(page)}
-                      isActive={currentPage === page}
-                      className="cursor-pointer"
-                    >
-                      {page}
-                    </PaginationLink>
-                  </PaginationItem>
-                )
-              )}
+              <div className="hidden sm:flex gap-1">
+                {getPageNumbers().map((page, index) =>
+                  page === "ellipsis" ? (
+                    <PaginationItem key={`ellipsis-${index}`}>
+                      <PaginationEllipsis />
+                    </PaginationItem>
+                  ) : (
+                    <PaginationItem key={page}>
+                      <PaginationLink
+                        onClick={() => setCurrentPage(page)}
+                        isActive={currentPage === page}
+                        className="cursor-pointer h-8 w-8"
+                      >
+                        {page}
+                      </PaginationLink>
+                    </PaginationItem>
+                  )
+                )}
+              </div>
+              <span className="sm:hidden text-xs text-muted-foreground px-2">
+                {currentPage} / {totalPages}
+              </span>
               <PaginationItem>
                 <PaginationNext
                   onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  className={currentPage === totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                  className={`h-8 ${currentPage === totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}`}
                 />
               </PaginationItem>
             </PaginationContent>

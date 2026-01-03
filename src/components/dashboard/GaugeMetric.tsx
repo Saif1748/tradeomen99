@@ -6,6 +6,7 @@ interface GaugeMetricProps {
   type: "arc" | "donut" | "bar";
   primaryColor?: string;
   secondaryColor?: string;
+  compact?: boolean;
 }
 
 const GaugeMetric = ({
@@ -14,6 +15,7 @@ const GaugeMetric = ({
   type,
   primaryColor = "hsl(var(--primary))",
   secondaryColor = "hsl(var(--glow-secondary))",
+  compact = false,
 }: GaugeMetricProps) => {
   const renderGauge = () => {
     switch (type) {
@@ -21,7 +23,7 @@ const GaugeMetric = ({
         // Arc gauge for Profit Factor
         const arcPercentage = Math.min(value / 3, 1) * 100;
         return (
-          <div className="relative w-20 h-10 overflow-hidden">
+          <div className={`relative ${compact ? 'w-14 h-7' : 'w-20 h-10'} overflow-hidden`}>
             <svg viewBox="0 0 100 50" className="w-full h-full">
               {/* Background arc */}
               <path
@@ -55,7 +57,7 @@ const GaugeMetric = ({
         const circumference = 2 * Math.PI * 35;
         const dashOffset = circumference - (value / 100) * circumference;
         return (
-          <div className="relative w-16 h-16">
+          <div className={`relative ${compact ? 'w-12 h-12' : 'w-16 h-16'}`}>
             <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
               {/* Background circle */}
               <circle
@@ -93,7 +95,7 @@ const GaugeMetric = ({
         const winWidth = Math.min((value / (value + 1)) * 100, 65);
         const lossWidth = 100 - winWidth;
         return (
-          <div className="flex items-center gap-1 w-24">
+          <div className={`flex items-center gap-1 ${compact ? 'w-16' : 'w-24'}`}>
             <div
               className="h-2 rounded-l-full bg-emerald-400"
               style={{ width: `${winWidth}%` }}
@@ -115,7 +117,7 @@ const GaugeMetric = ({
       case "arc":
         return value.toFixed(2);
       case "donut":
-        return `${value.toFixed(1)}%`;
+        return `${value.toFixed(compact ? 0 : 1)}%`;
       case "bar":
         return value.toFixed(1);
       default:
@@ -124,6 +126,7 @@ const GaugeMetric = ({
   };
 
   const getSubtitle = () => {
+    if (compact) return null;
     switch (type) {
       case "bar":
         return (
@@ -136,6 +139,20 @@ const GaugeMetric = ({
         return null;
     }
   };
+
+  if (compact) {
+    return (
+      <div className="glass-card p-3 rounded-xl">
+        <div className="flex flex-col items-center text-center">
+          {renderGauge()}
+          <p className="text-lg font-semibold tracking-tight text-foreground mt-1">
+            {getDisplayValue()}
+          </p>
+          <span className="text-[10px] text-muted-foreground">{title}</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="glass-card card-glow p-5 rounded-2xl hover:scale-[1.02] transition-transform duration-300">

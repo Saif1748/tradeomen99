@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
-import { Plus, MagnifyingGlass, Funnel } from "@phosphor-icons/react";
+import { Plus, MagnifyingGlass, Funnel, Sword } from "@phosphor-icons/react";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
+import PageHeader from "@/components/dashboard/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -36,6 +37,7 @@ const Strategies = () => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [styleFilter, setStyleFilter] = useState("all");
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const stats = useMemo(() => calculateStrategyStats(strategies), [strategies]);
 
@@ -85,7 +87,12 @@ const Strategies = () => {
   if (selectedStrategy) {
     return (
       <DashboardLayout>
-        <div className="px-4 sm:px-6 lg:px-8 py-6">
+        <PageHeader
+          title="Strategy Detail"
+          icon={<Sword weight="duotone" className="w-6 h-6 text-primary" />}
+          onMobileMenuOpen={() => setMobileMenuOpen(true)}
+        />
+        <div className="px-4 sm:px-6 lg:px-8 pb-6 pt-4">
           <StrategyDetail
             strategy={selectedStrategy}
             onBack={() => setSelectedStrategy(null)}
@@ -126,23 +133,19 @@ const Strategies = () => {
 
   return (
     <DashboardLayout>
-      <div className="px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-medium text-foreground tracking-tight-premium">
-              Strategies
-            </h1>
-            <p className="text-muted-foreground mt-1">
-              Define your edge, track your execution, and analyze what works.
-            </p>
-          </div>
-          <Button onClick={() => setCreateModalOpen(true)} className="glow-button gap-2">
-            <Plus weight="bold" className="w-4 h-4" />
-            New Strategy
-          </Button>
-        </div>
+      <PageHeader
+        title="Strategies"
+        icon={<Sword weight="duotone" className="w-6 h-6 text-primary" />}
+        onMobileMenuOpen={() => setMobileMenuOpen(true)}
+      >
+        <Button onClick={() => setCreateModalOpen(true)} className="glow-button gap-2 text-white">
+          <Plus weight="bold" className="w-4 h-4" />
+          <span className="hidden sm:inline">New Strategy</span>
+          <span className="sm:hidden">New</span>
+        </Button>
+      </PageHeader>
 
+      <div className="px-4 sm:px-6 lg:px-8 pb-6 pt-4 space-y-4 sm:space-y-6">
         {/* Stats Cards */}
         <StrategyStatsCards
           totalStrategies={stats.totalStrategies}
@@ -152,8 +155,8 @@ const Strategies = () => {
         />
 
         {/* Search & Filter */}
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1 max-w-md">
+        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+          <div className="relative flex-1 sm:max-w-md">
             <MagnifyingGlass weight="regular" className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
               placeholder="Search strategies..."
@@ -178,7 +181,7 @@ const Strategies = () => {
 
         {/* Strategy Cards Grid */}
         {filteredStrategies.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
             {filteredStrategies.map(strategy => (
               <StrategyCard
                 key={strategy.id}
@@ -188,7 +191,7 @@ const Strategies = () => {
             ))}
           </div>
         ) : (
-          <div className="glass-card p-12 rounded-2xl text-center">
+          <div className="glass-card p-8 sm:p-12 rounded-2xl text-center">
             <p className="text-muted-foreground">
               {searchQuery || styleFilter !== "all"
                 ? "No strategies match your search."

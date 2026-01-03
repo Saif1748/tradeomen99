@@ -51,29 +51,33 @@ const CalendarDayCell = ({
 
   const formatPnL = (value: number) => {
     const sign = value >= 0 ? '+' : '';
-    return `${sign}$${Math.abs(value).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+    if (Math.abs(value) >= 1000) {
+      return `${sign}$${(value / 1000).toFixed(1)}k`;
+    }
+    return `${sign}$${Math.abs(value).toFixed(0)}`;
   };
 
   const cellContent = (
     <div
       onClick={onClick}
       className={cn(
-        "aspect-square p-1.5 sm:p-2 rounded-lg cursor-pointer transition-all duration-200",
+        "aspect-square p-1 sm:p-2 rounded-lg cursor-pointer transition-all duration-200",
         "border border-transparent hover:border-border/50",
         getBgColor(),
         !isCurrentMonth && "opacity-40",
-        isToday && "ring-2 ring-primary/50"
+        isToday && "ring-2 ring-primary ring-offset-2 ring-offset-background"
       )}
     >
       {/* Top row: Date and trade count */}
-      <div className="flex items-start justify-between mb-1">
+      <div className="flex items-start justify-between">
         <span className={cn(
           "text-xs sm:text-sm font-medium",
           isCurrentMonth ? "text-foreground" : "text-muted-foreground"
         )}>
           {day}
         </span>
-        {dayData && dayData.tradeCount > 0 && (
+        {/* Trade count badge - desktop only */}
+        {dayData && dayData.tradeCount > 0 && !isMobile && (
           <Badge 
             variant="secondary" 
             className="h-4 sm:h-5 px-1 sm:px-1.5 text-[10px] sm:text-xs bg-secondary/80 text-secondary-foreground"
@@ -83,18 +87,29 @@ const CalendarDayCell = ({
         )}
       </div>
 
-      {/* P&L Display */}
+      {/* P&L Display - Mobile shows only P&L, desktop shows both */}
       {dayData && (
-        <div className="flex flex-col items-center justify-center mt-1 sm:mt-2">
+        <div className="flex flex-col items-center justify-center mt-0.5 sm:mt-2">
           <span className={cn(
-            "text-xs sm:text-sm font-semibold",
-            dayData.totalPnL > 0 ? "text-emerald-400" : dayData.totalPnL < 0 ? "text-rose-400" : "text-muted-foreground"
+            "text-[10px] sm:text-sm font-semibold leading-tight",
+            dayData.totalPnL > 0 ? "text-emerald-600 dark:text-emerald-400" : 
+            dayData.totalPnL < 0 ? "text-rose-600 dark:text-rose-400" : "text-muted-foreground"
           )}>
             {formatPnL(dayData.totalPnL)}
           </span>
-          <span className="text-[9px] sm:text-[10px] text-muted-foreground mt-0.5">
-            {dayData.winRate}% WR
-          </span>
+          {/* Win rate - desktop only */}
+          {!isMobile && (
+            <span className="text-[9px] sm:text-[10px] text-muted-foreground mt-0.5">
+              {dayData.winRate}% WR
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Empty day hint for mobile */}
+      {!dayData && isCurrentMonth && isMobile && (
+        <div className="flex-1 flex items-center justify-center">
+          <span className="text-[9px] text-muted-foreground/50">-</span>
         </div>
       )}
     </div>
@@ -135,7 +150,7 @@ const CalendarDayCell = ({
               <span className="text-[10px] text-muted-foreground block">P&L</span>
               <span className={cn(
                 "text-sm font-semibold",
-                dayData.totalPnL > 0 ? "text-emerald-400" : "text-rose-400"
+                dayData.totalPnL > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
               )}>
                 {formatPnL(dayData.totalPnL)}
               </span>
