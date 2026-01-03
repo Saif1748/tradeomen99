@@ -1,6 +1,7 @@
+import { useState } from "react";
 import { Wallet } from "@phosphor-icons/react";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
-import DashboardHeader from "@/components/dashboard/DashboardHeader";
+import PageHeader from "@/components/dashboard/PageHeader";
 import MetricCard from "@/components/dashboard/MetricCard";
 import GaugeMetric from "@/components/dashboard/GaugeMetric";
 import ChartCard from "@/components/dashboard/ChartCard";
@@ -36,13 +37,19 @@ const radarChartData = [
 ];
 
 const Dashboard = () => {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
   return (
     <DashboardLayout>
-      <DashboardHeader />
+      <PageHeader
+        title="Dashboard"
+        subtitle="Welcome back! Here's your trading overview."
+        onMobileMenuOpen={() => setMobileMenuOpen(true)}
+      />
 
-      <div className="px-4 sm:px-6 lg:px-8 pb-6 pt-4 space-y-6">
+      <div className="px-4 sm:px-6 lg:px-8 pb-6 pt-4 space-y-4 sm:space-y-6">
         {/* Metrics Row */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3 sm:gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-2 xl:grid-cols-5 gap-2 sm:gap-3 lg:gap-4">
           <MetricCard
             title="Net P&L"
             value="$2,486.50"
@@ -57,9 +64,22 @@ const Dashboard = () => {
             trend="up"
             trendValue="8.2%"
           />
-          <GaugeMetric title="Profit Factor" value={1.82} type="arc" />
-          <GaugeMetric title="Win Rate" value={68.5} type="donut" />
-          <GaugeMetric title="Avg Win/Loss" value={1.83} type="bar" />
+          <div className="hidden xl:block">
+            <GaugeMetric title="Profit Factor" value={1.82} type="arc" />
+          </div>
+          <div className="hidden xl:block">
+            <GaugeMetric title="Win Rate" value={68.5} type="donut" />
+          </div>
+          <div className="hidden xl:block">
+            <GaugeMetric title="Avg Win/Loss" value={1.83} type="bar" />
+          </div>
+        </div>
+
+        {/* Mobile: Gauge metrics in a row */}
+        <div className="grid grid-cols-3 gap-2 xl:hidden">
+          <GaugeMetric title="Profit Factor" value={1.82} type="arc" compact />
+          <GaugeMetric title="Win Rate" value={68.5} type="donut" compact />
+          <GaugeMetric title="Avg W/L" value={1.83} type="bar" compact />
         </div>
 
         {/* Charts Row */}
@@ -74,11 +94,13 @@ const Dashboard = () => {
             type="area"
             data={areaChartData}
           />
-          <ChartCard
-            title="Daily P&L"
-            type="bar"
-            data={barChartData}
-          />
+          <div className="lg:col-span-2 xl:col-span-1">
+            <ChartCard
+              title="Daily P&L"
+              type="bar"
+              data={barChartData}
+            />
+          </div>
         </div>
 
         {/* Bottom Row */}

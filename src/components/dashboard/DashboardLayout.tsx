@@ -5,7 +5,6 @@ import MobileSidebar from "./MobileSidebar";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
-  onMobileMenuOpen?: () => void;
 }
 
 const DashboardLayout = ({ children }: DashboardLayoutProps) => {
@@ -21,6 +20,24 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
     window.addEventListener("resize", checkMobile);
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
+
+  // Clone children and inject mobile menu handler
+  const childrenWithProps = React.Children.map(children, child => {
+    if (React.isValidElement(child)) {
+      // Check if it's a PageHeader by looking at the component
+      const childType = child.type as { displayName?: string; name?: string } | string;
+      const componentName = typeof childType === 'function' 
+        ? (childType as { displayName?: string; name?: string }).displayName || (childType as { displayName?: string; name?: string }).name 
+        : '';
+      
+      if (componentName === 'PageHeader') {
+        return React.cloneElement(child as React.ReactElement<{ onMobileMenuOpen?: () => void }>, {
+          onMobileMenuOpen: () => setMobileMenuOpen(true)
+        });
+      }
+    }
+    return child;
+  });
 
   return (
     <div className="min-h-screen bg-background">
@@ -40,14 +57,7 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
         transition={{ duration: 0.3, ease: [0.25, 0.46, 0.45, 0.94] }}
         className="min-h-screen"
       >
-        {React.Children.map(children, child => {
-          if (React.isValidElement(child) && child.type && (child.type as any).name === 'DashboardHeader') {
-            return React.cloneElement(child as React.ReactElement<any>, {
-              onMobileMenuOpen: () => setMobileMenuOpen(true)
-            });
-          }
-          return child;
-        })}
+        {childrenWithProps}
       </motion.main>
     </div>
   );
