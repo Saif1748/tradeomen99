@@ -11,6 +11,7 @@ import StrategyAnalysisTab from "@/components/reports/StrategyAnalysisTab";
 import TimeAnalysisTab from "@/components/reports/TimeAnalysisTab";
 import { generateMockTrades, Trade, strategies as tradeStrategies } from "@/lib/tradesData";
 import { toast } from "sonner";
+import { useSettings } from "@/contexts/SettingsContext";
 import {
   Sheet,
   SheetContent,
@@ -32,6 +33,38 @@ import {
 import { Calendar } from "@/components/ui/calendar";
 import { format } from "date-fns";
 
+// Helper function to convert trades to CSV
+const convertToCSV = (trades: Trade[], currencySymbol: string): string => {
+  const headers = ["Date", "Symbol", "Side", "Type", "Entry", "Exit", "P&L", "R-Multiple", "Strategy", "Tags"];
+  const rows = trades.map(t => [
+    format(t.date, "yyyy-MM-dd"),
+    t.symbol,
+    t.side,
+    t.type,
+    t.entryPrice.toString(),
+    t.exitPrice.toString(),
+    `${currencySymbol}${t.pnl.toFixed(2)}`,
+    t.rMultiple.toFixed(2),
+    t.strategy,
+    t.tags.join("; ")
+  ]);
+  
+  return [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+};
+
+// Helper function to download file
+const downloadFile = (content: string, filename: string, type: string) => {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+};
+
 const Reports = () => {
   const [trades] = useState<Trade[]>(generateMockTrades());
   const [activeTab, setActiveTab] = useState("overview");
@@ -43,6 +76,7 @@ const Reports = () => {
   const [strategyFilter, setStrategyFilter] = useState("all");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
+  const { getCurrencySymbol } = useSettings();
 
   // Filter trades based on selected filters
   const filteredTrades = useMemo(() => {
@@ -61,8 +95,29 @@ const Reports = () => {
     });
   }, [trades, dateRange, instrumentFilter, strategyFilter]);
 
-  const handleExport = (format: "csv" | "pdf") => {
-    toast.success(`Exporting report as ${format.toUpperCase()}...`);
+  const handleExport = (exportFormat: "csv" | "pdf") => {
+    const currencySymbol = getCurrencySymbol();
+    
+    if (exportFormat === "csv") {
+      const csv = convertToCSV(filteredTrades, currencySymbol);
+      const filename = `trades-report-${format(new Date(), "yyyy-MM-dd")}.csv`;
+      downloadFile(csv, filename, "text/csv");
+      toast.success(`Exported ${filteredTrades.length} trades to CSV`);
+    } else if (exportFormat === "pdf") {
+      // For PDF, we'll create a simple text-based report
+      // In production, you'd use a library like jsPDF
+      const header = `TradeOmen Reports\nGenerated: ${format(new Date(), "PPP")}\n\n`;
+      const summary = `Total Trades: ${filteredTrades.length}\nTotal P&L: ${currencySymbol}${filteredTrades.reduce((s, t) => s + t.pnl, 0).toFixed(2)}\n\n`;
+      const tradesText = filteredTrades.map(t => 
+        `${format(t.date, "MMM d")} | ${t.symbol} | ${t.side} | ${currencySymbol}${t.pnl.toFixed(2)}`
+      ).join("\n");
+      
+      const content = header + summary + tradesText;
+      const filename = `trades-report-${format(new Date(), "yyyy-MM-dd")}.txt`;
+      downloadFile(content, filename, "text/plain");
+      toast.success(`Exported report as PDF (text format)`);
+    }
+    
     setFilterSheetOpen(false);
   };
 
@@ -187,34 +242,34 @@ const Reports = () => {
           </Button>
         </div>
 
-        {/* Tab Navigation - Sticky on mobile */}
+        {/* Tab Navigation - Styled properly */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 sm:static sm:bg-transparent">
-            <TabsList className="bg-secondary/50 border border-border p-1 rounded-xl w-full grid grid-cols-4">
+            <TabsList className="w-full h-auto p-1 bg-secondary/30 border border-border/50 rounded-xl grid grid-cols-4 gap-1">
               <TabsTrigger 
                 value="overview"
-                className="rounded-lg data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm text-muted-foreground px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm transition-all"
+                className="rounded-lg px-2 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md data-[state=inactive]:text-muted-foreground data-[state=inactive]:hover:text-foreground data-[state=inactive]:hover:bg-secondary/50"
               >
                 <span className="hidden sm:inline">Overview</span>
                 <span className="sm:hidden">Overview</span>
               </TabsTrigger>
               <TabsTrigger 
                 value="trade-analysis"
-                className="rounded-lg data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm text-muted-foreground px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm transition-all"
+                className="rounded-lg px-2 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md data-[state=inactive]:text-muted-foreground data-[state=inactive]:hover:text-foreground data-[state=inactive]:hover:bg-secondary/50"
               >
                 <span className="hidden sm:inline">Trade Analysis</span>
                 <span className="sm:hidden">Trades</span>
               </TabsTrigger>
               <TabsTrigger 
                 value="strategy-analysis"
-                className="rounded-lg data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm text-muted-foreground px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm transition-all"
+                className="rounded-lg px-2 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md data-[state=inactive]:text-muted-foreground data-[state=inactive]:hover:text-foreground data-[state=inactive]:hover:bg-secondary/50"
               >
                 <span className="hidden sm:inline">Strategy Analysis</span>
                 <span className="sm:hidden">Strategy</span>
               </TabsTrigger>
               <TabsTrigger 
                 value="time-analysis"
-                className="rounded-lg data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm text-muted-foreground px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm transition-all"
+                className="rounded-lg px-2 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-md data-[state=inactive]:text-muted-foreground data-[state=inactive]:hover:text-foreground data-[state=inactive]:hover:bg-secondary/50"
               >
                 <span className="hidden sm:inline">Time Analysis</span>
                 <span className="sm:hidden">Time</span>

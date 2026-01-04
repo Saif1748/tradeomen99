@@ -10,8 +10,6 @@ import ChatHistorySidebar from "@/components/ai-chat/ChatHistorySidebar";
 import ThinkingIndicator from "@/components/ai-chat/ThinkingIndicator";
 import EmptyState from "@/components/ai-chat/EmptyState";
 import MobileSidebar from "@/components/dashboard/MobileSidebar";
-import { useTheme } from "next-themes";
-import { Sun, Moon } from "@phosphor-icons/react";
 
 interface Message {
   id: string;
@@ -61,7 +59,6 @@ const AIChat = () => {
   const [chatHistory] = useState<ChatSession[]>(mockChatHistory);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const { theme, setTheme } = useTheme();
 
   const hasMessages = messages.length > 0;
 
@@ -181,17 +178,8 @@ const AIChat = () => {
             <span className="text-sm font-medium text-foreground">TradeOmen AI</span>
           </div>
 
-          {/* Theme Toggle */}
-          <button
-            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-            className="p-2 sm:p-2.5 rounded-xl bg-secondary/50 border border-border hover:bg-secondary transition-colors"
-          >
-            {theme === "dark" ? (
-              <Sun weight="regular" className="w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground" />
-            ) : (
-              <Moon weight="regular" className="w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground" />
-            )}
-          </button>
+          {/* Empty div for spacing */}
+          <div className="w-10" />
         </header>
 
         {/* Main Content Area */}

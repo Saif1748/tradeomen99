@@ -9,6 +9,8 @@ import {
   BarChart,
   Bar,
   Cell,
+  PieChart,
+  Pie,
 } from "recharts";
 import { Trade } from "@/lib/tradesData";
 import {
@@ -20,10 +22,48 @@ import {
 } from "@/lib/reportsData";
 import AIInsightBanner from "./AIInsightBanner";
 import { format } from "date-fns";
+import { useSettings } from "@/contexts/SettingsContext";
 
 interface TradeAnalysisTabProps {
   trades: Trade[];
 }
+
+// Generate tag performance data from trades
+const generateTagPerformance = (trades: Trade[]) => {
+  const tagMap = new Map<string, { count: number; pnl: number; wins: number }>();
+  
+  trades.forEach(trade => {
+    trade.tags.forEach(tag => {
+      const existing = tagMap.get(tag) || { count: 0, pnl: 0, wins: 0 };
+      tagMap.set(tag, {
+        count: existing.count + 1,
+        pnl: existing.pnl + trade.pnl,
+        wins: existing.wins + (trade.pnl > 0 ? 1 : 0),
+      });
+    });
+  });
+  
+  return Array.from(tagMap.entries())
+    .map(([tag, data]) => ({
+      tag,
+      count: data.count,
+      pnl: data.pnl,
+      winRate: data.count > 0 ? (data.wins / data.count) * 100 : 0,
+    }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 8);
+};
+
+const COLORS = [
+  "hsl(270 70% 55%)",
+  "hsl(200 70% 50%)",
+  "hsl(160 60% 45%)",
+  "hsl(45 90% 55%)",
+  "hsl(320 70% 50%)",
+  "hsl(30 80% 55%)",
+  "hsl(180 60% 45%)",
+  "hsl(0 70% 50%)",
+];
 
 const TradeAnalysisTab = ({ trades }: TradeAnalysisTabProps) => {
   const scatterData = generateScatterData(trades);
@@ -31,6 +71,8 @@ const TradeAnalysisTab = ({ trades }: TradeAnalysisTabProps) => {
   const holdingTimeData = generateHoldingTimeData(trades);
   const { best, worst } = getBestWorstTrades(trades, 5);
   const insight = generateAIInsights(trades, "tradeAnalysis");
+  const tagPerformance = generateTagPerformance(trades);
+  const { formatCurrency } = useSettings();
 
   return (
     <div className="space-y-6">
@@ -87,6 +129,97 @@ const TradeAnalysisTab = ({ trades }: TradeAnalysisTabProps) => {
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 rounded-full bg-rose-500" />
             <span className="text-muted-foreground">Losing trades</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Tags Performance Chart */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Tags Distribution Pie Chart */}
+        <div className="space-y-3">
+          <h3 className="text-sm font-light text-foreground">Tags Distribution</h3>
+          <div className="h-[250px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={tagPerformance}
+                  dataKey="count"
+                  nameKey="tag"
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={80}
+                  innerRadius={40}
+                  paddingAngle={2}
+                  label={({ tag, count }) => `${tag} (${count})`}
+                  labelLine={{ stroke: "hsl(var(--muted-foreground))", strokeWidth: 1 }}
+                >
+                  {tagPerformance.map((_, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "hsl(var(--card))",
+                    border: "1px solid hsl(var(--border))",
+                    borderRadius: "12px",
+                    color: "hsl(var(--foreground))",
+                  }}
+                  formatter={(value: number, name: string, props) => {
+                    const tagData = props.payload;
+                    return [
+                      <div key="tooltip" className="space-y-1">
+                        <div>Trades: {tagData.count}</div>
+                        <div>P&L: {formatCurrency(tagData.pnl)}</div>
+                        <div>Win Rate: {tagData.winRate.toFixed(1)}%</div>
+                      </div>,
+                      tagData.tag
+                    ];
+                  }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Tags P&L Bar Chart */}
+        <div className="space-y-3">
+          <h3 className="text-sm font-light text-foreground">P&L by Tag</h3>
+          <div className="h-[250px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={tagPerformance} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <XAxis
+                  type="number"
+                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }}
+                  tickLine={false}
+                  tickFormatter={(value) => `$${value}`}
+                />
+                <YAxis
+                  type="category"
+                  dataKey="tag"
+                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }}
+                  tickLine={false}
+                  width={80}
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "hsl(var(--card))",
+                    border: "1px solid hsl(var(--border))",
+                    borderRadius: "12px",
+                    color: "hsl(var(--foreground))",
+                  }}
+                  formatter={(value: number) => [formatCurrency(value), "P&L"]}
+                />
+                <Bar dataKey="pnl" radius={[0, 4, 4, 0]}>
+                  {tagPerformance.map((entry, index) => (
+                    <Cell 
+                      key={`cell-${index}`} 
+                      fill={entry.pnl >= 0 ? "hsl(160 60% 45%)" : "hsl(0 70% 50%)"} 
+                    />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
           </div>
         </div>
       </div>

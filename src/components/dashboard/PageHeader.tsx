@@ -7,6 +7,7 @@ interface PageHeaderProps {
   icon?: React.ReactNode;
   onMobileMenuOpen?: () => void;
   children?: React.ReactNode;
+  showThemeToggle?: boolean;
 }
 
 const PageHeader = ({
@@ -15,6 +16,7 @@ const PageHeader = ({
   icon,
   onMobileMenuOpen,
   children,
+  showThemeToggle = false,
 }: PageHeaderProps) => {
   const { theme, setTheme } = useTheme();
 
@@ -42,17 +44,19 @@ const PageHeader = ({
           </div>
         </div>
         <div className="flex items-center gap-3">
-          {/* Theme Toggle */}
-          <button
-            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-            className="p-2.5 rounded-xl bg-secondary/50 border border-border hover:bg-secondary transition-colors"
-          >
-            {theme === "dark" ? (
-              <Sun weight="regular" className="w-5 h-5 text-muted-foreground" />
-            ) : (
-              <Moon weight="regular" className="w-5 h-5 text-muted-foreground" />
-            )}
-          </button>
+          {/* Theme Toggle - only show if enabled */}
+          {showThemeToggle && (
+            <button
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+              className="p-2.5 rounded-xl bg-secondary/50 border border-border hover:bg-secondary transition-colors"
+            >
+              {theme === "dark" ? (
+                <Sun weight="regular" className="w-5 h-5 text-muted-foreground" />
+              ) : (
+                <Moon weight="regular" className="w-5 h-5 text-muted-foreground" />
+              )}
+            </button>
+          )}
           {children}
         </div>
       </div>

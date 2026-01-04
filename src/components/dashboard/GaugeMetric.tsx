@@ -155,12 +155,12 @@ const GaugeMetric = ({
   }
 
   return (
-    <div className="glass-card card-glow p-5 rounded-2xl hover:scale-[1.02] transition-transform duration-300">
+    <div className="glass-card card-glow p-5 rounded-2xl hover:scale-[1.02] transition-transform duration-300 h-full flex flex-col">
       <div className="flex items-center gap-2 mb-3">
         <span className="text-sm font-light text-muted-foreground">{title}</span>
         <Info weight="regular" className="w-3.5 h-3.5 text-muted-foreground/60" />
       </div>
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between mt-auto">
         <div>
           <p className="text-2xl font-normal tracking-tight-premium text-foreground">
             {getDisplayValue()}
