@@ -9,12 +9,13 @@ interface CalendarGridProps {
   month: number;
   monthData: Map<string, DayData>;
   colorMode: 'pnl' | 'winrate';
+  onSaveNote?: (date: Date, note: string) => void;
 }
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const WEEKDAYS_SHORT = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
-const CalendarGrid = ({ year, month, monthData, colorMode }: CalendarGridProps) => {
+const CalendarGrid = ({ year, month, monthData, colorMode, onSaveNote }: CalendarGridProps) => {
   const [selectedDay, setSelectedDay] = useState<DayData | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const isMobile = useIsMobile();
@@ -110,6 +111,7 @@ const CalendarGrid = ({ year, month, monthData, colorMode }: CalendarGridProps) 
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         dayData={selectedDay}
+        onSaveNote={onSaveNote}
       />
     </>
   );

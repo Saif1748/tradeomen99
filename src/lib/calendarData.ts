@@ -20,6 +20,7 @@ export interface DayData {
   bestStrategy: string;
   bestTrade: Trade | null;
   worstTrade: Trade | null;
+  note?: string;
 }
 
 const strategies = ['Breakout', 'Mean Reversion', 'Momentum', 'Scalping', 'Swing'];

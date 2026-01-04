@@ -12,14 +12,31 @@ const Calendar = () => {
   const [currentDate, setCurrentDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
   const [colorMode, setColorMode] = useState<'pnl' | 'winrate'>('pnl');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [notes, setNotes] = useState<Map<string, string>>(new Map());
 
   const monthData = useMemo(() => {
-    return generateMonthData(currentDate.getFullYear(), currentDate.getMonth());
-  }, [currentDate]);
+    const data = generateMonthData(currentDate.getFullYear(), currentDate.getMonth());
+    // Merge notes into dayData
+    data.forEach((dayData, key) => {
+      const note = notes.get(key);
+      if (note) {
+        dayData.note = note;
+      }
+    });
+    return data;
+  }, [currentDate, notes]);
 
   const monthStats = useMemo(() => {
     return getMonthStats(monthData);
   }, [monthData]);
+
+  const handleSaveNote = (date: Date, note: string) => {
+    setNotes(prev => {
+      const newNotes = new Map(prev);
+      newNotes.set(date.toDateString(), note);
+      return newNotes;
+    });
+  };
 
   const monthName = currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   const shortMonthName = currentDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
@@ -167,6 +184,7 @@ const Calendar = () => {
             month={currentDate.getMonth()}
             monthData={monthData}
             colorMode={colorMode}
+            onSaveNote={handleSaveNote}
           />
         </div>
       </div>

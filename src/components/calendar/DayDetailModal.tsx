@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { DayData, Trade } from "@/lib/calendarData";
 import { cn } from "@/lib/utils";
 import {
@@ -14,6 +15,8 @@ import {
 } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { 
   TrendUp, 
@@ -24,13 +27,17 @@ import {
   SmileySad,
   Lightning,
   ChartLineUp,
-  ChartLineDown
+  ChartLineDown,
+  NotePencil,
+  FloppyDisk,
+  X
 } from "@phosphor-icons/react";
 
 interface DayDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   dayData: DayData | null;
+  onSaveNote?: (date: Date, note: string) => void;
 }
 
 const formatPnL = (value: number) => {
@@ -88,7 +95,16 @@ const OverviewCard = ({
   </div>
 );
 
-const ModalContent = ({ dayData }: { dayData: DayData }) => {
+const ModalContent = ({ 
+  dayData, 
+  onSaveNote 
+}: { 
+  dayData: DayData; 
+  onSaveNote?: (date: Date, note: string) => void;
+}) => {
+  const [isEditingNote, setIsEditingNote] = useState(false);
+  const [noteText, setNoteText] = useState(dayData.note || "");
+
   const getEmotionIcon = () => {
     switch (dayData.emotion) {
       case 'positive':
@@ -108,11 +124,17 @@ const ModalContent = ({ dayData }: { dayData: DayData }) => {
     }
   };
 
+  const handleSaveNote = () => {
+    onSaveNote?.(dayData.date, noteText);
+    setIsEditingNote(false);
+  };
+
   return (
     <Tabs defaultValue="overview" className="w-full">
       <TabsList className="w-full mb-4 bg-secondary/50">
         <TabsTrigger value="overview" className="flex-1">Overview</TabsTrigger>
         <TabsTrigger value="trades" className="flex-1">Trades</TabsTrigger>
+        <TabsTrigger value="notes" className="flex-1">Notes</TabsTrigger>
         <TabsTrigger value="insights" className="flex-1">Insights</TabsTrigger>
       </TabsList>
 
@@ -178,6 +200,69 @@ const ModalContent = ({ dayData }: { dayData: DayData }) => {
         </div>
       </TabsContent>
 
+      <TabsContent value="notes" className="space-y-4">
+        <div className="p-4 rounded-xl bg-secondary/30 border border-border/50">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <NotePencil weight="bold" className="w-5 h-5 text-primary" />
+              <span className="text-sm font-medium text-foreground">Daily Note</span>
+            </div>
+            {!isEditingNote && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setIsEditingNote(true)}
+                className="text-xs"
+              >
+                {noteText ? "Edit" : "Add Note"}
+              </Button>
+            )}
+          </div>
+          
+          {isEditingNote ? (
+            <div className="space-y-3">
+              <Textarea
+                value={noteText}
+                onChange={(e) => setNoteText(e.target.value)}
+                placeholder="Write your thoughts about this trading day... What went well? What could be improved?"
+                className="min-h-[120px] bg-background/50 border-border/50 resize-none"
+              />
+              <div className="flex items-center gap-2 justify-end">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setNoteText(dayData.note || "");
+                    setIsEditingNote(false);
+                  }}
+                >
+                  <X weight="bold" className="w-4 h-4 mr-1" />
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleSaveNote}
+                  className="bg-primary hover:bg-primary/90"
+                >
+                  <FloppyDisk weight="bold" className="w-4 h-4 mr-1" />
+                  Save
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              {noteText || "No notes for this day. Click 'Add Note' to write your thoughts."}
+            </p>
+          )}
+        </div>
+        
+        <div className="p-3 rounded-lg bg-muted/30 border border-border/30">
+          <p className="text-xs text-muted-foreground">
+            💡 Tip: Journaling your trades helps identify patterns in your behavior and improve performance over time.
+          </p>
+        </div>
+      </TabsContent>
+
       <TabsContent value="insights" className="space-y-4">
         <div className="p-4 rounded-xl bg-primary/10 border border-primary/20">
           <div className="flex items-center gap-2 mb-2">
@@ -207,7 +292,7 @@ const ModalContent = ({ dayData }: { dayData: DayData }) => {
   );
 };
 
-const DayDetailModal = ({ isOpen, onClose, dayData }: DayDetailModalProps) => {
+const DayDetailModal = ({ isOpen, onClose, dayData, onSaveNote }: DayDetailModalProps) => {
   const isMobile = useIsMobile();
 
   if (!dayData) return null;
@@ -235,7 +320,7 @@ const DayDetailModal = ({ isOpen, onClose, dayData }: DayDetailModalProps) => {
               </div>
             </SheetTitle>
           </SheetHeader>
-          <ModalContent dayData={dayData} />
+          <ModalContent dayData={dayData} onSaveNote={onSaveNote} />
         </SheetContent>
       </Sheet>
     );
@@ -256,7 +341,7 @@ const DayDetailModal = ({ isOpen, onClose, dayData }: DayDetailModalProps) => {
             </div>
           </DialogTitle>
         </DialogHeader>
-        <ModalContent dayData={dayData} />
+        <ModalContent dayData={dayData} onSaveNote={onSaveNote} />
       </DialogContent>
     </Dialog>
   );
