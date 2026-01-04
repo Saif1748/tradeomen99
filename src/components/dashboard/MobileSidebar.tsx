@@ -15,6 +15,7 @@ import {
 } from "@phosphor-icons/react";
 import logo from "@/assets/tradeomen-logo.png";
 import SettingsModal from "@/components/settings/SettingsModal";
+import { useSettings } from "@/contexts/SettingsContext";
 
 const navItems = [
   { title: "Dashboard", path: "/dashboard", icon: House },
@@ -34,10 +35,15 @@ interface MobileSidebarProps {
 const MobileSidebar = ({ open, onClose }: MobileSidebarProps) => {
   const location = useLocation();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const { profile } = useSettings();
 
   const handleOpenSettings = () => {
     onClose();
     setSettingsOpen(true);
+  };
+
+  const getInitials = () => {
+    return `${profile.firstName.charAt(0)}${profile.lastName.charAt(0)}`;
   };
 
   return (
@@ -129,11 +135,11 @@ const MobileSidebar = ({ open, onClose }: MobileSidebarProps) => {
                   <div className="absolute inset-0 bg-gradient-to-r from-primary/0 via-primary/10 to-primary/0 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                   
                   <div className="w-10 h-10 rounded-full bg-gradient-to-br from-glow-primary to-glow-secondary flex items-center justify-center text-primary-foreground text-sm font-normal flex-shrink-0 relative z-10">
-                    JD
+                    {getInitials()}
                   </div>
                   <div className="flex-1 min-w-0 text-left relative z-10">
                     <p className="text-sm font-normal text-foreground truncate">
-                      John Doe
+                      {profile.firstName} {profile.lastName}
                     </p>
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-normal bg-primary/20 text-primary mt-0.5">
                       Pro

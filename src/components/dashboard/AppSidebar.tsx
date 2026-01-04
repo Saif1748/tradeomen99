@@ -15,6 +15,7 @@ import {
 } from "@phosphor-icons/react";
 import logo from "@/assets/tradeomen-logo.png";
 import SettingsModal from "@/components/settings/SettingsModal";
+import { useSettings } from "@/contexts/SettingsContext";
 
 const navItems = [
   { title: "Dashboard", path: "/dashboard", icon: House },
@@ -34,13 +35,18 @@ interface AppSidebarProps {
 const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
   const location = useLocation();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const { profile } = useSettings();
+
+  const getInitials = () => {
+    return `${profile.firstName.charAt(0)}${profile.lastName.charAt(0)}`;
+  };
 
   return (
     <>
       <motion.aside
         initial={false}
         animate={{ width: collapsed ? 72 : 240 }}
-        transition={{ duration: 0.3, ease: [0.25, 0.46, 0.45, 0.94] }}
+        transition={{ duration: 0.25, ease: [0.25, 0.46, 0.45, 0.94] }}
         className="hidden md:flex fixed left-0 top-0 h-screen z-50 flex-col bg-card/60 backdrop-blur-xl border-r border-glass-border"
       >
         {/* Collapse Toggle Button */}
@@ -50,7 +56,7 @@ const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
         >
           <motion.div
             animate={{ rotate: collapsed ? 180 : 0 }}
-            transition={{ duration: 0.3 }}
+            transition={{ duration: 0.25 }}
           >
             <CaretLeft weight="bold" className="w-3 h-3 text-foreground" />
           </motion.div>
@@ -59,15 +65,18 @@ const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
         {/* Logo Section */}
         <div className="flex items-center justify-center py-8 px-4">
           <motion.div
-            animate={{ scale: collapsed ? 0.8 : 1 }}
-            transition={{ duration: 0.3 }}
+            initial={false}
+            animate={{ 
+              scale: collapsed ? 1.2 : 1,
+            }}
+            transition={{ duration: 0.25, ease: "easeOut" }}
             className="flex items-center gap-2"
           >
             <img
               src={logo}
               alt="TradeOmen"
               className={`w-auto transition-all duration-300 ${
-                collapsed ? "h-8" : "h-10"
+                collapsed ? "h-10" : "h-10"
               }`}
             />
           </motion.div>
@@ -105,7 +114,7 @@ const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
                   isActive
                     ? "bg-primary/15 text-primary"
                     : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
-                }`}
+                } ${collapsed ? "justify-center" : ""}`}
               >
                 <Icon
                   weight={isActive ? "fill" : "regular"}
@@ -153,7 +162,7 @@ const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
             
             {/* Avatar */}
             <div className="w-9 h-9 rounded-full bg-gradient-to-br from-glow-primary to-glow-secondary flex items-center justify-center text-primary-foreground text-sm font-normal flex-shrink-0 relative z-10">
-              JD
+              {getInitials()}
             </div>
 
             <AnimatePresence>
@@ -166,7 +175,7 @@ const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
                   className="flex-1 min-w-0 overflow-hidden text-left relative z-10"
                 >
                   <p className="text-sm font-normal text-foreground truncate">
-                    John Doe
+                    {profile.firstName} {profile.lastName}
                   </p>
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-normal bg-primary/20 text-primary mt-0.5">
                     Pro
@@ -199,4 +208,3 @@ const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
 };
 
 export default AppSidebar;
-

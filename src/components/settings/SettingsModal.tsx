@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Dialog,
@@ -28,6 +28,8 @@ import { Badge } from "@/components/ui/badge";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
+import { useSettings, UserProfile, TradingPreferences, AppearanceSettings } from "@/contexts/SettingsContext";
+import { toast } from "sonner";
 import {
   User,
   PaintBrush,
@@ -71,39 +73,77 @@ const sections: { id: SettingsSection; label: string; icon: React.ElementType }[
   { id: "subscription", label: "Subscription", icon: CreditCard },
 ];
 
-const ProfileSection = () => (
-  <div className="space-y-6">
-    <div className="flex items-center gap-4">
-      <div className="w-16 h-16 rounded-full bg-gradient-to-br from-glow-primary to-glow-secondary flex items-center justify-center text-primary-foreground text-xl font-medium">
-        JD
+const ProfileSection = () => {
+  const { profile, setProfile } = useSettings();
+  const [localProfile, setLocalProfile] = useState<UserProfile>(profile);
+
+  useEffect(() => {
+    setLocalProfile(profile);
+  }, [profile]);
+
+  const handleSave = () => {
+    setProfile(localProfile);
+    toast.success("Profile updated successfully");
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center gap-4">
+        <div className="w-16 h-16 rounded-full bg-gradient-to-br from-glow-primary to-glow-secondary flex items-center justify-center text-primary-foreground text-xl font-medium">
+          {localProfile.firstName.charAt(0)}{localProfile.lastName.charAt(0)}
+        </div>
+        <div className="flex-1">
+          <Button variant="outline" size="sm">Change Avatar</Button>
+        </div>
       </div>
-      <div className="flex-1">
-        <Button variant="outline" size="sm">Change Avatar</Button>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="firstName">First Name</Label>
+          <Input 
+            id="firstName" 
+            value={localProfile.firstName}
+            onChange={(e) => setLocalProfile({ ...localProfile, firstName: e.target.value })}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="lastName">Last Name</Label>
+          <Input 
+            id="lastName" 
+            value={localProfile.lastName}
+            onChange={(e) => setLocalProfile({ ...localProfile, lastName: e.target.value })}
+          />
+        </div>
       </div>
-    </div>
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
       <div className="space-y-2">
-        <Label htmlFor="firstName">First Name</Label>
-        <Input id="firstName" defaultValue="John" />
+        <Label htmlFor="email">Email</Label>
+        <Input 
+          id="email" 
+          type="email" 
+          value={localProfile.email}
+          onChange={(e) => setLocalProfile({ ...localProfile, email: e.target.value })}
+        />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="lastName">Last Name</Label>
-        <Input id="lastName" defaultValue="Doe" />
+        <Label htmlFor="bio">Bio</Label>
+        <Textarea 
+          id="bio" 
+          placeholder="Tell us about yourself..." 
+          className="resize-none" 
+          rows={3}
+          value={localProfile.bio}
+          onChange={(e) => setLocalProfile({ ...localProfile, bio: e.target.value })}
+        />
       </div>
+      <Button onClick={handleSave} className="glow-button text-white">
+        Save Changes
+      </Button>
     </div>
-    <div className="space-y-2">
-      <Label htmlFor="email">Email</Label>
-      <Input id="email" type="email" defaultValue="john.doe@example.com" />
-    </div>
-    <div className="space-y-2">
-      <Label htmlFor="bio">Bio</Label>
-      <Textarea id="bio" placeholder="Tell us about yourself..." className="resize-none" rows={3} />
-    </div>
-  </div>
-);
+  );
+};
 
 const AppearanceSection = () => {
   const { theme, setTheme } = useTheme();
+  const { appearance, setAppearance } = useSettings();
   
   return (
     <div className="space-y-6">
@@ -137,7 +177,13 @@ const AppearanceSection = () => {
       </div>
       <div className="space-y-2">
         <Label htmlFor="fontSize">Font Size</Label>
-        <Select defaultValue="medium">
+        <Select 
+          value={appearance.fontSize}
+          onValueChange={(value: "small" | "medium" | "large") => {
+            setAppearance({ ...appearance, fontSize: value });
+            toast.success(`Font size set to ${value}`);
+          }}
+        >
           <SelectTrigger>
             <SelectValue />
           </SelectTrigger>
@@ -153,62 +199,109 @@ const AppearanceSection = () => {
           <Label>Reduce Animations</Label>
           <p className="text-xs text-muted-foreground">Minimize motion effects</p>
         </div>
-        <Switch />
+        <Switch 
+          checked={appearance.reduceAnimations}
+          onCheckedChange={(checked) => {
+            setAppearance({ ...appearance, reduceAnimations: checked });
+            toast.success(checked ? "Animations reduced" : "Animations enabled");
+          }}
+        />
       </div>
     </div>
   );
 };
 
-const TradingSection = () => (
-  <div className="space-y-6">
-    <div className="space-y-2">
-      <Label htmlFor="currency">Default Currency</Label>
-      <Select defaultValue="usd">
-        <SelectTrigger>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="usd">USD ($)</SelectItem>
-          <SelectItem value="eur">EUR (€)</SelectItem>
-          <SelectItem value="gbp">GBP (£)</SelectItem>
-          <SelectItem value="jpy">JPY (¥)</SelectItem>
-        </SelectContent>
-      </Select>
-    </div>
-    <div className="space-y-2">
-      <Label htmlFor="timezone">Timezone</Label>
-      <Select defaultValue="est">
-        <SelectTrigger>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="est">Eastern Time (ET)</SelectItem>
-          <SelectItem value="pst">Pacific Time (PT)</SelectItem>
-          <SelectItem value="utc">UTC</SelectItem>
-          <SelectItem value="gmt">GMT</SelectItem>
-        </SelectContent>
-      </Select>
-    </div>
-    <div className="space-y-2">
-      <Label htmlFor="riskLevel">Default Risk Level (%)</Label>
-      <Input id="riskLevel" type="number" defaultValue="2" min="0.5" max="10" step="0.5" />
-    </div>
-    <div className="flex items-center justify-between">
-      <div>
-        <Label>Show Weekends</Label>
-        <p className="text-xs text-muted-foreground">Display weekend days in calendar</p>
+const TradingSection = () => {
+  const { tradingPreferences, setTradingPreferences } = useSettings();
+  
+  return (
+    <div className="space-y-6">
+      <div className="space-y-2">
+        <Label htmlFor="currency">Default Currency</Label>
+        <Select 
+          value={tradingPreferences.currency}
+          onValueChange={(value: "USD" | "EUR" | "GBP" | "JPY") => {
+            setTradingPreferences({ ...tradingPreferences, currency: value });
+            toast.success(`Currency set to ${value}`);
+          }}
+        >
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="USD">USD ($)</SelectItem>
+            <SelectItem value="EUR">EUR (€)</SelectItem>
+            <SelectItem value="GBP">GBP (£)</SelectItem>
+            <SelectItem value="JPY">JPY (¥)</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
-      <Switch defaultChecked />
-    </div>
-    <div className="flex items-center justify-between">
-      <div>
-        <Label>Auto-Calculate Fees</Label>
-        <p className="text-xs text-muted-foreground">Include broker fees in P&L calculations</p>
+      <div className="space-y-2">
+        <Label htmlFor="timezone">Timezone</Label>
+        <Select 
+          value={tradingPreferences.timezone}
+          onValueChange={(value) => {
+            setTradingPreferences({ ...tradingPreferences, timezone: value });
+            toast.success("Timezone updated");
+          }}
+        >
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="est">Eastern Time (ET)</SelectItem>
+            <SelectItem value="pst">Pacific Time (PT)</SelectItem>
+            <SelectItem value="utc">UTC</SelectItem>
+            <SelectItem value="gmt">GMT</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
-      <Switch defaultChecked />
+      <div className="space-y-2">
+        <Label htmlFor="riskLevel">Default Risk Level (%)</Label>
+        <Input 
+          id="riskLevel" 
+          type="number" 
+          value={tradingPreferences.riskLevel}
+          onChange={(e) => {
+            const value = parseFloat(e.target.value);
+            if (!isNaN(value) && value >= 0.5 && value <= 10) {
+              setTradingPreferences({ ...tradingPreferences, riskLevel: value });
+            }
+          }}
+          min="0.5" 
+          max="10" 
+          step="0.5" 
+        />
+      </div>
+      <div className="flex items-center justify-between">
+        <div>
+          <Label>Show Weekends</Label>
+          <p className="text-xs text-muted-foreground">Display weekend days in calendar</p>
+        </div>
+        <Switch 
+          checked={tradingPreferences.showWeekends}
+          onCheckedChange={(checked) => {
+            setTradingPreferences({ ...tradingPreferences, showWeekends: checked });
+            toast.success(checked ? "Weekends visible" : "Weekends hidden");
+          }}
+        />
+      </div>
+      <div className="flex items-center justify-between">
+        <div>
+          <Label>Auto-Calculate Fees</Label>
+          <p className="text-xs text-muted-foreground">Include broker fees in P&L calculations</p>
+        </div>
+        <Switch 
+          checked={tradingPreferences.autoCalculateFees}
+          onCheckedChange={(checked) => {
+            setTradingPreferences({ ...tradingPreferences, autoCalculateFees: checked });
+            toast.success(checked ? "Fees auto-calculated" : "Manual fee entry");
+          }}
+        />
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 const AISection = () => (
   <div className="space-y-6">
@@ -500,7 +593,7 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-3xl bg-card border-border p-6">
+      <DialogContent className="max-w-3xl p-6">
         <DialogHeader>
           <DialogTitle>Settings</DialogTitle>
         </DialogHeader>
