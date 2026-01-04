@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Wallet } from "@phosphor-icons/react";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
-import PageHeader from "@/components/dashboard/PageHeader";
+import DashboardHeader from "@/components/dashboard/DashboardHeader";
 import MetricCard from "@/components/dashboard/MetricCard";
 import GaugeMetric from "@/components/dashboard/GaugeMetric";
 import ChartCard from "@/components/dashboard/ChartCard";
@@ -41,11 +41,12 @@ const Dashboard = () => {
 
   return (
     <DashboardLayout>
-      <PageHeader
-        title="Dashboard"
-        subtitle="Welcome back! Here's your trading overview."
-        onMobileMenuOpen={() => setMobileMenuOpen(true)}
-      />
+      <DashboardHeader onMobileMenuOpen={() => setMobileMenuOpen(true)} />
+
+      {/* Subtitle */}
+      <div className="px-4 sm:px-6 lg:px-8 pb-2">
+        <p className="text-sm text-muted-foreground">Welcome back! Here's your trading overview.</p>
+      </div>
 
       <div className="px-4 sm:px-6 lg:px-8 pb-6 pt-4 space-y-4 sm:space-y-6">
         {/* Metrics Row */}

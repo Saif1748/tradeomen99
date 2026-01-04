@@ -30,7 +30,7 @@ const CalendarDayCell = ({
   const isMobile = useIsMobile();
 
   if (day === null) {
-    return <div className="aspect-square p-1 sm:p-2" />;
+    return <div className="aspect-[1.1] sm:aspect-[1.15] p-1 sm:p-1.5" />;
   }
 
   // Determine background color based on mode
@@ -61,11 +61,11 @@ const CalendarDayCell = ({
     <div
       onClick={onClick}
       className={cn(
-        "aspect-square p-1 sm:p-2 rounded-lg cursor-pointer transition-all duration-200",
+        "aspect-[1.1] sm:aspect-[1.15] p-1 sm:p-1.5 rounded-lg cursor-pointer transition-all duration-200",
         "border border-transparent hover:border-border/50",
         getBgColor(),
         !isCurrentMonth && "opacity-40",
-        isToday && "ring-2 ring-primary ring-offset-2 ring-offset-background"
+        isToday && "ring-2 ring-primary ring-offset-1 ring-offset-background"
       )}
     >
       {/* Top row: Date and trade count */}
