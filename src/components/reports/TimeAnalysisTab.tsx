@@ -1,21 +1,6 @@
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Cell,
-} from "recharts";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { Trade } from "@/lib/tradesData";
-import {
-  generateDayPerformance,
-  generateHourPerformance,
-  generateSessionPerformance,
-  generateAIInsights,
-} from "@/lib/reportsData";
-import AIInsightBanner from "./AIInsightBanner";
+import { generateDayPerformance, generateHourPerformance, generateSessionPerformance } from "@/lib/reportsData";
 
 interface TimeAnalysisTabProps {
   trades: Trade[];
@@ -25,9 +10,7 @@ const TimeAnalysisTab = ({ trades }: TimeAnalysisTabProps) => {
   const dayData = generateDayPerformance(trades);
   const hourData = generateHourPerformance();
   const sessionData = generateSessionPerformance(trades);
-  const insight = generateAIInsights(trades, "timeAnalysis");
 
-  // Find max values for heatmap scaling
   const maxWinRate = Math.max(...dayData.map(d => d.winRate));
   const minWinRate = Math.min(...dayData.filter(d => d.trades > 0).map(d => d.winRate));
 
@@ -42,45 +25,18 @@ const TimeAnalysisTab = ({ trades }: TimeAnalysisTabProps) => {
 
   return (
     <div className="space-y-6">
-      {/* AI Insight */}
-      <AIInsightBanner insight={insight} />
-
       {/* Day of Week Heatmap */}
       <div className="space-y-3">
         <h3 className="text-sm font-light text-foreground">Day of Week Performance</h3>
         <div className="grid grid-cols-7 gap-2">
           {dayData.map((day) => (
-            <div
-              key={day.day}
-              className="rounded-xl p-4 text-center transition-all hover:scale-105"
-              style={{ backgroundColor: getHeatmapColor(day.winRate, day.trades) }}
-            >
+            <div key={day.day} className="rounded-xl p-4 text-center transition-all hover:scale-105" style={{ backgroundColor: getHeatmapColor(day.winRate, day.trades) }}>
               <p className="text-xs text-foreground/70 mb-1">{day.day}</p>
-              <p className="text-lg font-normal text-foreground">
-                {day.trades > 0 ? `${day.winRate.toFixed(0)}%` : '-'}
-              </p>
-              <p className="text-xs text-foreground/60 mt-1">
-                {day.trades} trades
-              </p>
-              <p className={`text-xs mt-1 ${day.pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                {day.trades > 0 ? `$${day.pnl.toFixed(0)}` : '-'}
-              </p>
+              <p className="text-lg font-normal text-foreground">{day.trades > 0 ? `${day.winRate.toFixed(0)}%` : '-'}</p>
+              <p className="text-xs text-foreground/60 mt-1">{day.trades} trades</p>
+              <p className={`text-xs mt-1 ${day.pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{day.trades > 0 ? `$${day.pnl.toFixed(0)}` : '-'}</p>
             </div>
           ))}
-        </div>
-        <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground">
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded" style={{ backgroundColor: "hsl(0 50% 35%)" }} />
-            <span>Low win rate</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded" style={{ backgroundColor: "hsl(40 50% 30%)" }} />
-            <span>Medium</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded" style={{ backgroundColor: "hsl(160 60% 35%)" }} />
-            <span>High win rate</span>
-          </div>
         </div>
       </div>
 
@@ -91,35 +47,11 @@ const TimeAnalysisTab = ({ trades }: TimeAnalysisTabProps) => {
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={hourData}>
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-              <XAxis
-                dataKey="hour"
-                tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }}
-                tickLine={false}
-              />
-              <YAxis
-                tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }}
-                tickLine={false}
-                tickFormatter={(value) => `$${value}`}
-              />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: "hsl(var(--card))",
-                  border: "1px solid hsl(var(--border))",
-                  borderRadius: "12px",
-                  color: "hsl(var(--foreground))",
-                }}
-                formatter={(value: number, name: string) => [
-                  name === "pnl" ? `$${value.toFixed(2)}` : `${value.toFixed(1)}%`,
-                  name === "pnl" ? "P&L" : "Win Rate"
-                ]}
-              />
+              <XAxis dataKey="hour" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }} tickLine={false} />
+              <YAxis tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }} tickLine={false} tickFormatter={(value) => `$${value}`} />
+              <Tooltip contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "12px", color: "hsl(var(--foreground))" }} formatter={(value: number, name: string) => [name === "pnl" ? `$${value.toFixed(2)}` : `${value.toFixed(1)}%`, name === "pnl" ? "P&L" : "Win Rate"]} />
               <Bar dataKey="pnl" radius={[4, 4, 0, 0]}>
-                {hourData.map((entry, index) => (
-                  <Cell
-                    key={`cell-${index}`}
-                    fill={entry.pnl >= 0 ? "hsl(160 60% 45%)" : "hsl(0 70% 50%)"}
-                  />
-                ))}
+                {hourData.map((entry, index) => (<Cell key={`cell-${index}`} fill={entry.pnl >= 0 ? "hsl(160 60% 45%)" : "hsl(0 70% 50%)"} />))}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
@@ -134,57 +66,12 @@ const TimeAnalysisTab = ({ trades }: TimeAnalysisTabProps) => {
             <div key={session.session} className="glass-card p-5 rounded-xl">
               <h4 className="text-sm font-medium text-foreground mb-4">{session.session}</h4>
               <div className="space-y-3">
-                <div className="flex justify-between">
-                  <span className="text-xs text-muted-foreground">Trades</span>
-                  <span className="text-sm text-foreground">{session.trades}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-xs text-muted-foreground">Win Rate</span>
-                  <span className={`text-sm ${session.winRate >= 50 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                    {session.winRate}%
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-xs text-muted-foreground">Avg P&L</span>
-                  <span className={`text-sm ${session.avgPnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                    ${session.avgPnl}
-                  </span>
-                </div>
-                <div className="flex justify-between pt-2 border-t border-border">
-                  <span className="text-xs text-muted-foreground">Total P&L</span>
-                  <span className={`text-sm font-medium ${session.totalPnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                    ${session.totalPnl.toLocaleString()}
-                  </span>
-                </div>
+                <div className="flex justify-between"><span className="text-xs text-muted-foreground">Trades</span><span className="text-sm text-foreground">{session.trades}</span></div>
+                <div className="flex justify-between"><span className="text-xs text-muted-foreground">Win Rate</span><span className={`text-sm ${session.winRate >= 50 ? 'text-emerald-400' : 'text-rose-400'}`}>{session.winRate}%</span></div>
+                <div className="flex justify-between"><span className="text-xs text-muted-foreground">Avg P&L</span><span className={`text-sm ${session.avgPnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>${session.avgPnl}</span></div>
               </div>
             </div>
           ))}
-        </div>
-      </div>
-
-      {/* Trading Hours Heatmap */}
-      <div className="space-y-3">
-        <h3 className="text-sm font-light text-foreground">Win Rate by Hour</h3>
-        <div className="flex gap-1 overflow-x-auto pb-2">
-          {hourData.map((hour) => {
-            const normalized = (hour.winRate - 40) / 40;
-            const bgColor = normalized >= 0.6 ? "hsl(160 60% 35%)" :
-                           normalized >= 0.3 ? "hsl(160 40% 25%)" :
-                           normalized >= 0 ? "hsl(40 50% 30%)" : "hsl(0 50% 35%)";
-            
-            return (
-              <div
-                key={hour.hour}
-                className="flex-shrink-0 w-16 rounded-lg p-3 text-center transition-all hover:scale-105"
-                style={{ backgroundColor: bgColor }}
-              >
-                <p className="text-xs text-foreground/70">{hour.hour}</p>
-                <p className="text-sm font-normal text-foreground mt-1">
-                  {hour.winRate.toFixed(0)}%
-                </p>
-              </div>
-            );
-          })}
         </div>
       </div>
     </div>

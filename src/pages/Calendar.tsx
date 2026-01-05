@@ -1,10 +1,18 @@
 import { useState, useMemo } from "react";
 import { CalendarBlank, CaretLeft, CaretRight } from "@phosphor-icons/react";
+import { setMonth, setYear, getMonth, getYear } from "date-fns";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import PageHeader from "@/components/dashboard/PageHeader";
 import CalendarGrid from "@/components/calendar/CalendarGrid";
 import { generateMonthData, getMonthStats } from "@/lib/calendarData";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
 const Calendar = () => {
@@ -13,6 +21,15 @@ const Calendar = () => {
   const [colorMode, setColorMode] = useState<'pnl' | 'winrate'>('pnl');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notes, setNotes] = useState<Map<string, string>>(new Map());
+
+  // Generate years for the dropdown (2020 up to 2 years in future)
+  const currentYearInt = new Date().getFullYear();
+  const years = Array.from({ length: currentYearInt - 2020 + 3 }, (_, i) => 2020 + i);
+  
+  const months = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+  ];
 
   const monthData = useMemo(() => {
     const data = generateMonthData(currentDate.getFullYear(), currentDate.getMonth());
@@ -38,9 +55,6 @@ const Calendar = () => {
     });
   };
 
-  const monthName = currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-  const shortMonthName = currentDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-
   const goToPreviousMonth = () => {
     setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
   };
@@ -51,6 +65,16 @@ const Calendar = () => {
 
   const goToToday = () => {
     setCurrentDate(new Date(today.getFullYear(), today.getMonth(), 1));
+  };
+
+  const handleMonthSelect = (monthName: string) => {
+    const monthIndex = months.indexOf(monthName);
+    setCurrentDate(setMonth(currentDate, monthIndex));
+  };
+
+  const handleYearSelect = (yearStr: string) => {
+    const year = parseInt(yearStr);
+    setCurrentDate(setYear(currentDate, year));
   };
 
   const formatPnL = (value: number) => {
@@ -100,46 +124,79 @@ const Calendar = () => {
 
         {/* Calendar Container */}
         <div className="glass-card p-3 sm:p-6 rounded-xl sm:rounded-2xl">
-          {/* Calendar Header - Compact on mobile */}
-          <div className="flex items-center justify-between gap-2 mb-4 sm:mb-6">
-            {/* Navigation - Compact */}
-            <div className="flex items-center gap-1 sm:gap-3">
+          {/* Calendar Header - Flex Container */}
+          <div className="flex flex-col xl:flex-row items-center justify-between gap-4 mb-4 sm:mb-6">
+            
+            {/* Navigation & Selectors */}
+            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 w-full xl:w-auto">
               <Button
                 variant="outline"
                 size="icon"
                 onClick={goToPreviousMonth}
-                className="h-8 w-8 sm:h-9 sm:w-9 rounded-lg border-border/50 hover:bg-secondary/50"
+                className="h-9 w-9 rounded-lg border-border/50 hover:bg-secondary/50 shrink-0"
               >
                 <CaretLeft weight="bold" className="w-4 h-4" />
               </Button>
+
+              <div className="flex items-center gap-2">
+                <Select
+                  value={months[getMonth(currentDate)]}
+                  onValueChange={handleMonthSelect}
+                >
+                  <SelectTrigger className="w-[120px] h-9 bg-secondary/50 border-border/50 font-medium text-sm">
+                    <SelectValue>{months[getMonth(currentDate)]}</SelectValue>
+                  </SelectTrigger>
+                  <SelectContent align="start" className="max-h-[300px]">
+                    {months.map((month) => (
+                      <SelectItem key={month} value={month}>
+                        {month}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Select
+                  value={getYear(currentDate).toString()}
+                  onValueChange={handleYearSelect}
+                >
+                  <SelectTrigger className="w-[85px] h-9 bg-secondary/50 border-border/50 font-medium text-sm">
+                    <SelectValue>{getYear(currentDate)}</SelectValue>
+                  </SelectTrigger>
+                  <SelectContent align="start" className="max-h-[300px]">
+                    {years.map((year) => (
+                      <SelectItem key={year} value={year.toString()}>
+                        {year}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
               <Button
                 variant="outline"
                 size="icon"
                 onClick={goToNextMonth}
-                className="h-8 w-8 sm:h-9 sm:w-9 rounded-lg border-border/50 hover:bg-secondary/50"
+                className="h-9 w-9 rounded-lg border-border/50 hover:bg-secondary/50 shrink-0"
               >
                 <CaretRight weight="bold" className="w-4 h-4" />
               </Button>
-              <h2 className="text-base sm:text-xl font-semibold text-foreground ml-1 sm:ml-2">
-                <span className="hidden sm:inline">{monthName}</span>
-                <span className="sm:hidden">{shortMonthName}</span>
-              </h2>
+
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={goToToday}
-                className="hidden sm:inline-flex ml-2 text-xs text-muted-foreground hover:text-foreground"
+                className="text-xs text-muted-foreground hover:text-foreground ml-1"
               >
                 Today
               </Button>
             </div>
 
             {/* Color Mode - Segmented control style */}
-            <div className="flex items-center gap-1 bg-secondary/50 p-1 rounded-lg">
+            <div className="flex items-center gap-1 bg-secondary/50 p-1 rounded-lg shrink-0">
               <button
                 onClick={() => setColorMode('pnl')}
                 className={cn(
-                  "px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm font-medium rounded-md transition-all",
+                  "px-3 py-1.5 text-xs sm:text-sm font-medium rounded-md transition-all",
                   colorMode === 'pnl' 
                     ? "bg-background text-foreground shadow-sm" 
                     : "text-muted-foreground hover:text-foreground"
@@ -150,7 +207,7 @@ const Calendar = () => {
               <button
                 onClick={() => setColorMode('winrate')}
                 className={cn(
-                  "px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm font-medium rounded-md transition-all",
+                  "px-3 py-1.5 text-xs sm:text-sm font-medium rounded-md transition-all",
                   colorMode === 'winrate' 
                     ? "bg-background text-foreground shadow-sm" 
                     : "text-muted-foreground hover:text-foreground"

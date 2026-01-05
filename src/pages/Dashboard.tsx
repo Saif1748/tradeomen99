@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Wallet } from "@phosphor-icons/react";
+import { DateRange } from "react-day-picker";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import DashboardHeader from "@/components/dashboard/DashboardHeader";
 import MetricCard from "@/components/dashboard/MetricCard";
@@ -40,17 +41,25 @@ const radarChartData = [
 const Dashboard = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { formatCurrency, getCurrencySymbol } = useSettings();
+  const [dateRange, setDateRange] = useState<DateRange | undefined>({
+    from: new Date(2024, 11, 1),
+    to: new Date(2024, 11, 31),
+  });
 
   return (
     <DashboardLayout>
-      <DashboardHeader onMobileMenuOpen={() => setMobileMenuOpen(true)} />
+      <DashboardHeader 
+        onMobileMenuOpen={() => setMobileMenuOpen(true)} 
+        dateRange={dateRange}
+        setDateRange={setDateRange}
+      />
 
-      {/* Subtitle */}
-      <div className="px-4 sm:px-6 lg:px-8 pb-2">
+      {/* Welcome Message */}
+      <div className="px-4 sm:px-6 lg:px-8 pb-4 pt-2">
         <p className="text-sm text-muted-foreground">Welcome back! Here's your trading overview.</p>
       </div>
 
-      <div className="px-4 sm:px-6 lg:px-8 pb-6 pt-4 space-y-4 sm:space-y-6">
+      <div className="px-4 sm:px-6 lg:px-8 pb-6 space-y-4 sm:space-y-6">
         {/* Metrics Row - All same height */}
         <div className="grid grid-cols-2 sm:grid-cols-2 xl:grid-cols-5 gap-2 sm:gap-3 lg:gap-4">
           <div className="h-[120px]">

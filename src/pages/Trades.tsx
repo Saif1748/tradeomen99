@@ -1,5 +1,7 @@
 import { useState, useMemo } from "react";
-import { Plus, Export, DotsThreeVertical, Funnel, X, CalendarBlank, ChartLineUp } from "@phosphor-icons/react";
+import { Plus, Export, DotsThreeVertical, Funnel, CalendarBlank, ChartLineUp } from "@phosphor-icons/react";
+import { DateRange } from "react-day-picker";
+import { format } from "date-fns";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import PageHeader from "@/components/dashboard/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -30,12 +32,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 
 const Trades = () => {
   const [trades, setTrades] = useState<Trade[]>(generateMockTrades());
   const [searchQuery, setSearchQuery] = useState("");
   const [sideFilter, setSideFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
+  const [dateRange, setDateRange] = useState<DateRange | undefined>({
+      from: new Date(2024, 10, 1),
+      to: new Date(2024, 11, 31),
+    });
   const [sortField, setSortField] = useState("date");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -50,6 +62,14 @@ const Trades = () => {
   // Filter and sort trades
   const filteredTrades = useMemo(() => {
     let result = [...trades];
+
+    // Date filter
+    if (dateRange?.from) {
+      result = result.filter(t => t.date >= dateRange.from!);
+    }
+    if (dateRange?.to) {
+       result = result.filter(t => t.date <= dateRange.to!);
+    }
 
     // Search filter
     if (searchQuery) {
@@ -104,7 +124,7 @@ const Trades = () => {
     });
 
     return result;
-  }, [trades, searchQuery, sideFilter, typeFilter, sortField, sortDirection]);
+  }, [trades, searchQuery, sideFilter, typeFilter, dateRange, sortField, sortDirection]);
 
   const handleSort = (field: string) => {
     if (sortField === field) {
@@ -149,9 +169,16 @@ const Trades = () => {
   const clearFilters = () => {
     setSideFilter("all");
     setTypeFilter("all");
+    setDateRange(undefined);
   };
 
-  const hasActiveFilters = sideFilter !== "all" || typeFilter !== "all";
+  const hasActiveFilters = sideFilter !== "all" || typeFilter !== "all" || dateRange !== undefined;
+
+  const dateRangeLabel = dateRange?.from 
+    ? dateRange.to 
+      ? `${format(dateRange.from, "MMM d")} - ${format(dateRange.to, "MMM d")}`
+      : format(dateRange.from, "MMM d, yyyy")
+    : "Select dates";
 
   return (
     <DashboardLayout>
@@ -210,6 +237,8 @@ const Trades = () => {
             setSideFilter={setSideFilter}
             typeFilter={typeFilter}
             setTypeFilter={setTypeFilter}
+            dateRange={dateRange}
+            setDateRange={setDateRange}
           />
         </div>
 
@@ -235,7 +264,7 @@ const Trades = () => {
               Filters
               {hasActiveFilters && (
                 <span className="ml-1 w-4 h-4 rounded-full bg-primary text-white text-[10px] flex items-center justify-center">
-                  {(sideFilter !== "all" ? 1 : 0) + (typeFilter !== "all" ? 1 : 0)}
+                  {(sideFilter !== "all" ? 1 : 0) + (typeFilter !== "all" ? 1 : 0) + (dateRange ? 1 : 0)}
                 </span>
               )}
             </Button>
@@ -274,13 +303,27 @@ const Trades = () => {
             </div>
           </SheetHeader>
           <div className="space-y-4 pb-6">
-            {/* Date Range Placeholder */}
+            {/* Date Range */}
             <div className="space-y-2">
               <label className="text-sm text-muted-foreground">Date Range</label>
-              <Button variant="outline" className="w-full justify-start gap-2 bg-secondary/50 border-border/50">
-                <CalendarBlank weight="regular" className="w-4 h-4" />
-                This Month
-              </Button>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="w-full justify-start gap-2 bg-secondary/50 border-border/50">
+                    <CalendarBlank weight="regular" className="w-4 h-4" />
+                    {dateRangeLabel}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0 bg-card border-border" align="start">
+                  <Calendar
+                    initialFocus
+                    mode="range"
+                    defaultMonth={dateRange?.from}
+                    selected={dateRange}
+                    onSelect={setDateRange}
+                    numberOfMonths={1}
+                  />
+                </PopoverContent>
+              </Popover>
             </div>
             
             {/* Side Filter */}

@@ -1,20 +1,22 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { List, X } from "@phosphor-icons/react";
-import { Link } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import logo from "@/assets/tradeomen-logo.png";
 
 const navLinks = [
-  { label: "Features", href: "#features" },
-  { label: "Demo", href: "#demo" },
-  { label: "Pricing", href: "#pricing" },
-  { label: "Testimonials", href: "#testimonials" },
-  { label: "FAQ", href: "#faq" },
+  { label: "Features", href: "/#features", type: "hash" },
+  { label: "Demo", href: "/#demo", type: "hash" },
+  { label: "Pricing", href: "/pricing", type: "route" },
+  { label: "About", href: "/about", type: "route" },
+  { label: "FAQ", href: "/pricing#faq", type: "route" }, // FAQ lives on Pricing page now
 ];
 
 export function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const location = useLocation();
+  const navigate = useNavigate();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -23,6 +25,29 @@ export function Navbar() {
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
+
+  // Handle smooth scroll for hash links across pages
+  const handleNavClick = (e: React.MouseEvent<HTMLAnchorElement>, href: string, type: string) => {
+    setIsMobileMenuOpen(false);
+    
+    if (type === 'hash') {
+      e.preventDefault();
+      const targetId = href.replace('/#', '');
+      
+      if (location.pathname !== '/') {
+        // If not on home, navigate home first then scroll
+        navigate('/');
+        setTimeout(() => {
+          const element = document.getElementById(targetId);
+          if (element) element.scrollIntoView({ behavior: 'smooth' });
+        }, 100);
+      } else {
+        // If already on home, just scroll
+        const element = document.getElementById(targetId);
+        if (element) element.scrollIntoView({ behavior: 'smooth' });
+      }
+    }
+  };
 
   return (
     <>
@@ -48,13 +73,28 @@ export function Navbar() {
             {/* Desktop Navigation */}
             <div className="hidden lg:flex items-center gap-8">
               {navLinks.map((link) => (
-                <a
-                  key={link.label}
-                  href={link.href}
-                  className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  {link.label}
-                </a>
+                link.type === 'route' ? (
+                  <Link
+                    key={link.label}
+                    to={link.href}
+                    className={`text-sm font-medium transition-colors ${
+                      location.pathname === link.href 
+                        ? "text-primary font-semibold" 
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {link.label}
+                  </Link>
+                ) : (
+                  <a
+                    key={link.label}
+                    href={link.href}
+                    onClick={(e) => handleNavClick(e, link.href, link.type)}
+                    className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                  >
+                    {link.label}
+                  </a>
+                )
               ))}
             </div>
 
@@ -115,14 +155,29 @@ export function Navbar() {
                 </div>
                 <div className="flex flex-col gap-2">
                   {navLinks.map((link) => (
-                    <a
-                      key={link.label}
-                      href={link.href}
-                      onClick={() => setIsMobileMenuOpen(false)}
-                      className="px-4 py-3 rounded-xl text-lg font-medium text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors"
-                    >
-                      {link.label}
-                    </a>
+                    link.type === 'route' ? (
+                      <Link
+                        key={link.label}
+                        to={link.href}
+                        onClick={() => setIsMobileMenuOpen(false)}
+                        className={`px-4 py-3 rounded-xl text-lg font-medium transition-colors ${
+                          location.pathname === link.href
+                            ? "bg-primary/10 text-primary"
+                            : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
+                        }`}
+                      >
+                        {link.label}
+                      </Link>
+                    ) : (
+                      <a
+                        key={link.label}
+                        href={link.href}
+                        onClick={(e) => handleNavClick(e, link.href, link.type)}
+                        className="px-4 py-3 rounded-xl text-lg font-medium text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors"
+                      >
+                        {link.label}
+                      </a>
+                    )
                   ))}
                 </div>
                 <div className="mt-auto flex flex-col gap-3">

@@ -15,6 +15,7 @@ interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
+  attachments?: File[];
 }
 
 interface ChatSession {
@@ -109,13 +110,17 @@ const AIChat = () => {
     }, 1000);
   };
 
-  const handleSend = (message: string) => {
+  const handleSend = (message: string, attachments?: File[]) => {
     const userMessage: Message = {
       id: Date.now().toString(),
       role: "user",
       content: message,
+      attachments: attachments
     };
     setMessages((prev) => [...prev, userMessage]);
+    
+    // If there are attachments, we might want to modify the AI response logic here
+    // For now, we just pass the text to the simulator
     simulateAIResponse(message);
   };
 
@@ -153,9 +158,9 @@ const AIChat = () => {
       />
 
       <div className="h-screen flex flex-col">
-        {/* Header */}
-        <header className="flex items-center justify-between px-4 sm:px-6 lg:px-8 h-14 sm:h-16 flex-shrink-0 border-b border-border/50">
-          <div className="flex items-center gap-2">
+        {/* Header - Updated for centering and no border */}
+        <header className="relative flex items-center justify-between px-4 sm:px-6 lg:px-8 h-14 sm:h-16 flex-shrink-0">
+          <div className="flex items-center gap-2 z-10">
             {/* Mobile menu button */}
             <button
               onClick={() => setMobileMenuOpen(true)}
@@ -173,12 +178,13 @@ const AIChat = () => {
             </Button>
           </div>
 
-          <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2">
+          {/* Centered Title */}
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-2">
             <Lightning weight="fill" className="w-4 h-4 text-primary" />
             <span className="text-sm font-medium text-foreground">TradeOmen AI</span>
           </div>
 
-          {/* Empty div for spacing */}
+          {/* Empty div for spacing to balance the layout */}
           <div className="w-10" />
         </header>
 
@@ -218,6 +224,7 @@ const AIChat = () => {
                         key={message.id}
                         role={message.role}
                         content={message.content}
+                        // Pass attachments to ChatMessage if you updated that component to support them
                         isStreaming={
                           isStreaming &&
                           index === messages.length - 1 &&

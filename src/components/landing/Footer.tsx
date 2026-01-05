@@ -4,26 +4,26 @@ import logo from "@/assets/tradeomen-logo.png";
 
 const footerLinks = {
   product: [
-    { label: "Features", href: "#features" },
-    { label: "Pricing", href: "#pricing" },
-    { label: "Demo", href: "#demo" },
+    { label: "Features", href: "/#features", isRoute: false },
+    { label: "Pricing", href: "/pricing", isRoute: true },
+    { label: "Demo", href: "/#demo", isRoute: false },
     { label: "Dashboard", href: "/dashboard", isRoute: true },
   ],
   resources: [
-    { label: "Documentation", href: "#" },
-    { label: "Blog", href: "#" },
-    { label: "Support", href: "#" },
-    { label: "FAQ", href: "#faq" },
+    { label: "Documentation", href: "/docs", isRoute: true }, // [!code highlight] Updated link
+    { label: "Blog", href: "#", isRoute: false },
+    { label: "Support", href: "mailto:support@tradeomen.com", isRoute: false },
+    { label: "FAQ", href: "/pricing#faq", isRoute: true },
   ],
   company: [
-    { label: "About", href: "#" },
-    { label: "Careers", href: "#" },
-    { label: "Contact", href: "#" },
+    { label: "About", href: "/about", isRoute: true },
+    { label: "Careers", href: "#", isRoute: false },
+    { label: "Contact", href: "/contact", isRoute: true },
   ],
   legal: [
-    { label: "Privacy Policy", href: "#" },
-    { label: "Terms of Service", href: "#" },
-    { label: "Cookie Policy", href: "#" },
+    { label: "Privacy Policy", href: "/privacy", isRoute: true },
+    { label: "Terms of Service", href: "/terms", isRoute: true },
+    { label: "Cookie Policy", href: "/privacy", isRoute: true },
   ],
 };
 
@@ -97,12 +97,21 @@ export function Footer() {
             <ul className="space-y-3">
               {footerLinks.resources.map((link) => (
                 <li key={link.label}>
-                  <a
-                    href={link.href}
-                    className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    {link.label}
-                  </a>
+                  {link.isRoute ? (
+                    <Link
+                      to={link.href}
+                      className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      {link.label}
+                    </Link>
+                  ) : (
+                    <a
+                      href={link.href}
+                      className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      {link.label}
+                    </a>
+                  )}
                 </li>
               ))}
             </ul>
@@ -114,12 +123,21 @@ export function Footer() {
             <ul className="space-y-3">
               {footerLinks.company.map((link) => (
                 <li key={link.label}>
-                  <a
-                    href={link.href}
-                    className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    {link.label}
-                  </a>
+                  {link.isRoute ? (
+                    <Link
+                      to={link.href}
+                      className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      {link.label}
+                    </Link>
+                  ) : (
+                    <a
+                      href={link.href}
+                      className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      {link.label}
+                    </a>
+                  )}
                 </li>
               ))}
             </ul>
@@ -131,12 +149,21 @@ export function Footer() {
             <ul className="space-y-3">
               {footerLinks.legal.map((link) => (
                 <li key={link.label}>
-                  <a
-                    href={link.href}
-                    className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    {link.label}
-                  </a>
+                  {link.isRoute ? (
+                    <Link
+                      to={link.href}
+                      className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      {link.label}
+                    </Link>
+                  ) : (
+                    <a
+                      href={link.href}
+                      className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      {link.label}
+                    </a>
+                  )}
                 </li>
               ))}
             </ul>
@@ -148,9 +175,14 @@ export function Footer() {
           <p className="text-sm text-muted-foreground">
             © {new Date().getFullYear()} TradeOmen. All rights reserved.
           </p>
-          <p className="text-sm text-muted-foreground">
-            Built with ❤️ for traders worldwide
-          </p>
+          <div className="flex gap-4">
+             <Link to="/contact" className="text-sm text-muted-foreground hover:text-primary transition-colors">
+               Contact Us
+             </Link>
+             <p className="text-sm text-muted-foreground">
+               Built with ❤️ for traders worldwide
+             </p>
+          </div>
         </div>
       </div>
     </footer>

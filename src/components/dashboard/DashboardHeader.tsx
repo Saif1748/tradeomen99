@@ -9,13 +9,34 @@ import {
   List,
 } from "@phosphor-icons/react";
 import { useTheme } from "next-themes";
+import { Button } from "@/components/ui/button";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { DateRange } from "react-day-picker";
+import { format } from "date-fns";
 
 interface DashboardHeaderProps {
   onMobileMenuOpen?: () => void;
+  dateRange?: DateRange;
+  setDateRange?: (range: DateRange | undefined) => void;
 }
 
-const DashboardHeader = ({ onMobileMenuOpen }: DashboardHeaderProps) => {
+const DashboardHeader = ({ 
+  onMobileMenuOpen,
+  dateRange,
+  setDateRange 
+}: DashboardHeaderProps) => {
   const { theme, setTheme } = useTheme();
+
+  const dateRangeLabel = dateRange?.from 
+    ? dateRange.to 
+      ? `${format(dateRange.from, "MMM d")} - ${format(dateRange.to, "MMM d")}`
+      : format(dateRange.from, "MMM d, yyyy")
+    : "Select dates";
 
   return (
     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between px-4 sm:px-6 lg:px-8 pt-6 pb-2 gap-4">
@@ -33,32 +54,59 @@ const DashboardHeader = ({ onMobileMenuOpen }: DashboardHeaderProps) => {
       </div>
 
       <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-        {/* Currency Selector */}
+        {/* Currency Selector (Mock) */}
         <button className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-xl bg-secondary/50 border border-border hover:bg-secondary transition-colors">
           <CurrencyDollar weight="regular" className="w-4 h-4 text-primary" />
           <span className="text-sm font-light text-foreground">USD</span>
           <CaretDown weight="bold" className="w-3 h-3 text-muted-foreground" />
         </button>
 
-        {/* Filter */}
+        {/* Filter (Mock) */}
         <button className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-xl bg-secondary/50 border border-border hover:bg-secondary transition-colors">
           <Funnel weight="regular" className="w-4 h-4 text-muted-foreground" />
           <span className="text-sm font-light text-foreground">Filters</span>
           <CaretDown weight="bold" className="w-3 h-3 text-muted-foreground" />
         </button>
 
-        {/* Date Filter */}
-        <button className="flex items-center gap-2 px-3 py-2 rounded-xl bg-secondary/50 border border-border hover:bg-secondary transition-colors">
-          <CalendarBlank
-            weight="regular"
-            className="w-4 h-4 text-muted-foreground"
-          />
-          <span className="text-sm font-light text-foreground">
-            <span className="hidden sm:inline">Dec 1 - Dec 23</span>
-            <span className="sm:hidden">Date</span>
-          </span>
-          <CaretDown weight="bold" className="w-3 h-3 text-muted-foreground" />
-        </button>
+        {/* Functional Date Filter */}
+        {setDateRange ? (
+          <Popover>
+            <PopoverTrigger asChild>
+              <button className="flex items-center gap-2 px-3 py-2 rounded-xl bg-secondary/50 border border-border hover:bg-secondary transition-colors">
+                <CalendarBlank
+                  weight="regular"
+                  className="w-4 h-4 text-muted-foreground"
+                />
+                <span className="text-sm font-light text-foreground">
+                  {dateRangeLabel}
+                </span>
+                <CaretDown weight="bold" className="w-3 h-3 text-muted-foreground" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0 bg-card border-border" align="end">
+              <Calendar
+                initialFocus
+                mode="range"
+                defaultMonth={dateRange?.from}
+                selected={dateRange}
+                onSelect={setDateRange}
+                numberOfMonths={2}
+              />
+            </PopoverContent>
+          </Popover>
+        ) : (
+          /* Fallback static button if no props passed */
+          <button className="flex items-center gap-2 px-3 py-2 rounded-xl bg-secondary/50 border border-border hover:bg-secondary transition-colors">
+            <CalendarBlank
+              weight="regular"
+              className="w-4 h-4 text-muted-foreground"
+            />
+            <span className="text-sm font-light text-foreground">
+              Date Range
+            </span>
+            <CaretDown weight="bold" className="w-3 h-3 text-muted-foreground" />
+          </button>
+        )}
 
         {/* Theme Toggle */}
         <button
