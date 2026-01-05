@@ -14,6 +14,7 @@ import {
   Gear,
 } from "@phosphor-icons/react";
 import logo from "@/assets/tradeomen-logo.png";
+import icon from "@/assets/tradeomen-icon.png";
 import SettingsModal from "@/components/settings/SettingsModal";
 import { useSettings } from "@/contexts/SettingsContext";
 
@@ -63,23 +64,32 @@ const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
         </button>
 
         {/* Logo Section */}
-        <div className="flex items-center justify-center py-8 px-4">
-          <motion.div
-            initial={false}
-            animate={{ 
-              scale: collapsed ? 1.2 : 1,
-            }}
-            transition={{ duration: 0.25, ease: "easeOut" }}
-            className="flex items-center gap-2"
-          >
-            <img
-              src={logo}
-              alt="TradeOmen"
-              className={`w-auto transition-all duration-300 ${
-                collapsed ? "h-10" : "h-10"
-              }`}
-            />
-          </motion.div>
+        <div className="flex items-center justify-center py-8 px-4 relative h-24">
+          <AnimatePresence mode="wait">
+            {collapsed ? (
+              <motion.img
+                key="icon"
+                src={icon}
+                alt="TradeOmen"
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                transition={{ duration: 0.2, ease: "easeOut" }}
+                className="h-12 w-auto"
+              />
+            ) : (
+              <motion.img
+                key="logo"
+                src={logo}
+                alt="TradeOmen"
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                transition={{ duration: 0.2, ease: "easeOut" }}
+                className="h-10 w-auto"
+              />
+            )}
+          </AnimatePresence>
         </div>
 
         {/* Plan Badge */}
