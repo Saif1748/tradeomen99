@@ -7,6 +7,10 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { HelmetProvider } from "react-helmet-async";
 import { SettingsProvider } from "@/contexts/SettingsContext";
 
+// --- Analytics ---
+import { PostHogProvider } from "@/providers/PostHogProvider"; // Make sure you created this file
+import PageViewTracker from "@/components/PageViewTracker";   // Make sure you created this file
+
 // Preload critical assets for caching
 import "@/assets/tradeomen-logo.png";
 import "@/assets/tradeomen-icon.png";
@@ -45,44 +49,50 @@ const PageLoader = () => (
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <HelmetProvider>
-      <SettingsProvider>
-        <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          <BrowserRouter>
-            <Suspense fallback={<PageLoader />}>
-              <Routes>
-                {/* Public Landing Pages */}
-                <Route path="/" element={<Index />} />
-                <Route path="/pricing" element={<PricingPage />} />
-                <Route path="/about" element={<About />} />
-                <Route path="/contact" element={<Contact />} />
-                <Route path="/privacy" element={<Privacy />} />
-                <Route path="/terms" element={<Terms />} />
+      {/* Analytics Provider (Wraps app logic) */}
+      <PostHogProvider>
+        <SettingsProvider>
+          <TooltipProvider>
+            <Toaster />
+            <Sonner />
+            <BrowserRouter>
+              {/* Tracks route changes for Analytics */}
+              <PageViewTracker />
+              
+              <Suspense fallback={<PageLoader />}>
+                <Routes>
+                  {/* Public Landing Pages */}
+                  <Route path="/" element={<Index />} />
+                  <Route path="/pricing" element={<PricingPage />} />
+                  <Route path="/about" element={<About />} />
+                  <Route path="/contact" element={<Contact />} />
+                  <Route path="/privacy" element={<Privacy />} />
+                  <Route path="/terms" element={<Terms />} />
 
-                {/* Documentation Routes */}
-                <Route path="/docs" element={<Documentation />} />
-                <Route path="/docs/:slug" element={<DocArticle />} />
+                  {/* Documentation Routes */}
+                  <Route path="/docs" element={<Documentation />} />
+                  <Route path="/docs/:slug" element={<DocArticle />} />
 
-                {/* Auth */}
-                <Route path="/auth" element={<Auth />} />
+                  {/* Auth */}
+                  <Route path="/auth" element={<Auth />} />
 
-                {/* Application Routes (Protected in a real app) */}
-                <Route path="/dashboard" element={<Dashboard />} />
-                <Route path="/trades" element={<Trades />} />
-                <Route path="/strategies" element={<Strategies />} />
-                <Route path="/calendar" element={<Calendar />} />
-                <Route path="/reports" element={<Reports />} />
-                <Route path="/markets" element={<Markets />} />
-                <Route path="/ai-chat" element={<AIChat />} />
+                  {/* Application Routes (Protected in a real app) */}
+                  <Route path="/dashboard" element={<Dashboard />} />
+                  <Route path="/trades" element={<Trades />} />
+                  <Route path="/strategies" element={<Strategies />} />
+                  <Route path="/calendar" element={<Calendar />} />
+                  <Route path="/reports" element={<Reports />} />
+                  <Route path="/markets" element={<Markets />} />
+                  <Route path="/ai-chat" element={<AIChat />} />
 
-                {/* Catch-all */}
-                <Route path="*" element={<NotFound />} />
-              </Routes>
-            </Suspense>
-          </BrowserRouter>
-        </TooltipProvider>
-      </SettingsProvider>
+                  {/* Catch-all */}
+                  <Route path="*" element={<NotFound />} />
+                </Routes>
+              </Suspense>
+            </BrowserRouter>
+          </TooltipProvider>
+        </SettingsProvider>
+      </PostHogProvider>
     </HelmetProvider>
   </QueryClientProvider>
 );

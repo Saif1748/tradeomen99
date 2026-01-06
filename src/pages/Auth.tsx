@@ -1,270 +1,295 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
-import { motion } from "framer-motion";
-import {
-  Envelope,
-  Lock,
-  Eye,
-  EyeSlash,
-  ArrowRight,
-  GoogleLogo,
-  ChartLineUp,
-  Brain,
-  Lightning,
+import { useState, useEffect } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
+import { supabase } from "@/integrations/supabase/client";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useToast } from "@/components/ui/use-toast";
+import { 
+  EnvelopeSimple, 
+  LockKey, 
+  GoogleLogo, 
+  Spinner, 
+  WarningCircle,
+  ArrowLeft,
+  User
 } from "@phosphor-icons/react";
-import logo from "@/assets/tradeomen-logo.png";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
-const Auth = () => {
-  const [isLogin, setIsLogin] = useState(true);
-  const [showPassword, setShowPassword] = useState(false);
+export default function Auth() {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const { toast } = useToast();
+  
+  // State
+  const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [rememberMe, setRememberMe] = useState(false);
+  const [fullName, setFullName] = useState(""); // New field for Name
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // Sync mode with URL query param
+  useEffect(() => {
+    const queryMode = searchParams.get("mode");
+    if (queryMode === "signup") {
+      setMode("signup");
+    } else {
+      setMode("signin");
+    }
+    // Clear error when switching modes
+    setError(null);
+  }, [searchParams]);
+
+  const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Handle auth logic here
-    console.log({ email, password, rememberMe, isLogin });
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      if (mode === "signup") {
+        // Sign Up Logic with Name
+        const { error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              full_name: fullName, // Saves name to user_metadata
+            },
+          },
+        });
+        if (error) throw error;
+        
+        toast({
+          title: "Account created!",
+          description: "Please check your email to verify your account.",
+        });
+      } else {
+        // Sign In Logic
+        const { error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+        if (error) throw error;
+        
+        navigate("/dashboard");
+      }
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleGoogleSignIn = () => {
-    // Handle Google sign-in
-    console.log("Google sign-in clicked");
+  const handleGoogleLogin = async () => {
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: `${window.location.origin}/dashboard`,
+        },
+      });
+      if (error) throw error;
+    } catch (err: any) {
+      setError(err.message);
+    }
   };
 
   return (
-    <div className="min-h-screen bg-background flex">
-      {/* Left Side - Branding */}
-      <div className="hidden lg:flex lg:w-1/2 xl:w-3/5 relative overflow-hidden">
-        {/* Background gradients */}
-        <div className="absolute inset-0 hero-gradient" />
-        <div className="absolute inset-0 mesh-gradient" />
-        
-        <div className="relative z-10 flex flex-col justify-center px-12 xl:px-20">
-          {/* Logo */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-          >
-            <Link to="/">
-              <img src={logo} alt="TradeOmen" className="h-12 w-auto mb-12" />
-            </Link>
-          </motion.div>
+    <div className="min-h-screen bg-background flex items-center justify-center p-4 relative overflow-hidden">
+      {/* Background Decor */}
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/20 via-background to-background pointer-events-none" />
+      <div className="absolute top-0 left-0 w-full h-full bg-[url('/grid-pattern.svg')] opacity-5 pointer-events-none" />
+      
+      {/* Floating Orbs */}
+      <motion.div 
+        animate={{ x: [0, 50, 0], y: [0, -50, 0] }}
+        transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+        className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-[100px] -z-10" 
+      />
+      <motion.div 
+        animate={{ x: [0, -30, 0], y: [0, 50, 0] }}
+        transition={{ duration: 15, repeat: Infinity, ease: "linear" }}
+        className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-emerald-500/10 rounded-full blur-[100px] -z-10" 
+      />
 
-          {/* Tagline */}
-          <motion.h1
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.1 }}
-            className="text-3xl xl:text-4xl font-normal tracking-tight-premium leading-section text-foreground max-w-lg mb-6"
-          >
-            Transform your trading with intelligent{" "}
-            <span className="text-gradient-primary font-medium">
-              AI-powered insights
-            </span>
-          </motion.h1>
+      <div className="w-full max-w-md relative z-10">
+        <Button 
+          variant="ghost" 
+          className="mb-8 hover:bg-transparent hover:text-primary pl-0"
+          onClick={() => navigate("/")}
+        >
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Back to Home
+        </Button>
 
-          <motion.p
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.2 }}
-            className="text-lg font-light text-muted-foreground max-w-md mb-16"
-          >
-            built for the future of trading
-          </motion.p>
-
-          {/* Feature Icons */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.3 }}
-            className="relative"
-          >
-            {/* Decorative circles and icons */}
-            <div className="flex flex-wrap gap-8 xl:gap-12">
-              <div className="flex flex-col items-center gap-3">
-                <div className="w-14 h-14 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center">
-                  <Brain weight="light" className="w-7 h-7 text-primary" />
-                </div>
-                <span className="text-sm font-light text-muted-foreground">
-                  AI Analysis
-                </span>
-              </div>
-              <div className="flex flex-col items-center gap-3">
-                <div className="w-14 h-14 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center">
-                  <ChartLineUp weight="light" className="w-7 h-7 text-primary" />
-                </div>
-                <span className="text-sm font-light text-muted-foreground">
-                  Performance Tracking
-                </span>
-              </div>
-              <div className="flex flex-col items-center gap-3">
-                <div className="w-14 h-14 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center">
-                  <Lightning weight="light" className="w-7 h-7 text-primary" />
-                </div>
-                <span className="text-sm font-light text-muted-foreground">
-                  Real-time Sync
-                </span>
-              </div>
-            </div>
-          </motion.div>
-        </div>
-      </div>
-
-      {/* Right Side - Auth Form */}
-      <div className="w-full lg:w-1/2 xl:w-2/5 flex items-center justify-center p-6 sm:p-8 lg:p-12">
         <motion.div
+          layout // Smoothly animate height changes
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-          className="w-full max-w-md"
+          transition={{ duration: 0.5 }}
+          className="bg-card/40 backdrop-blur-xl border border-white/10 p-8 rounded-3xl shadow-2xl"
         >
-          {/* Mobile Logo */}
-          <div className="lg:hidden flex justify-center mb-8">
-            <Link to="/">
-              <img src={logo} alt="TradeOmen" className="h-10 w-auto" />
-            </Link>
+          <div className="text-center mb-8">
+            <h1 className="text-3xl font-light tracking-tight mb-2">
+              {mode === "signin" ? "Welcome Back" : "Create Account"}
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              {mode === "signin" 
+                ? "Enter your credentials to access your journal." 
+                : "Join thousands of profitable traders today."}
+            </p>
           </div>
 
-          {/* Auth Card */}
-          <div className="glass-card p-8 sm:p-10 rounded-2xl">
-            <h2 className="text-2xl font-normal tracking-tight-premium text-foreground mb-2">
-              {isLogin ? "Welcome Back" : "Create Account"}
-            </h2>
-            <p className="text-sm font-light text-muted-foreground mb-8">
-              {isLogin
-                ? "Sign in to unleash the power of AI in trading"
-                : "Start your journey to smarter trading"}
-            </p>
+          {/* Social Login (Google Only) */}
+          <div className="mb-6">
+            <Button 
+              variant="outline" 
+              className="w-full h-11 border-white/10 hover:bg-white/5 hover:text-white bg-white/5"
+              onClick={handleGoogleLogin}
+            >
+              <GoogleLogo weight="bold" className="mr-2 h-5 w-5" />
+              Continue with Google
+            </Button>
+          </div>
 
-            <form onSubmit={handleSubmit} className="space-y-5">
-              {/* Email Input */}
+          <div className="relative mb-6">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t border-white/10" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-background/80 backdrop-blur-sm px-2 text-muted-foreground rounded-full">
+                Or continue with email
+              </span>
+            </div>
+          </div>
+
+          {/* Error Alert */}
+          <AnimatePresence>
+            {error && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                className="mb-6 overflow-hidden"
+              >
+                <Alert variant="destructive" className="bg-red-500/10 border-red-500/20 text-red-200">
+                  <WarningCircle className="h-4 w-4" />
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Form */}
+          <form onSubmit={handleAuth} className="space-y-4">
+            
+            {/* Full Name Input (Only visible in Sign Up mode) */}
+            <AnimatePresence initial={false}>
+              {mode === "signup" && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="space-y-2 overflow-hidden"
+                >
+                  <Label htmlFor="fullName">Full Name</Label>
+                  <div className="relative">
+                    <User className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      id="fullName"
+                      type="text"
+                      placeholder="John Doe"
+                      className="pl-9 bg-black/20 border-white/10 focus:border-primary/50"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      required={mode === "signup"}
+                    />
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
               <div className="relative">
-                <Envelope
-                  weight="regular"
-                  className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground"
-                />
-                <input
+                <EnvelopeSimple className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="email"
                   type="email"
-                  placeholder="Email"
+                  placeholder="name@example.com"
+                  className="pl-9 bg-black/20 border-white/10 focus:border-primary/50"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full h-12 pl-12 pr-4 rounded-xl bg-secondary/50 border border-border text-foreground placeholder:text-muted-foreground text-sm font-light focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
                   required
                 />
               </div>
-
-              {/* Password Input */}
+            </div>
+            
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <Label htmlFor="password">Password</Label>
+                {mode === "signin" && (
+                  <a href="#" className="text-xs text-primary hover:underline">
+                    Forgot password?
+                  </a>
+                )}
+              </div>
               <div className="relative">
-                <Lock
-                  weight="regular"
-                  className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground"
-                />
-                <input
-                  type={showPassword ? "text" : "password"}
-                  placeholder="Password"
+                <LockKey className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="password"
+                  type="password"
+                  placeholder="••••••••"
+                  className="pl-9 bg-black/20 border-white/10 focus:border-primary/50"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full h-12 pl-12 pr-12 rounded-xl bg-secondary/50 border border-border text-foreground placeholder:text-muted-foreground text-sm font-light focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
                   required
+                  minLength={6}
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  {showPassword ? (
-                    <EyeSlash weight="regular" className="w-5 h-5" />
-                  ) : (
-                    <Eye weight="regular" className="w-5 h-5" />
-                  )}
-                </button>
-              </div>
-
-              {/* Remember Me & Forgot Password */}
-              {isLogin && (
-                <div className="flex items-center justify-between">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={rememberMe}
-                      onChange={(e) => setRememberMe(e.target.checked)}
-                      className="w-4 h-4 rounded border-border bg-secondary/50 text-primary focus:ring-primary/50"
-                    />
-                    <span className="text-sm font-light text-muted-foreground">
-                      Remember me
-                    </span>
-                  </label>
-                  <button
-                    type="button"
-                    className="text-sm font-light text-primary hover:underline"
-                  >
-                    Forgot your password?
-                  </button>
-                </div>
-              )}
-
-              {/* Submit Button */}
-              <button
-                type="submit"
-                className="w-full h-12 rounded-xl glow-button text-primary-foreground text-sm font-normal flex items-center justify-center gap-2 transition-all"
-              >
-                {isLogin ? "Sign in" : "Create account"}
-                <ArrowRight weight="bold" className="w-4 h-4" />
-              </button>
-            </form>
-
-            {/* Divider */}
-            <div className="relative my-6">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-border" />
-              </div>
-              <div className="relative flex justify-center">
-                <span className="px-4 text-xs font-light text-muted-foreground bg-card">
-                  or
-                </span>
               </div>
             </div>
 
-            {/* Google Sign In */}
-            <button
-              type="button"
-              onClick={handleGoogleSignIn}
-              className="w-full h-12 rounded-xl bg-card border border-border text-foreground text-sm font-normal flex items-center justify-center gap-3 hover:bg-secondary/50 transition-colors"
+            <Button 
+              type="submit" 
+              className="w-full h-11 glow-button text-white mt-4"
+              disabled={isLoading}
             >
-              <GoogleLogo weight="bold" className="w-5 h-5" />
-              Sign in with Google
-            </button>
+              {isLoading ? (
+                <Spinner className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                mode === "signin" ? "Sign In" : "Create Account"
+              )}
+            </Button>
+          </form>
 
-            {/* Toggle Auth Mode */}
-            <p className="text-center text-sm font-light text-muted-foreground mt-8">
-              {isLogin ? "Don't have an account?" : "Already have an account?"}{" "}
-              <button
-                type="button"
-                onClick={() => setIsLogin(!isLogin)}
-                className="text-primary hover:underline font-normal"
-              >
-                {isLogin ? "Sign up" : "Sign in"}
-              </button>
-            </p>
+          {/* Toggle Mode */}
+          <div className="mt-8 text-center text-sm text-muted-foreground">
+            {mode === "signin" ? (
+              <>
+                Don't have an account?{" "}
+                <button 
+                  onClick={() => setMode("signup")}
+                  className="text-primary hover:underline font-medium focus:outline-none transition-colors"
+                >
+                  Sign Up
+                </button>
+              </>
+            ) : (
+              <>
+                Already have an account?{" "}
+                <button 
+                  onClick={() => setMode("signin")}
+                  className="text-primary hover:underline font-medium focus:outline-none transition-colors"
+                >
+                  Sign In
+                </button>
+              </>
+            )}
           </div>
-
-          {/* Terms */}
-          <p className="text-center text-xs font-light text-muted-foreground mt-6 px-4">
-            By continuing, you agree to our{" "}
-            <Link to="/terms" className="text-primary hover:underline">
-              Terms of Service
-            </Link>{" "}
-            and{" "}
-            <Link to="/privacy" className="text-primary hover:underline">
-              Privacy Policy
-            </Link>
-          </p>
         </motion.div>
       </div>
     </div>
   );
-};
-
-export default Auth;
+}

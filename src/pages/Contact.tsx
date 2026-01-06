@@ -1,101 +1,84 @@
 import { Navbar } from "@/components/landing/Navbar";
 import { Footer } from "@/components/landing/Footer";
-import { motion } from "framer-motion";
-import { EnvelopeSimple, ChatCircleText, CreditCard, UserCircle } from "@phosphor-icons/react";
+import { SEO } from "@/components/SEO";
+import { Envelope, ChatCircleText, Buildings } from "@phosphor-icons/react";
+import { Button } from "@/components/ui/button";
 
-const contactMethods = [
-  {
-    icon: ChatCircleText,
-    title: "Customer Support",
-    description: "Facing issues with your dashboard or strategy builder? Our team is ready to help.",
-    email: "support@tradeomen.com",
-    color: "text-blue-400",
-    bg: "bg-blue-400/10"
-  },
-  {
-    icon: EnvelopeSimple,
-    title: "General Inquiries",
-    description: "For partnerships, press, or just to say hello. We'd love to hear from you.",
-    email: "hello@tradeomen.com",
-    color: "text-primary",
-    bg: "bg-primary/10"
-  },
-  {
-    icon: CreditCard,
-    title: "Billing & Subscriptions",
-    description: "Questions about your invoice, upgrading, or refund requests?",
-    email: "billing@tradeomen.com",
-    color: "text-emerald-400",
-    bg: "bg-emerald-400/10"
-  },
-  {
-    icon: UserCircle,
-    title: "Founder's Desk",
-    description: "For urgent matters or direct feedback. We value transparency.",
-    email: "saifshaikh@tradeomen.com",
-    color: "text-purple-400",
-    bg: "bg-purple-400/10"
-  }
-];
-
-const Contact = () => {
+export default function Contact() {
   return (
-    <main className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background flex flex-col">
+      <SEO title="Contact Us - TradeOmen" description="Get in touch with the TradeOmen team." />
       <Navbar />
       
-      <div className="pt-28 pb-12 lg:pt-40 lg:pb-20 px-4">
-        <div className="max-w-4xl mx-auto text-center mb-16">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-          >
-            <span className="inline-block px-4 py-1.5 rounded-full bg-secondary text-muted-foreground text-sm font-medium mb-6 border border-border">
-              Contact Us
-            </span>
-            <h1 className="text-4xl lg:text-6xl font-light tracking-tight-premium leading-hero mb-6">
-              How can we <br />
-              <span className="text-gradient-primary font-medium">help you?</span>
-            </h1>
-            <p className="text-lg text-muted-foreground font-light max-w-2xl mx-auto">
-              Choose the right channel below and we'll get back to you within 24 hours.
-              For automated updates, look out for emails from <span className="font-medium text-foreground">no-reply@tradeomen.com</span>.
-            </p>
-          </motion.div>
-        </div>
+      <main className="flex-grow pt-32 pb-20">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid lg:grid-cols-2 gap-16">
+            
+            {/* Info */}
+            <div>
+              <h1 className="text-4xl font-light tracking-tight mb-6">Get in touch</h1>
+              <p className="text-lg text-muted-foreground mb-12">
+                Have a feature request? Found a bug? Or just want to talk trading strategy? 
+                We read every message.
+              </p>
 
-        <div className="max-w-6xl mx-auto grid md:grid-cols-2 gap-6 px-4">
-          {contactMethods.map((method, index) => (
-            <motion.a
-              key={method.title}
-              href={`mailto:${method.email}`}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: index * 0.1 }}
-              className="glass-card p-8 rounded-2xl group hover:border-primary/50 transition-all duration-300 cursor-pointer flex items-start gap-6"
-            >
-              <div className={`w-12 h-12 rounded-xl ${method.bg} ${method.color} flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform`}>
-                <method.icon size={24} weight="fill" />
-              </div>
-              <div>
-                <h3 className="text-xl font-medium mb-2 group-hover:text-primary transition-colors">
-                  {method.title}
-                </h3>
-                <p className="text-muted-foreground font-light text-sm mb-4 leading-relaxed">
-                  {method.description}
-                </p>
-                <span className="text-sm font-medium text-foreground border-b border-primary/30 pb-0.5">
-                  {method.email}
-                </span>
-              </div>
-            </motion.a>
-          ))}
-        </div>
-      </div>
+              <div className="space-y-8">
+                <div className="flex gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                    <ChatCircleText className="w-6 h-6 text-primary" weight="duotone" />
+                  </div>
+                  <div>
+                    <h3 className="font-medium text-foreground">Support</h3>
+                    <p className="text-sm text-muted-foreground mb-1">For help with your account or imports.</p>
+                    <a href="mailto:support@tradeomen.com" className="text-primary hover:underline">support@tradeomen.com</a>
+                  </div>
+                </div>
 
+                <div className="flex gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-secondary/50 flex items-center justify-center shrink-0">
+                    <Buildings className="w-6 h-6 text-foreground" weight="duotone" />
+                  </div>
+                  <div>
+                    <h3 className="font-medium text-foreground">Partnerships</h3>
+                    <p className="text-sm text-muted-foreground mb-1">For brokers and prop firms.</p>
+                    <a href="mailto:partners@tradeomen.com" className="text-foreground hover:underline">partners@tradeomen.com</a>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Form */}
+            <div className="bg-card/30 border border-white/5 p-8 rounded-2xl">
+              <form className="space-y-6">
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">First name</label>
+                    <input type="text" className="w-full bg-background border border-border rounded-lg px-4 py-2.5 focus:border-primary outline-none" placeholder="Jane" />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Last name</label>
+                    <input type="text" className="w-full bg-background border border-border rounded-lg px-4 py-2.5 focus:border-primary outline-none" placeholder="Doe" />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Email</label>
+                  <input type="email" className="w-full bg-background border border-border rounded-lg px-4 py-2.5 focus:border-primary outline-none" placeholder="jane@example.com" />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Message</label>
+                  <textarea className="w-full h-32 bg-background border border-border rounded-lg px-4 py-2.5 focus:border-primary outline-none resize-none" placeholder="How can we help?" />
+                </div>
+
+                <Button className="w-full glow-button">Send Message</Button>
+              </form>
+            </div>
+
+          </div>
+        </div>
+      </main>
       <Footer />
-    </main>
+    </div>
   );
-};
-
-export default Contact;
+}
