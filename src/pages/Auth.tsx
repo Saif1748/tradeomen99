@@ -26,11 +26,22 @@ export default function Auth() {
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [fullName, setFullName] = useState(""); // New field for Name
+  const [fullName, setFullName] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Sync mode with URL query param
+  // 1. Check for existing session on mount
+  useEffect(() => {
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        navigate("/dashboard");
+      }
+    };
+    checkSession();
+  }, [navigate]);
+
+  // 2. Sync mode with URL query param
   useEffect(() => {
     const queryMode = searchParams.get("mode");
     if (queryMode === "signup") {
@@ -50,7 +61,7 @@ export default function Auth() {
     try {
       if (mode === "signup") {
         // Sign Up Logic with Name
-        const { error } = await supabase.auth.signUp({
+        const { error, data } = await supabase.auth.signUp({
           email,
           password,
           options: {
@@ -61,10 +72,15 @@ export default function Auth() {
         });
         if (error) throw error;
         
-        toast({
-          title: "Account created!",
-          description: "Please check your email to verify your account.",
-        });
+        // If email confirmation is disabled/auto-confirm is on, we might have a session immediately
+        if (data.session) {
+          navigate("/dashboard");
+        } else {
+          toast({
+            title: "Account created!",
+            description: "Please check your email to verify your account.",
+          });
+        }
       } else {
         // Sign In Logic
         const { error } = await supabase.auth.signInWithPassword({

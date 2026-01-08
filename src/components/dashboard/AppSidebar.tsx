@@ -16,7 +16,8 @@ import {
 import logo from "@/assets/tradeomen-logo.png";
 import icon from "@/assets/tradeomen-icon.png";
 import SettingsModal from "@/components/settings/SettingsModal";
-import { useSettings } from "@/contexts/SettingsContext";
+// ✅ Import useAuth to get real user data
+import { useAuth } from "@/contexts/AuthContext";
 
 const navItems = [
   { title: "Dashboard", path: "/dashboard", icon: House },
@@ -36,10 +37,22 @@ interface AppSidebarProps {
 const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
   const location = useLocation();
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const { profile } = useSettings();
+  
+  // ✅ Get real user data and plan from AuthContext
+  const { user, plan } = useAuth();
+
+  // Helper to get display name safely
+  const displayName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || "Trader";
 
   const getInitials = () => {
-    return `${profile.firstName.charAt(0)}${profile.lastName.charAt(0)}`;
+    if (user?.user_metadata?.full_name) {
+      const names = user.user_metadata.full_name.split(' ');
+      if (names.length >= 2) {
+        return `${names[0][0]}${names[1][0]}`.toUpperCase();
+      }
+      return names[0].substring(0, 2).toUpperCase();
+    }
+    return (user?.email?.substring(0, 2) || "TR").toUpperCase();
   };
 
   return (
@@ -92,7 +105,7 @@ const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
           </AnimatePresence>
         </div>
 
-        {/* Plan Badge */}
+        {/* Plan Badge - Now Dynamic */}
         <AnimatePresence>
           {!collapsed && (
             <motion.div
@@ -104,7 +117,7 @@ const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
             >
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/20 border border-primary/30 text-xs font-normal text-primary">
                 <Lightning weight="fill" className="w-3 h-3" />
-                Pro Plan
+                {plan === "FREE" ? "Free Plan" : "Pro Plan"}
               </span>
             </motion.div>
           )}
@@ -185,10 +198,10 @@ const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
                   className="flex-1 min-w-0 overflow-hidden text-left relative z-10"
                 >
                   <p className="text-sm font-normal text-foreground truncate">
-                    {profile.firstName} {profile.lastName}
+                    {displayName}
                   </p>
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-normal bg-primary/20 text-primary mt-0.5">
-                    Pro
+                    {plan === "FREE" ? "Free" : "Pro"}
                   </span>
                 </motion.div>
               )}
