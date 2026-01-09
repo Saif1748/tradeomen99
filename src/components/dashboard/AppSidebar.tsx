@@ -16,8 +16,8 @@ import {
 import logo from "@/assets/tradeomen-logo.png";
 import icon from "@/assets/tradeomen-icon.png";
 import SettingsModal from "@/components/settings/SettingsModal";
-// ✅ Import useAuth to get real user data
-import { useAuth } from "@/contexts/AuthContext";
+// ✅ FIXED: Import from the hook file to resolve Vite/HMR issues
+import { useAuth } from "@/hooks/use-Auth";
 
 const navItems = [
   { title: "Dashboard", path: "/dashboard", icon: House },
@@ -38,15 +38,19 @@ const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
   const location = useLocation();
   const [settingsOpen, setSettingsOpen] = useState(false);
   
-  // ✅ Get real user data and plan from AuthContext
-  const { user, plan } = useAuth();
+  // ✅ FIXED: Get profile from hook, then derive plan
+  const { user, profile } = useAuth();
+  const plan = profile?.plan_tier || "FREE";
 
-  // Helper to get display name safely
-  const displayName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || "Trader";
+  // Helper to get display name safely (Prioritize DB profile, fallback to Auth metadata)
+  const displayName = profile?.preferences?.full_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || "Trader";
 
   const getInitials = () => {
-    if (user?.user_metadata?.full_name) {
-      const names = user.user_metadata.full_name.split(' ');
+    // Check for name in profile preferences first, then auth metadata
+    const nameToUse = profile?.preferences?.full_name || user?.user_metadata?.full_name;
+
+    if (nameToUse) {
+      const names = nameToUse.split(' ');
       if (names.length >= 2) {
         return `${names[0][0]}${names[1][0]}`.toUpperCase();
       }
@@ -117,7 +121,7 @@ const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
             >
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/20 border border-primary/30 text-xs font-normal text-primary">
                 <Lightning weight="fill" className="w-3 h-3" />
-                {plan === "FREE" ? "Free Plan" : "Pro Plan"}
+                {plan === "FREE" ? "Free Plan" : plan === "PRO" ? "Pro Plan" : "Premium"}
               </span>
             </motion.div>
           )}
@@ -201,7 +205,7 @@ const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
                     {displayName}
                   </p>
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-normal bg-primary/20 text-primary mt-0.5">
-                    {plan === "FREE" ? "Free" : "Pro"}
+                    {plan === "FREE" ? "Free" : plan === "PRO" ? "Pro" : "Premium"}
                   </span>
                 </motion.div>
               )}

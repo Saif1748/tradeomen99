@@ -4,19 +4,20 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/hooks/use-Auth"; // Fixed Import Path
 import { supabase } from "@/integrations/supabase/client";
-import { Spinner, FloppyDisk } from "@phosphor-icons/react";
+import { authApi } from "@/services/api/modules/auth"; // Import Backend API
+import { Loader2, Save } from "lucide-react"; // Using Lucide for stability
 
 export const ProfileSection = () => {
-  const { user } = useAuth();
+  const { user, refreshProfile } = useAuth();
   const [loading, setLoading] = useState(false);
   
   // Local state for form fields
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
-  const [bio, setBio] = useState(""); // Note: Requires a 'bio' column in your profiles table if you want to persist this
+  const [bio, setBio] = useState("");
 
   // Load real data when component mounts
   useEffect(() => {
@@ -26,7 +27,8 @@ export const ProfileSection = () => {
       const names = fullName.split(" ");
       setFirstName(names[0] || "");
       setLastName(names.slice(1).join(" ") || "");
-      // If you have metadata for bio: setBio(user.user_metadata?.bio || "");
+      // Load bio from metadata if it exists
+      setBio(user.user_metadata?.bio || "");
     }
   }, [user]);
 
@@ -35,16 +37,31 @@ export const ProfileSection = () => {
     try {
       const fullName = `${firstName} ${lastName}`.trim();
       
-      const { error } = await supabase.auth.updateUser({
+      // 1. Update Supabase (Auth Metadata)
+      const { error: supabaseError } = await supabase.auth.updateUser({
         data: { 
           full_name: fullName,
-          // bio: bio // Add this to user_metadata if you want to save it
+          bio: bio 
         }
       });
 
-      if (error) throw error;
+      if (supabaseError) throw supabaseError;
+
+      // 2. Update Python Backend (Postgres Database)
+      // This ensures the database stays in sync with the auth session
+      await authApi.updateProfile({
+        preferences: {
+          bio: bio,
+          full_name: fullName // Persist name preference if needed by backend logic
+        }
+      });
+
+      // 3. Refresh local profile context
+      await refreshProfile();
+
       toast.success("Profile updated successfully");
     } catch (error: any) {
+      console.error(error);
       toast.error(error.message || "Failed to update profile");
     } finally {
       setLoading(false);
@@ -54,12 +71,14 @@ export const ProfileSection = () => {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
-        <div className="w-16 h-16 rounded-full bg-gradient-to-br from-glow-primary to-glow-secondary flex items-center justify-center text-primary-foreground text-xl font-medium">
+        <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary to-blue-600 flex items-center justify-center text-primary-foreground text-xl font-medium shadow-lg">
           {firstName ? firstName[0]?.toUpperCase() : "U"}
           {lastName ? lastName[0]?.toUpperCase() : ""}
         </div>
         <div className="flex-1">
-          <Button variant="outline" size="sm" disabled>Change Avatar</Button>
+          <Button variant="outline" size="sm" disabled className="opacity-50">
+            Change Avatar
+          </Button>
         </div>
       </div>
       
@@ -70,6 +89,7 @@ export const ProfileSection = () => {
             id="firstName" 
             value={firstName}
             onChange={(e) => setFirstName(e.target.value)}
+            className="bg-background/50"
           />
         </div>
         <div className="space-y-2">
@@ -78,6 +98,7 @@ export const ProfileSection = () => {
             id="lastName" 
             value={lastName}
             onChange={(e) => setLastName(e.target.value)}
+            className="bg-background/50"
           />
         </div>
       </div>
@@ -91,7 +112,7 @@ export const ProfileSection = () => {
           disabled 
           className="opacity-75 cursor-not-allowed bg-secondary/20"
         />
-        <p className="text-[10px] text-muted-foreground">Email cannot be changed.</p>
+        <p className="text-[10px] text-muted-foreground">Email cannot be changed directly.</p>
       </div>
 
       <div className="space-y-2">
@@ -99,15 +120,19 @@ export const ProfileSection = () => {
         <Textarea 
           id="bio" 
           placeholder="Tell us about yourself..." 
-          className="resize-none" 
+          className="resize-none bg-background/50" 
           rows={3}
           value={bio}
           onChange={(e) => setBio(e.target.value)}
         />
       </div>
 
-      <Button onClick={handleSave} disabled={loading} className="glow-button text-white">
-        {loading ? <Spinner className="w-4 h-4 animate-spin mr-2"/> : <FloppyDisk className="w-4 h-4 mr-2"/>}
+      <Button onClick={handleSave} disabled={loading} className="glow-button text-white w-full sm:w-auto">
+        {loading ? (
+          <Loader2 className="w-4 h-4 animate-spin mr-2"/>
+        ) : (
+          <Save className="w-4 h-4 mr-2"/>
+        )}
         Save Changes
       </Button>
     </div>

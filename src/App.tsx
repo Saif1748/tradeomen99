@@ -5,11 +5,14 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { HelmetProvider } from "react-helmet-async";
-import { SettingsProvider } from "@/contexts/SettingsContext";
-import { AuthProvider, useAuth } from "@/contexts/AuthContext"; // Import AuthProvider
-import { ProtectedRoute } from "@/components/ProtectedRoute";   // Import ProtectedRoute
 
-// --- Analytics ---
+// Contexts & Hooks
+import { SettingsProvider } from "@/contexts/SettingsContext";
+import { AuthProvider } from "@/contexts/AuthContext"; 
+import { useAuth } from "@/hooks/use-Auth"; 
+import { ProtectedRoute } from "@/components/ProtectedRoute";
+
+// Analytics
 import { PostHogProvider } from "@/providers/PostHogProvider"; 
 import PageViewTracker from "@/components/PageViewTracker";   
 
@@ -17,8 +20,7 @@ import PageViewTracker from "@/components/PageViewTracker";
 import "@/assets/tradeomen-logo.png";
 import "@/assets/tradeomen-icon.png";
 
-// --- Lazy Load Pages ---
-// ... (Your imports remain the same) ...
+// Lazy Load Pages
 const Index = lazy(() => import("./pages/Index"));
 const PricingPage = lazy(() => import("./pages/PricingPage"));
 const About = lazy(() => import("./pages/About"));
@@ -41,23 +43,41 @@ const NotFound = lazy(() => import("./pages/NotFound"));
 
 const queryClient = new QueryClient();
 
-// Helper to redirect authenticated users away from /auth
-const AuthRedirect = () => {
-  const { user } = useAuth();
-  return user ? <Navigate to="/dashboard" replace /> : <Auth />;
-};
 
+/**
+ * PageLoader
+ * Global fallback for Suspense and Auth state transitions.
+ */
 const PageLoader = () => (
   <div className="min-h-screen bg-background flex items-center justify-center">
     <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
   </div>
 );
 
+
+/**
+ * AuthRedirect
+ * Refined to prevent infinite loading.
+ * Redirects authenticated users to dashboard immediately.
+ */
+const AuthRedirect = () => {
+  const { session, loading } = useAuth();
+  
+  // Only show the global loader if we haven't even checked the session yet.
+  if (loading) {
+    return <PageLoader />;
+  }
+  
+  // If session exists, bypass auth page immediately.
+  return session ? <Navigate to="/dashboard" replace /> : <Auth />;
+};
+
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <HelmetProvider>
       <PostHogProvider>
-        <AuthProvider> {/* Wrap everything in AuthProvider */}
+        <AuthProvider>
           <SettingsProvider>
             <TooltipProvider>
               <Toaster />
@@ -80,7 +100,7 @@ const App = () => (
                     {/* Auth Route (Redirects if already logged in) */}
                     <Route path="/auth" element={<AuthRedirect />} />
 
-                    {/* Protected Routes */}
+                    {/* Protected Routes Wrapper */}
                     <Route element={<ProtectedRoute />}>
                       <Route path="/dashboard" element={<Dashboard />} />
                       <Route path="/trades" element={<Trades />} />

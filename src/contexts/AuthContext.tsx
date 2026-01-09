@@ -1,55 +1,127 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import React, { useEffect, useState, ReactNode, useCallback } from 'react';
 import { User, Session } from '@supabase/supabase-js';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '../integrations/supabase/client';
+import { fetchBackendProfile, UserProfile } from '../services/api/core';
+import { AuthContext } from '../hooks/use-Auth';
 
-interface AuthContextType {
-  user: User | null;
-  session: Session | null;
-  loading: boolean;
-  signOut: () => Promise<void>;
-}
-
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within AuthProvider');
-  }
-  return context;
-};
-
+/**
+ * AuthProvider Component
+ * Manages the Supabase session and synchronizes it with the Python backend.
+ * This file now ONLY exports the component to satisfy Vite/SWC Fast Refresh.
+ */
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  
   const [loading, setLoading] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  /**
+   * syncBackendProfile
+   * Handshakes with the Python backend to fetch credits, plans, and usage.
+   */
+  const syncBackendProfile = useCallback(async (currentSession: Session | null) => {
+    if (!currentSession?.access_token) {
+      setProfile(null);
+      setIsSyncing(false);
+      return;
+    }
+
+    setIsSyncing(true);
+    try {
+      const backendData = await fetchBackendProfile();
+      setProfile(backendData);
+      setError(null);
+    } catch (err: any) {
+      console.error("Handshake Error (Backend):", err);
+      setError(err.message || "Engine synchronization failed");
+    } finally {
+      setIsSyncing(false);
+    }
+  }, []);
 
   useEffect(() => {
-    // 1. Check active session on load
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
+    let mounted = true;
 
-    // 2. Listen for changes (login, logout, auto-refresh)
+    const initSession = async () => {
+      try {
+        const { data: { session: initialSession }, error: sessionError } = await supabase.auth.getSession();
+        
+        if (sessionError) throw sessionError;
+
+        if (mounted) {
+          setSession(initialSession);
+          setUser(initialSession?.user ?? null);
+          
+          // CRITICAL: Stop the main loading spinner immediately to allow navigation
+          setLoading(false);
+        }
+
+        if (initialSession) {
+          syncBackendProfile(initialSession);
+        }
+      } catch (e) {
+        console.error("Auth Handshake Failed (Supabase):", e);
+        if (mounted) setLoading(false);
+      }
+    };
+
+    initSession();
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
+      async (event, newSession) => {
+        if (!mounted) return;
+
+        setSession(newSession);
+        setUser(newSession?.user ?? null);
+        
+        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+          if (newSession) syncBackendProfile(newSession);
+        }
+        
+        if (event === 'SIGNED_OUT') {
+          setProfile(null);
+          setSession(null);
+          setUser(null);
+        }
+        
         setLoading(false);
       }
     );
 
-    return () => subscription.unsubscribe();
-  }, []);
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, [syncBackendProfile]);
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
+    } finally {
+      setProfile(null);
+      setUser(null);
+      setSession(null);
+    }
+  };
+
+  const refreshProfile = async () => {
+    if (session) await syncBackendProfile(session);
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, loading, signOut }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      session, 
+      profile, 
+      loading, 
+      isSyncing,
+      error, 
+      signOut, 
+      refreshProfile 
+    }}>
       {children}
     </AuthContext.Provider>
   );

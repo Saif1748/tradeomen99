@@ -49,7 +49,6 @@ export default function Auth() {
     } else {
       setMode("signin");
     }
-    // Clear error when switching modes
     setError(null);
   }, [searchParams]);
 
@@ -61,7 +60,7 @@ export default function Auth() {
     try {
       if (mode === "signup") {
         // Sign Up Logic with Name
-        const { error, data } = await supabase.auth.signUp({
+        const { error: signUpError, data } = await supabase.auth.signUp({
           email,
           password,
           options: {
@@ -70,7 +69,7 @@ export default function Auth() {
             },
           },
         });
-        if (error) throw error;
+        if (signUpError) throw signUpError;
         
         // If email confirmation is disabled/auto-confirm is on, we might have a session immediately
         if (data.session) {
@@ -83,16 +82,19 @@ export default function Auth() {
         }
       } else {
         // Sign In Logic
-        const { error } = await supabase.auth.signInWithPassword({
+        const { error: signInError } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
-        if (error) throw error;
+        if (signInError) throw signInError;
         
+        // Navigation happens automatically via onAuthStateChange in AuthContext,
+        // but explicit navigation here makes it feel snappier.
         navigate("/dashboard");
       }
     } catch (err: any) {
-      setError(err.message);
+      console.error(err);
+      setError(err.message || "Authentication failed");
     } finally {
       setIsLoading(false);
     }

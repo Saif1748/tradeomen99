@@ -1,22 +1,27 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { List, X } from "@phosphor-icons/react";
+import { List, X, UserCircle, SignOut } from "@phosphor-icons/react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useAuth } from "@/hooks/use-Auth";
 import logo from "@/assets/tradeomen-logo.png";
+
 
 const navLinks = [
   { label: "Features", href: "/#features", type: "hash" },
   { label: "Demo", href: "/#demo", type: "hash" },
   { label: "Pricing", href: "/pricing", type: "route" },
   { label: "About", href: "/about", type: "route" },
-  { label: "FAQ", href: "/pricing#faq", type: "route" }, // FAQ lives on Pricing page now
+  { label: "FAQ", href: "/pricing#faq", type: "route" },
 ];
+
 
 export function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const { session, signOut } = useAuth(); // Hook into auth state
   const location = useLocation();
   const navigate = useNavigate();
+
 
   useEffect(() => {
     const handleScroll = () => {
@@ -26,7 +31,7 @@ export function Navbar() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  // Handle smooth scroll for hash links across pages
+
   const handleNavClick = (e: React.MouseEvent<HTMLAnchorElement>, href: string, type: string) => {
     setIsMobileMenuOpen(false);
     
@@ -35,19 +40,18 @@ export function Navbar() {
       const targetId = href.replace('/#', '');
       
       if (location.pathname !== '/') {
-        // If not on home, navigate home first then scroll
         navigate('/');
         setTimeout(() => {
           const element = document.getElementById(targetId);
           if (element) element.scrollIntoView({ behavior: 'smooth' });
         }, 100);
       } else {
-        // If already on home, just scroll
         const element = document.getElementById(targetId);
         if (element) element.scrollIntoView({ behavior: 'smooth' });
       }
     }
   };
+
 
   return (
     <>
@@ -69,6 +73,7 @@ export function Navbar() {
                 className="h-9 sm:h-10 w-auto"
               />
             </Link>
+
 
             {/* Desktop Navigation */}
             <div className="hidden lg:flex items-center gap-8">
@@ -98,21 +103,44 @@ export function Navbar() {
               ))}
             </div>
 
-            {/* Desktop CTAs */}
+
+            {/* Desktop CTAs - Conditional Rendering */}
             <div className="hidden lg:flex items-center gap-4">
-              <Link 
-                to="/auth"
-                className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-              >
-                Login
-              </Link>
-              <Link 
-                to="/dashboard"
-                className="glow-button px-5 py-2.5 rounded-full text-sm font-medium text-primary-foreground"
-              >
-                Get Started
-              </Link>
+              {session ? (
+                <>
+                  <Link 
+                    to="/dashboard"
+                    className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors flex items-center gap-2"
+                  >
+                    <UserCircle size={20} />
+                    Dashboard
+                  </Link>
+                  <button 
+                    onClick={() => signOut()}
+                    className="text-sm font-medium text-red-400/80 hover:text-red-400 transition-colors flex items-center gap-2"
+                  >
+                    <SignOut size={18} />
+                    Logout
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Link 
+                    to="/auth"
+                    className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    Login
+                  </Link>
+                  <Link 
+                    to="/auth?mode=signup"
+                    className="glow-button px-5 py-2.5 rounded-full text-sm font-medium text-primary-foreground"
+                  >
+                    Get Started
+                  </Link>
+                </>
+              )}
             </div>
+
 
             {/* Mobile Menu Button */}
             <button
@@ -124,6 +152,7 @@ export function Navbar() {
           </div>
         </nav>
       </motion.header>
+
 
       {/* Mobile Menu */}
       <AnimatePresence>
@@ -181,20 +210,43 @@ export function Navbar() {
                   ))}
                 </div>
                 <div className="mt-auto flex flex-col gap-3">
-                  <Link 
-                    to="/auth"
-                    onClick={() => setIsMobileMenuOpen(false)}
-                    className="w-full py-3 text-center font-medium text-foreground border border-border rounded-xl hover:bg-secondary transition-colors"
-                  >
-                    Login
-                  </Link>
-                  <Link 
-                    to="/dashboard"
-                    onClick={() => setIsMobileMenuOpen(false)}
-                    className="glow-button w-full py-3 text-center font-medium text-primary-foreground rounded-xl"
-                  >
-                    Get Started
-                  </Link>
+                  {session ? (
+                    <>
+                      <Link 
+                        to="/dashboard"
+                        onClick={() => setIsMobileMenuOpen(false)}
+                        className="w-full py-3 text-center font-medium text-foreground border border-border rounded-xl hover:bg-secondary transition-colors"
+                      >
+                        Go to Dashboard
+                      </Link>
+                      <button 
+                        onClick={() => {
+                          signOut();
+                          setIsMobileMenuOpen(false);
+                        }}
+                        className="w-full py-3 text-center font-medium text-red-400 bg-red-400/5 rounded-xl border border-red-400/20"
+                      >
+                        Logout
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <Link 
+                        to="/auth"
+                        onClick={() => setIsMobileMenuOpen(false)}
+                        className="w-full py-3 text-center font-medium text-foreground border border-border rounded-xl hover:bg-secondary transition-colors"
+                      >
+                        Login
+                      </Link>
+                      <Link 
+                        to="/auth?mode=signup"
+                        onClick={() => setIsMobileMenuOpen(false)}
+                        className="glow-button w-full py-3 text-center font-medium text-primary-foreground rounded-xl"
+                      >
+                        Get Started
+                      </Link>
+                    </>
+                  )}
                 </div>
               </div>
             </motion.div>
