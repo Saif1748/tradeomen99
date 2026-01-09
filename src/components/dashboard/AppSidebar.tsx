@@ -12,11 +12,13 @@ import {
   CaretLeft,
   Lightning,
   Gear,
+  Crown,
+  Coffee,
 } from "@phosphor-icons/react";
 import logo from "@/assets/tradeomen-logo.png";
 import icon from "@/assets/tradeomen-icon.png";
 import SettingsModal from "@/components/settings/SettingsModal";
-// ✅ FIXED: Import from the hook file to resolve Vite/HMR issues
+// ✅ Import from hook
 import { useAuth } from "@/hooks/use-Auth";
 
 const navItems = [
@@ -38,17 +40,15 @@ const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
   const location = useLocation();
   const [settingsOpen, setSettingsOpen] = useState(false);
   
-  // ✅ FIXED: Get profile from hook, then derive plan
+  // ✅ Get real user data
   const { user, profile } = useAuth();
   const plan = profile?.plan_tier || "FREE";
 
-  // Helper to get display name safely (Prioritize DB profile, fallback to Auth metadata)
+  // Helper to get display name safely
   const displayName = profile?.preferences?.full_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || "Trader";
 
   const getInitials = () => {
-    // Check for name in profile preferences first, then auth metadata
     const nameToUse = profile?.preferences?.full_name || user?.user_metadata?.full_name;
-
     if (nameToUse) {
       const names = nameToUse.split(' ');
       if (names.length >= 2) {
@@ -58,6 +58,34 @@ const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
     }
     return (user?.email?.substring(0, 2) || "TR").toUpperCase();
   };
+
+  // --- Dynamic Badge Styling ---
+  const getPlanBadgeStyles = () => {
+    switch (plan) {
+      case "PREMIUM":
+        return {
+          container: "bg-amber-500/10 border-amber-500/20 text-amber-500",
+          label: "Premium Plan",
+          Icon: Crown,
+        };
+      case "PRO":
+        return {
+          container: "bg-primary/20 border-primary/30 text-primary", // Your existing Pro style
+          label: "Pro Plan",
+          Icon: Lightning,
+        };
+      case "FREE":
+      default:
+        return {
+          container: "bg-secondary border-border text-muted-foreground", // Clean gray for Free
+          label: "Free Plan",
+          Icon: Coffee,
+        };
+    }
+  };
+
+  const badgeStyle = getPlanBadgeStyles();
+  const BadgeIcon = badgeStyle.Icon;
 
   return (
     <>
@@ -109,7 +137,7 @@ const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
           </AnimatePresence>
         </div>
 
-        {/* Plan Badge - Now Dynamic */}
+        {/* Plan Badge - Dynamic */}
         <AnimatePresence>
           {!collapsed && (
             <motion.div
@@ -119,9 +147,9 @@ const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
               transition={{ duration: 0.2 }}
               className="flex justify-center px-4 mb-6"
             >
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/20 border border-primary/30 text-xs font-normal text-primary">
-                <Lightning weight="fill" className="w-3 h-3" />
-                {plan === "FREE" ? "Free Plan" : plan === "PRO" ? "Pro Plan" : "Premium"}
+              <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-normal ${badgeStyle.container}`}>
+                <BadgeIcon weight="fill" className="w-3 h-3" />
+                {badgeStyle.label}
               </span>
             </motion.div>
           )}
@@ -204,7 +232,9 @@ const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
                   <p className="text-sm font-normal text-foreground truncate">
                     {displayName}
                   </p>
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-normal bg-primary/20 text-primary mt-0.5">
+                  
+                  {/* Bottom Mini Badge */}
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-normal mt-0.5 border ${badgeStyle.container}`}>
                     {plan === "FREE" ? "Free" : plan === "PRO" ? "Pro" : "Premium"}
                   </span>
                 </motion.div>
