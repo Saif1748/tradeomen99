@@ -1,15 +1,24 @@
 import { request, API_BASE_URL, ApiError } from "../core";
-import { supabase } from "@/integrations/supabase/client"; // Needed for export session fetch
-import type { Trade, PaginatedResponse, ScreenshotUploadResponse, TradeScreenshot } from "../types";
+import { supabase } from "@/integrations/supabase/client";
+import type { 
+  Trade, 
+  PaginatedTradesResponse, 
+  ScreenshotUploadResponse, 
+  TradeScreenshot 
+} from "../types";
 
 export const tradesApi = {
-  getAll: (page = 1, limit = 20, symbol?: string) => {
+  /**
+   * Get paginated trades.
+   * Default batch size is 35.
+   */
+  getAll: (page = 1, limit = 35) => {
     const params = new URLSearchParams({
       page: String(page),
       limit: String(limit),
     });
-    if (symbol) params.append("symbol", symbol);
-    return request<PaginatedResponse<Trade>>(`/trades/?${params.toString()}`);
+    // Ensure trailing slash to avoid 307 redirects
+    return request<PaginatedTradesResponse>(`/trades/?${params.toString()}`);
   },
 
   getOne: (id: string) => request<Trade>(`/trades/${id}`),
@@ -30,11 +39,11 @@ export const tradesApi = {
     request<void>(`/trades/${id}`, { method: "DELETE" }),
 
   export: async () => {
-    // We manually fetch here because we return a Blob, not JSON
     const { data: { session } } = await supabase.auth.getSession();
     const token = session?.access_token;
     
-    const response = await fetch(`${API_BASE_URL}/trades/export`, {
+    // Direct fetch for Blob response
+    const response = await fetch(`${API_BASE_URL}/trades/export/csv`, {
       method: 'GET',
       headers: { Authorization: `Bearer ${token}` },
     });

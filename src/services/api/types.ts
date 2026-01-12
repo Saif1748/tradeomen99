@@ -58,36 +58,33 @@ export interface Trade {
   instrument_type: InstrumentType;
   direction: TradeSide;
   status: TradeStatus;
-  
-  // Financials
   entry_price: number;
   quantity: number;
   exit_price?: number | null;
   stop_loss?: number | null;
   target?: number | null;
-  fees: number; // Mandatory in backend (defaults to 0.0)
+  fees: number;
   pnl?: number | null;
-
-  // Timestamps
-  entry_time: string; // ISO String
+  entry_time: string;
   exit_time?: string | null;
   created_at: string;
 
   // Metadata
-  notes?: string | null; // Maps to 'encrypted_notes' or 'notes'
-  tags: string[];
-  metadata: Record<string, any>;
-  strategy_id?: string | null;
+  notes?: string | null;
+  encrypted_notes?: string | null; // DB Column
+  tags?: string[];
   
-  // Relations
+  // Screenshots
+  screenshots?: string[] | string | null; 
+  encrypted_screenshots?: string[] | string | null; // DB Column
+  
+  strategy_id?: string | null;
   strategies?: {
-    id?: string;
     name: string;
     emoji?: string;
   } | null;
   
-  // Media
-  encrypted_screenshots?: string | null;
+  metadata?: Record<string, any>;
 }
 
 export interface CreateTradeInput {

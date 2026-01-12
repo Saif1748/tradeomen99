@@ -13,9 +13,10 @@ import {
   Note,
   Image,
   ArrowRight,
+  Spinner,
 } from "@phosphor-icons/react";
-import { format } from "date-fns";
-import { Trade } from "@/lib/tradesData";
+import { format, formatDistance } from "date-fns";
+import { useQuery } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,14 +27,16 @@ import {
 } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { UITrade } from "@/hooks/use-trades";
+import { tradesApi } from "@/services/api/modules/trades";
 
 interface TradeDetailSheetProps {
-  trade: Trade | null;
+  trade: UITrade | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onEdit: (trade: Trade) => void;
-  onDelete: (trade: Trade) => void;
-  allTrades?: Trade[];
+  onEdit: (trade: UITrade) => void;
+  onDelete: (trade: UITrade) => void;
+  allTrades?: UITrade[];
 }
 
 const TradeDetailSheet = ({
@@ -44,16 +47,47 @@ const TradeDetailSheet = ({
   onDelete,
   allTrades = [],
 }: TradeDetailSheetProps) => {
+  // --- 1. Fetch Full Details (Notes & Signed Screenshots) ---
+  // The list view trade object might contain raw/encrypted paths. 
+  // We need to hit the backend to get signed URLs and full notes.
+  const { data: fullDetails, isLoading } = useQuery({
+    queryKey: ["trade", trade?.id],
+    queryFn: async () => {
+      if (!trade?.id) return null;
+      // Fetch trade details which includes 'screenshots_signed' and decrypted 'notes'
+      return await tradesApi.getOne(trade.id);
+    },
+    enabled: !!trade && open, // Only fetch when sheet is open
+    staleTime: 1000 * 60 * 5, // Cache for 5 mins
+  });
+
   if (!trade) return null;
 
-  const rrRatio = trade.stopLoss
-    ? Math.abs((trade.target - trade.entryPrice) / (trade.entryPrice - trade.stopLoss))
-    : 0;
+  // --- Dynamic Calculations ---
+  const entryPrice = trade.entryPrice;
+  const stopLoss = trade.stopLoss || 0;
+  const target = trade.target || 0;
+  const quantity = trade.quantity;
 
-  // Find related trades (same symbol, different trade)
+  const riskPerShare = stopLoss ? Math.abs(entryPrice - stopLoss) : 0;
+  const rewardPerShare = target ? Math.abs(target - entryPrice) : 0;
+  
+  const rrRatio = riskPerShare > 0 ? (rewardPerShare / riskPerShare) : 0;
+  const totalRisk = riskPerShare * quantity;
+
+  const timeLabel = formatDistance(trade.date, new Date(), { addSuffix: true });
+
   const relatedTrades = allTrades
     .filter((t) => t.symbol === trade.symbol && t.id !== trade.id)
     .slice(0, 3);
+
+  // --- Resolve Data for Display ---
+  // Prefer fresh data from the single-fetch, fallback to the list prop
+  const displayNotes = fullDetails?.notes || trade.notes || "";
+  
+  // The backend returns 'screenshots_signed' as an array of { path, url } objects
+  // We cast to any here because the TS type definition might not include this dynamic field yet
+  const signedScreenshots = (fullDetails as any)?.screenshots_signed || [];
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -119,11 +153,11 @@ const TradeDetailSheet = ({
             <div className="text-right">
               <p
                 className={`text-3xl font-medium tracking-tight ${
-                  trade.pnl >= 0 ? "text-emerald-400" : "text-rose-400"
+                  (trade.pnl || 0) >= 0 ? "text-emerald-400" : "text-rose-400"
                 }`}
               >
-                {trade.pnl >= 0 ? "+" : ""}$
-                {Math.abs(trade.pnl).toLocaleString("en-US", {
+                {(trade.pnl || 0) >= 0 ? "+" : ""}$
+                {Math.abs(trade.pnl || 0).toLocaleString("en-US", {
                   minimumFractionDigits: 2,
                   maximumFractionDigits: 2,
                 })}
@@ -154,7 +188,7 @@ const TradeDetailSheet = ({
                   <span className="text-muted-foreground">Exit</span>
                 </div>
                 <span className="font-medium text-foreground">
-                  ${trade.exitPrice.toLocaleString()}
+                  {trade.exitPrice ? `$${trade.exitPrice.toLocaleString()}` : "-"}
                 </span>
               </div>
 
@@ -168,7 +202,7 @@ const TradeDetailSheet = ({
                   <span className="text-muted-foreground">Stop Loss</span>
                 </div>
                 <span className="font-medium text-foreground">
-                  ${trade.stopLoss.toLocaleString()}
+                  {trade.stopLoss ? `$${trade.stopLoss.toLocaleString()}` : "-"}
                 </span>
               </div>
 
@@ -182,7 +216,7 @@ const TradeDetailSheet = ({
                   <span className="text-muted-foreground">Target</span>
                 </div>
                 <span className="font-medium text-foreground">
-                  ${trade.target.toLocaleString()}
+                  {trade.target ? `$${trade.target.toLocaleString()}` : "-"}
                 </span>
               </div>
             </div>
@@ -206,10 +240,10 @@ const TradeDetailSheet = ({
                   <div className="p-2 rounded-lg bg-primary/10">
                     <CurrencyDollar weight="regular" className="w-4 h-4 text-primary" />
                   </div>
-                  <span className="text-muted-foreground">Risk</span>
+                  <span className="text-muted-foreground">Total Risk</span>
                 </div>
                 <span className="font-medium text-foreground">
-                  ${trade.risk.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                  ${totalRisk.toLocaleString("en-US", { minimumFractionDigits: 2 })}
                 </span>
               </div>
 
@@ -232,9 +266,9 @@ const TradeDetailSheet = ({
                   <div className="p-2 rounded-lg bg-primary/10">
                     <Clock weight="regular" className="w-4 h-4 text-primary" />
                   </div>
-                  <span className="text-muted-foreground">Hold Time</span>
+                  <span className="text-muted-foreground">Entry Time</span>
                 </div>
-                <span className="font-medium text-foreground">{trade.holdTime}</span>
+                <span className="font-medium text-foreground">{timeLabel}</span>
               </div>
 
               <Separator className="bg-border/50" />
@@ -252,24 +286,55 @@ const TradeDetailSheet = ({
               </div>
             </div>
 
-            {/* Trade Notes */}
+            {/* Trade Notes (Uses fetched fresh data) */}
             <div className="glass-card p-4 rounded-xl">
               <div className="flex items-center gap-2 mb-3">
                 <Note weight="regular" className="w-4 h-4 text-muted-foreground" />
                 <h4 className="text-sm font-medium text-foreground">Trade Notes</h4>
               </div>
-              <p className="text-sm text-muted-foreground">
-                {trade.notes || "No notes added."}
-              </p>
+              {isLoading ? (
+                <div className="flex items-center gap-2 text-muted-foreground text-sm">
+                  <Spinner className="animate-spin" /> Loading notes...
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground whitespace-pre-line leading-relaxed">
+                  {displayNotes || "No notes added."}
+                </p>
+              )}
             </div>
 
-            {/* Screenshots */}
+            {/* Screenshots (Uses Signed URLs from Backend) */}
             <div className="glass-card p-4 rounded-xl">
               <div className="flex items-center gap-2 mb-3">
                 <Image weight="regular" className="w-4 h-4 text-muted-foreground" />
                 <h4 className="text-sm font-medium text-foreground">Screenshots</h4>
               </div>
-              <p className="text-sm text-muted-foreground">No screenshots attached.</p>
+              
+              {isLoading ? (
+                <div className="flex items-center gap-2 text-muted-foreground text-sm py-4">
+                  <Spinner className="animate-spin" /> Loading screenshots...
+                </div>
+              ) : signedScreenshots.length > 0 ? (
+                 <div className="grid grid-cols-2 gap-2">
+                    {signedScreenshots.map((file: any, idx: number) => (
+                        <a 
+                          key={idx} 
+                          href={file.url} 
+                          target="_blank" 
+                          rel="noopener noreferrer" 
+                          className="block relative aspect-video rounded-lg overflow-hidden border border-border/50 hover:border-primary/50 transition-colors group"
+                        >
+                            <img 
+                              src={file.url} 
+                              alt={`Screenshot ${idx + 1}`} 
+                              className="object-cover w-full h-full transition-transform duration-300 group-hover:scale-105" 
+                            />
+                        </a>
+                    ))}
+                 </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">No screenshots attached.</p>
+              )}
             </div>
 
             {/* Strategy & Tags */}
@@ -283,7 +348,7 @@ const TradeDetailSheet = ({
                   variant="outline"
                   className="border-border/50 bg-secondary/50 text-foreground"
                 >
-                  {trade.strategy}
+                  {trade.strategy || "No Strategy"}
                 </Badge>
                 {trade.tags.map((tag, index) => (
                   <Badge
@@ -312,7 +377,7 @@ const TradeDetailSheet = ({
                   {relatedTrades.map((relatedTrade) => (
                     <div
                       key={relatedTrade.id}
-                      className="flex items-center justify-between py-2"
+                      className="flex items-center justify-between py-2 border-t border-border/30 first:border-0"
                     >
                       <div className="flex items-center gap-2">
                         <Badge
@@ -331,11 +396,11 @@ const TradeDetailSheet = ({
                       </div>
                       <span
                         className={`text-sm font-medium ${
-                          relatedTrade.pnl >= 0 ? "text-emerald-400" : "text-rose-400"
+                          (relatedTrade.pnl || 0) >= 0 ? "text-emerald-400" : "text-rose-400"
                         }`}
                       >
-                        {relatedTrade.pnl >= 0 ? "+" : ""}$
-                        {Math.abs(relatedTrade.pnl).toLocaleString("en-US", {
+                        {(relatedTrade.pnl || 0) >= 0 ? "+" : ""}$
+                        {Math.abs(relatedTrade.pnl || 0).toLocaleString("en-US", {
                           minimumFractionDigits: 2,
                         })}
                       </span>

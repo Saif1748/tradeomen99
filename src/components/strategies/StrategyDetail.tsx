@@ -2,22 +2,46 @@ import { useState } from "react";
 import { ArrowLeft, PencilSimple, Trash, TrendUp, TrendDown } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Strategy } from "@/lib/strategiesData";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { useCurrency } from "@/contexts/CurrencyContext";
+
+// Define the shape coming from the parent (Strategies.tsx)
+interface ExtendedStrategy {
+  id: string;
+  name: string;
+  description?: string;
+  emoji?: string;
+  style?: string;
+  instrument_types?: string[]; // API field
+  rules?: Record<string, string[]>; // API JSONB field
+  
+  // Stats passed from parent
+  netPnl: number;
+  winRate: number;
+  totalTrades: number;
+  profitFactor: number;
+  expectancy: number;
+  avgWin: number;
+  avgLoss: number;
+}
 
 interface StrategyDetailProps {
-  strategy: Strategy;
+  strategy: any; // Using any or the interface above to be flexible with the parent casting
   onBack: () => void;
   onEdit: () => void;
   onDelete: () => void;
 }
 
-const StrategyDetail = ({ strategy, onBack, onEdit, onDelete }: StrategyDetailProps) => {
+const StrategyDetail = ({ strategy: data, onBack, onEdit, onDelete }: StrategyDetailProps) => {
+  const strategy = data as ExtendedStrategy;
   const [activeTab, setActiveTab] = useState("rules");
+  const { format, currency } = useCurrency();
 
   const pnlColor = strategy.netPnl >= 0 ? "text-emerald-400" : "text-rose-400";
   const winRateColor = strategy.winRate >= 50 ? "text-emerald-400" : "text-rose-400";
+
+  // Convert rules object to array for rendering if it exists
+  const ruleEntries = strategy.rules ? Object.entries(strategy.rules) : [];
 
   return (
     <div className="space-y-6">
@@ -34,19 +58,19 @@ const StrategyDetail = ({ strategy, onBack, onEdit, onDelete }: StrategyDetailPr
           </Button>
           <div>
             <div className="flex items-center gap-3 mb-2">
-              <span className="text-3xl">{strategy.icon}</span>
+              <span className="text-3xl">{strategy.emoji || "♟️"}</span>
               <h1 className="text-2xl font-medium text-foreground tracking-tight-premium">
                 {strategy.name}
               </h1>
             </div>
             <p className="text-muted-foreground max-w-2xl mb-3">
-              {strategy.description}
+              {strategy.description || "No description provided."}
             </p>
             <div className="flex flex-wrap gap-2">
               <Badge variant="outline" className="border-border text-foreground">
-                {strategy.style}
+                {strategy.style || "General"}
               </Badge>
-              {strategy.instruments.map((instrument) => (
+              {strategy.instrument_types?.map((instrument) => (
                 <Badge key={instrument} variant="outline" className="border-border text-foreground">
                   {instrument}
                 </Badge>
@@ -75,9 +99,9 @@ const StrategyDetail = ({ strategy, onBack, onEdit, onDelete }: StrategyDetailPr
           <p className={`text-2xl font-medium ${winRateColor}`}>{strategy.winRate.toFixed(1)}%</p>
         </div>
         <div className="glass-card p-5 rounded-xl">
-          <p className="text-sm text-muted-foreground mb-1">Net P&L (USD)</p>
+          <p className="text-sm text-muted-foreground mb-1">Net P&L ({currency})</p>
           <p className={`text-2xl font-medium ${pnlColor}`}>
-            {strategy.netPnl >= 0 ? '+' : ''}${strategy.netPnl.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+            {strategy.netPnl >= 0 ? '+' : ''}{format(Math.abs(strategy.netPnl))}
           </p>
         </div>
         <div className="glass-card p-5 rounded-xl">
@@ -93,7 +117,7 @@ const StrategyDetail = ({ strategy, onBack, onEdit, onDelete }: StrategyDetailPr
           <div>
             <p className="text-sm text-muted-foreground mb-1">Expectancy</p>
             <p className={`text-xl font-medium ${strategy.expectancy >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-              ${strategy.expectancy.toFixed(2)}
+              {format(strategy.expectancy)}
             </p>
           </div>
           <div>
@@ -101,7 +125,7 @@ const StrategyDetail = ({ strategy, onBack, onEdit, onDelete }: StrategyDetailPr
             <div className="flex items-center gap-2">
               <TrendUp weight="regular" className="w-4 h-4 text-emerald-400" />
               <p className="text-xl font-medium text-emerald-400">
-                +${strategy.avgWin.toFixed(2)}
+                +{format(strategy.avgWin)}
               </p>
             </div>
           </div>
@@ -110,7 +134,7 @@ const StrategyDetail = ({ strategy, onBack, onEdit, onDelete }: StrategyDetailPr
             <div className="flex items-center gap-2">
               <TrendDown weight="regular" className="w-4 h-4 text-rose-400" />
               <p className="text-xl font-medium text-rose-400">
-                -${strategy.avgLoss.toFixed(2)}
+                -{format(strategy.avgLoss)}
               </p>
             </div>
           </div>
@@ -133,22 +157,28 @@ const StrategyDetail = ({ strategy, onBack, onEdit, onDelete }: StrategyDetailPr
 
         <TabsContent value="rules" className="mt-4">
           <div className="grid md:grid-cols-2 gap-4">
-            {strategy.ruleGroups.map((group) => (
-              <div key={group.id} className="glass-card p-5 rounded-xl">
-                <h3 className="font-medium text-foreground mb-3">{group.name} Rules</h3>
-                <ul className="space-y-2">
-                  {group.rules.map((rule, index) => (
-                    <li key={index} className="flex items-start gap-2 text-sm text-muted-foreground">
-                      <div className="w-1.5 h-1.5 rounded-full bg-primary mt-2 flex-shrink-0" />
-                      <span>{rule}</span>
-                    </li>
-                  ))}
-                  {group.rules.length === 0 && (
-                    <li className="text-sm text-muted-foreground/50 italic">No rules defined</li>
-                  )}
-                </ul>
+            {ruleEntries.length > 0 ? (
+              ruleEntries.map(([categoryName, rules]) => (
+                <div key={categoryName} className="glass-card p-5 rounded-xl">
+                  <h3 className="font-medium text-foreground mb-3">{categoryName} Rules</h3>
+                  <ul className="space-y-2">
+                    {Array.isArray(rules) && rules.map((rule, index) => (
+                      <li key={index} className="flex items-start gap-2 text-sm text-muted-foreground">
+                        <div className="w-1.5 h-1.5 rounded-full bg-primary mt-2 flex-shrink-0" />
+                        <span>{rule}</span>
+                      </li>
+                    ))}
+                    {(!rules || rules.length === 0) && (
+                      <li className="text-sm text-muted-foreground/50 italic">No rules defined</li>
+                    )}
+                  </ul>
+                </div>
+              ))
+            ) : (
+              <div className="col-span-2 text-center py-12 text-muted-foreground bg-secondary/20 rounded-xl">
+                No rules defined for this strategy.
               </div>
-            ))}
+            )}
           </div>
         </TabsContent>
 

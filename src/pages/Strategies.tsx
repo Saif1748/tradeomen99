@@ -26,11 +26,22 @@ import StrategyCard from "@/components/strategies/StrategyCard";
 import CreateStrategyModal from "@/components/strategies/CreateStrategyModal";
 import EditStrategyModal from "@/components/strategies/EditStrategyModal";
 import StrategyDetail from "@/components/strategies/StrategyDetail";
-import { Strategy, generateMockStrategies, calculateStrategyStats, strategyStyles } from "@/lib/strategiesData";
+import { Strategy, calculateStrategyStats, strategyStyles } from "@/lib/strategiesData";
 import { toast } from "sonner";
 
+// ✅ Hooks & Context
+import { useStrategies, UIStrategy } from "@/hooks/use-strategies";
+import { useAuth } from "@/hooks/use-Auth";
+import { useModal } from "@/contexts/ModalContext"; 
+import { Skeleton } from "@/components/ui/skeleton";
+
 const Strategies = () => {
-  const [strategies, setStrategies] = useState<Strategy[]>(generateMockStrategies());
+  // --- 1. Real Data Hooks ---
+  const { strategies: realStrategies, isLoading, createStrategy, updateStrategy, deleteStrategy } = useStrategies();
+  const { profile } = useAuth();
+  const { openUpgradeModal } = useModal();
+
+  // --- 2. State ---
   const [selectedStrategy, setSelectedStrategy] = useState<Strategy | null>(null);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -39,51 +50,142 @@ const Strategies = () => {
   const [styleFilter, setStyleFilter] = useState("all");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
+  // --- 3. Data Adapter (API -> UI) ---
+  // We create a "Hybrid" object that satisfies both the Legacy UI components
+  // and the new EditModal which might expect backend fields.
+  const strategies: Strategy[] = useMemo(() => {
+    return realStrategies.map((s: UIStrategy) => {
+      // Map Backend Rules (Object) -> UI Rules (Array of Groups)
+      const ruleGroups = s.rules 
+        ? Object.entries(s.rules).map(([name, rules], i) => ({
+            id: `g-${i}`,
+            name,
+            rules
+          }))
+        : [];
+
+      const mapped = {
+        id: s.id,
+        name: s.name,
+        description: s.description,
+        
+        // UI uses 'icon', Backend uses 'emoji'
+        icon: s.emoji, 
+        emoji: s.emoji, // Keep both for compatibility
+        
+        color: s.color,
+        color_hex: s.color, // Keep both
+        
+        style: s.style,
+        
+        // UI uses 'instruments', Backend uses 'instrumentTypes'
+        instruments: s.instrumentTypes || [],
+        instrument_types: s.instrumentTypes, // For EditModal
+        
+        // UI uses 'ruleGroups', Backend uses 'rules' object
+        ruleGroups: ruleGroups,
+        rules: s.rules, // For EditModal
+        
+        track_missed_trades: s.trackMissed,
+        createdAt: s.createdAt.toISOString(),
+        
+        // Mock/Placeholder Stats for UI visualization
+        totalTrades: Math.floor(Math.random() * 50),
+        winRate: Math.floor(Math.random() * 100),
+        netPnl: Math.floor(Math.random() * 5000) - 1000,
+        profitFactor: (Math.random() * 2 + 0.5),
+        expectancy: Math.random() * 100,
+        avgWin: 200,
+        avgLoss: 100
+      };
+      
+      return mapped as unknown as Strategy;
+    });
+  }, [realStrategies]);
+
   const stats = useMemo(() => calculateStrategyStats(strategies), [strategies]);
 
   const filteredStrategies = useMemo(() => {
     return strategies.filter(s => {
       const matchesSearch = s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        s.description.toLowerCase().includes(searchQuery.toLowerCase());
+        (s.description || "").toLowerCase().includes(searchQuery.toLowerCase());
       const matchesStyle = styleFilter === "all" || s.style === styleFilter;
       return matchesSearch && matchesStyle;
     });
   }, [strategies, searchQuery, styleFilter]);
 
-  const handleCreateStrategy = (newStrategy: Omit<Strategy, 'id' | 'createdAt' | 'totalTrades' | 'winRate' | 'netPnl' | 'profitFactor' | 'expectancy' | 'avgWin' | 'avgLoss'>) => {
-    const strategy: Strategy = {
-      ...newStrategy,
-      id: Date.now().toString(),
-      createdAt: new Date().toISOString().split('T')[0],
-      totalTrades: 0,
-      winRate: 0,
-      netPnl: 0,
-      profitFactor: 0,
-      expectancy: 0,
-      avgWin: 0,
-      avgLoss: 0
+  // --- 4. Handlers (Connected to API) ---
+
+  const handleCreateClick = () => {
+    const plan = profile?.plan_tier || "FREE";
+    const limit = (plan === "PRO" || plan === "PREMIUM") ? 1000 : 1;
+
+    if (strategies.length >= limit) {
+      openUpgradeModal(`Free plan is limited to ${limit} strategy. Upgrade for unlimited.`);
+      return;
+    }
+    setCreateModalOpen(true);
+  };
+
+  const handleCreateStrategy = (newStrategy: any) => {
+    // Map UI form fields to API payload
+    const payload = {
+        ...newStrategy,
+        emoji: newStrategy.icon, // UI returns icon, API needs emoji
+        color: newStrategy.color || "#FFFFFF",
+        instrumentTypes: newStrategy.instruments, // UI returns instruments
+        trackMissed: false
     };
-    setStrategies(prev => [...prev, strategy]);
-    toast.success("Strategy created successfully");
+
+    createStrategy(payload, {
+        onSuccess: () => {
+            setCreateModalOpen(false);
+        }
+    });
   };
 
   const handleUpdateStrategy = (updatedStrategy: Strategy) => {
-    setStrategies(prev =>
-      prev.map(s => s.id === updatedStrategy.id ? updatedStrategy : s)
-    );
+    // The EditModal now handles the transformation, so we just pass the ID and the raw data structure
+    // But since we are using the hook inside the modal, we just need to trigger the refresh here if needed
+    // or simply update local state. 
+    // Actually, react-query invalidation in the hook will auto-update 'strategies',
+    // so we just need to update the selectedStrategy view.
+    
+    // We fetch the fresh object from the updated list to keep 'selectedStrategy' in sync
+    // This is handled by the hook's onSuccess usually, but here we can just update the view
+    // assuming the modal handles the mutation.
+    
     setSelectedStrategy(updatedStrategy);
-    toast.success("Strategy updated successfully");
   };
 
   const handleDeleteStrategy = () => {
     if (!selectedStrategy) return;
-    setStrategies(prev => prev.filter(s => s.id !== selectedStrategy.id));
-    setSelectedStrategy(null);
-    setDeleteDialogOpen(false);
-    toast.success("Strategy deleted");
+    deleteStrategy(selectedStrategy.id, {
+        onSuccess: () => {
+            setSelectedStrategy(null);
+            setDeleteDialogOpen(false);
+        }
+    });
   };
 
-  // Show detail view if a strategy is selected
+  // --- 5. Render ---
+
+  if (isLoading) {
+    return (
+      <DashboardLayout>
+        <PageHeader 
+            title="Strategies" 
+            icon={<Sword weight="duotone" className="w-6 h-6 text-primary" />} 
+            onMobileMenuOpen={() => setMobileMenuOpen(true)}
+        />
+        <div className="p-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[1, 2, 3].map(i => <Skeleton key={i} className="h-[280px] rounded-xl" />)}
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  // Detail View
   if (selectedStrategy) {
     return (
       <DashboardLayout>
@@ -131,6 +233,7 @@ const Strategies = () => {
     );
   }
 
+  // Main List View
   return (
     <DashboardLayout>
       <PageHeader
@@ -138,7 +241,7 @@ const Strategies = () => {
         icon={<Sword weight="duotone" className="w-6 h-6 text-primary" />}
         onMobileMenuOpen={() => setMobileMenuOpen(true)}
       >
-        <Button onClick={() => setCreateModalOpen(true)} className="glow-button gap-2 text-white">
+        <Button onClick={handleCreateClick} className="glow-button gap-2 text-white">
           <Plus weight="bold" className="w-4 h-4" />
           <span className="hidden sm:inline">New Strategy</span>
           <span className="sm:hidden">New</span>
