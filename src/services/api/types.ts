@@ -231,3 +231,40 @@ export interface NewsResult {
   sources: { title: string; url: string; snippet?: string }[];
   related_questions: string[];
 }
+
+export interface DashboardStats {
+  // Money
+  netPL: number;
+  grossProfit: number;
+  grossLoss: number;
+  fees: number;
+  maxDrawdown: number;
+
+  // Ratios
+  profitFactor: number;
+  winRate: number;
+  payoffRatio: number;
+  expectancy: number;
+  sharpeRatio: number;
+  sqn: number;
+
+  // Trade Stats
+  totalTrades: number;
+  avgWin: number;
+  avgLoss: number;
+  largestWin: number;
+  largestLoss: number;
+  avgHoldTimeHours: number;
+
+  // Streaks & Bias
+  maxWinStreak: number;
+  maxLossStreak: number;
+  longWinRate: number;
+  shortWinRate: number;
+
+  // Charts
+  dailyData: { date: string; value: number }[];
+  cumulativeData: { date: string; value: number }[];
+  strategyPerformance: { name: string; value: number }[];
+  topInstruments: { symbol: string; type: string; pnl: number; winRate: number }[];
+}

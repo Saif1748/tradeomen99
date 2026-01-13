@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Wallet } from "@phosphor-icons/react";
+import { Wallet, TrendUp, TrendDown } from "@phosphor-icons/react";
 import { DateRange } from "react-day-picker";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import DashboardHeader from "@/components/dashboard/DashboardHeader";
@@ -9,42 +9,36 @@ import ChartCard from "@/components/dashboard/ChartCard";
 import RecentTrades from "@/components/dashboard/RecentTrades";
 import MiniCalendar from "@/components/dashboard/MiniCalendar";
 import { useSettings } from "@/contexts/SettingsContext";
-
-// Sample data
-const areaChartData = [
-  { date: "Dec 1", value: 0 },
-  { date: "Dec 5", value: 120 },
-  { date: "Dec 9", value: 80 },
-  { date: "Dec 13", value: 200 },
-  { date: "Dec 17", value: -50 },
-  { date: "Dec 21", value: 150 },
-  { date: "Dec 23", value: 248 },
-];
-
-const barChartData = [
-  { date: "Dec 18", positive: 120, negative: 0 },
-  { date: "Dec 19", positive: 0, negative: -42 },
-  { date: "Dec 20", positive: 156, negative: 0 },
-  { date: "Dec 21", positive: 0, negative: -85 },
-  { date: "Dec 22", positive: 248, negative: 0 },
-  { date: "Dec 23", positive: 85, negative: 0 },
-];
-
-const radarChartData = [
-  { metric: "Win %", value: 68 },
-  { metric: "Profit Factor", value: 78 },
-  { metric: "Avg Win/Loss", value: 85 },
-  { metric: "Consistency", value: 72 },
-  { metric: "Risk Mgmt", value: 80 },
-];
+import { useDashboardStats } from "@/hooks/use-dashboard-stats";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const Dashboard = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { formatCurrency, getCurrencySymbol } = useSettings();
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
-    from: new Date(2024, 11, 1),
-    to: new Date(2024, 11, 31),
+    from: new Date(new Date().getFullYear(), new Date().getMonth(), 1), // Start of current month
+    to: new Date(),
   });
+
+  // Fetch Real Data via Hook
+  const { data: stats, isLoading } = useDashboardStats();
+
+  // --- Transform Data for Charts ---
+
+  // 1. Radar Chart: Metrics vs "Ideal" (Normalized roughly to 100 for display)
+  // Logic: 
+  // - Win Rate is already 0-100
+  // - Profit Factor: 2.0+ is great, so we scale it. 5.0 -> 100
+  // - SQN: 2.5 is good, 5.0+ is holy grail. 5.0 -> 100
+  const radarChartData = [
+    { metric: "Win %", value: stats?.winRate || 0 },
+    { metric: "Profit Factor", value: Math.min((stats?.profitFactor || 0) * 20, 100) }, 
+    { metric: "SQN", value: Math.min((stats?.sqn || 0) * 20, 100) }, 
+    { metric: "Long Win%", value: stats?.longWinRate || 0 },
+    { metric: "Short Win%", value: stats?.shortWinRate || 0 },
+  ];
+
+  const netPlTrend = stats?.netPL && stats.netPL >= 0 ? "up" : "down";
 
   return (
     <DashboardLayout>
@@ -56,72 +50,118 @@ const Dashboard = () => {
 
       {/* Welcome Message */}
       <div className="px-4 sm:px-6 lg:px-8 pb-4 pt-2">
-        <p className="text-sm text-muted-foreground">Welcome back! Here's your trading overview.</p>
+        <p className="text-sm text-muted-foreground">
+          Welcome back! Here's your real-time trading performance.
+        </p>
       </div>
 
       <div className="px-4 sm:px-6 lg:px-8 pb-6 space-y-4 sm:space-y-6">
-        {/* Metrics Row - All same height */}
-        <div className="grid grid-cols-2 sm:grid-cols-2 xl:grid-cols-5 gap-2 sm:gap-3 lg:gap-4">
-          <div className="h-[120px]">
-            <MetricCard
-              title="Net P&L"
-              value={`${getCurrencySymbol()}2,486.50`}
-              subtitle="12 trades"
-              icon={<Wallet weight="regular" className="w-5 h-5" />}
-              trend="up"
-              trendValue="12.4%"
-            />
+        
+        {/* === METRICS ROW === */}
+        {isLoading ? (
+          <div className="grid grid-cols-2 sm:grid-cols-2 xl:grid-cols-5 gap-2 sm:gap-3 lg:gap-4 h-[120px]">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <Skeleton key={i} className="h-full w-full rounded-2xl bg-secondary/30" />
+            ))}
           </div>
-          <div className="h-[120px]">
-            <MetricCard
-              title="Trade Expectancy"
-              value={`${getCurrencySymbol()}248.78`}
-              trend="up"
-              trendValue="8.2%"
-            />
-          </div>
-          <div className="hidden xl:block h-[120px]">
-            <GaugeMetric title="Profit Factor" value={1.82} type="arc" />
-          </div>
-          <div className="hidden xl:block h-[120px]">
-            <GaugeMetric title="Win Rate" value={68.5} type="donut" />
-          </div>
-          <div className="hidden xl:block h-[120px]">
-            <GaugeMetric title="Avg Win/Loss" value={1.83} type="bar" />
-          </div>
-        </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-2 xl:grid-cols-5 gap-2 sm:gap-3 lg:gap-4">
+            
+            {/* 1. Net P&L */}
+            <div className="h-[120px]">
+              <MetricCard
+                title="Net P&L"
+                value={`${getCurrencySymbol()}${formatCurrency(stats?.netPL || 0)}`}
+                subtitle={`${stats?.totalTrades || 0} trades`}
+                icon={<Wallet weight="regular" className="w-5 h-5" />}
+                trend={netPlTrend}
+                trendValue={stats?.profitFactor ? `PF ${stats.profitFactor}` : "0.00"}
+              />
+            </div>
 
-        {/* Mobile: Gauge metrics in a row */}
+            {/* 2. Expectancy */}
+            <div className="h-[120px]">
+              <MetricCard
+                title="Expectancy"
+                value={`${getCurrencySymbol()}${formatCurrency(stats?.expectancy || 0)}`}
+                subtitle="Per Trade"
+                icon={
+                  stats?.expectancy && stats.expectancy >= 0 ? 
+                  <TrendUp className="text-emerald-500 w-5 h-5" /> : 
+                  <TrendDown className="text-rose-500 w-5 h-5" />
+                }
+                trend="neutral"
+                trendValue={stats?.payoffRatio ? `R:R ${stats.payoffRatio}` : "0.00"}
+              />
+            </div>
+
+            {/* 3. Gauge: Profit Factor */}
+            <div className="hidden xl:block h-[120px]">
+              <GaugeMetric 
+                title="Profit Factor" 
+                value={stats?.profitFactor || 0} 
+                type="arc" 
+              />
+            </div>
+
+            {/* 4. Gauge: Win Rate */}
+            <div className="hidden xl:block h-[120px]">
+              <GaugeMetric 
+                title="Win Rate" 
+                value={stats?.winRate || 0} 
+                type="donut" 
+              />
+            </div>
+
+            {/* 5. Gauge: SQN */}
+            <div className="hidden xl:block h-[120px]">
+              <GaugeMetric 
+                title="System Quality (SQN)" 
+                value={stats?.sqn || 0} 
+                type="bar" 
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Mobile: Gauge metrics row */}
         <div className="grid grid-cols-3 gap-2 xl:hidden">
-          <GaugeMetric title="Profit Factor" value={1.82} type="arc" compact />
-          <GaugeMetric title="Win Rate" value={68.5} type="donut" compact />
-          <GaugeMetric title="Avg W/L" value={1.83} type="bar" compact />
+          <GaugeMetric title="Profit Factor" value={stats?.profitFactor || 0} type="arc" compact />
+          <GaugeMetric title="Win Rate" value={stats?.winRate || 0} type="donut" compact />
+          <GaugeMetric title="SQN" value={stats?.sqn || 0} type="bar" compact />
         </div>
 
-        {/* Charts Row */}
+        {/* === CHARTS ROW === */}
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
+          
+          {/* Radar: Trading Personality */}
           <ChartCard
-            title="Trading Score"
+            title="Trading Personality"
             type="radar"
             data={radarChartData}
           />
+
+          {/* Area: Equity Curve */}
           <ChartCard
-            title="Cumulative P&L"
+            title="Equity Curve"
             type="area"
-            data={areaChartData}
+            data={stats?.cumulativeData || []}
           />
+
+          {/* Bar: Daily P&L */}
           <div className="lg:col-span-2 xl:col-span-1">
             <ChartCard
               title="Daily P&L"
               type="bar"
-              data={barChartData}
+              data={stats?.dailyData || []}
             />
           </div>
         </div>
 
-        {/* Bottom Row */}
+        {/* === BOTTOM ROW === */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
-          <RecentTrades />
+          {/* Recent Trades: Uses its own fetch logic via useTrades internally */}
+          <RecentTrades /> 
           <MiniCalendar />
         </div>
       </div>
