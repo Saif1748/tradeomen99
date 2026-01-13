@@ -10,17 +10,22 @@ import type {
 export const tradesApi = {
   /**
    * Get paginated trades.
-   * Default batch size is 35.
+   * supports optional date range filtering for calendar views.
    */
-  getAll: (page = 1, limit = 35) => {
+  getAll: (page = 1, limit = 35, filters?: { startDate?: string; endDate?: string }) => {
     const params = new URLSearchParams({
       page: String(page),
       limit: String(limit),
     });
-    // Ensure trailing slash to avoid 307 redirects
+
+    // Add date filters if present
+    if (filters?.startDate) params.append("start_date", filters.startDate);
+    if (filters?.endDate) params.append("end_date", filters.endDate);
+
     return request<PaginatedTradesResponse>(`/trades/?${params.toString()}`);
   },
 
+  // ... keep other existing methods (getOne, create, update, delete, etc.) ...
   getOne: (id: string) => request<Trade>(`/trades/${id}`),
 
   create: (data: Partial<Trade>) =>
@@ -42,7 +47,6 @@ export const tradesApi = {
     const { data: { session } } = await supabase.auth.getSession();
     const token = session?.access_token;
     
-    // Direct fetch for Blob response
     const response = await fetch(`${API_BASE_URL}/trades/export/csv`, {
       method: 'GET',
       headers: { Authorization: `Bearer ${token}` },

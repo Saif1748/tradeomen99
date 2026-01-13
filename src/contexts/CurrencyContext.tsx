@@ -1,71 +1,122 @@
-import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
-import { useAuth } from '@/hooks/use-Auth';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  ReactNode,
+  useEffect,
+  useMemo,
+} from "react";
+import { useAuth } from "@/hooks/use-Auth";
 
 interface CurrencyContextType {
-  currency: string; // e.g., "USD", "EUR"
-  symbol: string;   // e.g., "$", "€"
+  currency: string;
+  symbol: string;
   setCurrency: (code: string) => void;
-  format: (amount: number) => string; // Returns formatted string like "1,234.56"
+  format: (amountUSD: number) => string; // USD in → converted out
 }
 
-const CurrencyContext = createContext<CurrencyContextType | undefined>(undefined);
+const CurrencyContext = createContext<CurrencyContextType | undefined>(
+  undefined
+);
 
 export const useCurrency = () => {
   const context = useContext(CurrencyContext);
   if (!context) {
-    throw new Error('useCurrency must be used within a CurrencyProvider');
+    throw new Error("useCurrency must be used within a CurrencyProvider");
   }
   return context;
 };
 
 export const CurrencyProvider = ({ children }: { children: ReactNode }) => {
   const { profile } = useAuth();
-  
-  // Load initial currency from profile preference or default to USD
-  const [currency, setCurrencyState] = useState("USD");
 
-  // Sync with profile when loaded
+  const [currency, setCurrencyState] = useState("USD");
+  const [rate, setRate] = useState<number>(1);
+
+  // Sync currency from profile
   useEffect(() => {
     if (profile?.preferences?.currency) {
       setCurrencyState(profile.preferences.currency);
     }
   }, [profile]);
 
+  // Fetch USD → selected currency rate
+  useEffect(() => {
+    if (currency === "USD") {
+      setRate(1);
+      return;
+    }
+
+    let cancelled = false;
+
+    const fetchRate = async () => {
+      try {
+        const res = await fetch(
+          "https://open.er-api.com/v6/latest/USD"
+        );
+        const data = await res.json();
+
+        if (
+          !cancelled &&
+          data?.result === "success" &&
+          data?.rates?.[currency]
+        ) {
+          setRate(data.rates[currency]);
+        }
+      } catch (err) {
+        console.error("FX rate fetch failed:", err);
+        // Keep last known rate
+      }
+    };
+
+    fetchRate();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currency]);
+
   const setCurrency = (code: string) => {
     setCurrencyState(code);
-    // In a real app, you might also trigger an API call to save this preference here
   };
 
-  // Helper to get currency symbol (e.g. $) based on code
+  // Currency symbol
   const getSymbol = (currencyCode: string) => {
     try {
-      return (0).toLocaleString('en-US', { 
-        style: 'currency', 
-        currency: currencyCode, 
-        minimumFractionDigits: 0, 
-        maximumFractionDigits: 0 
-      }).replace(/\d/g, '').trim();
+      return (0).toLocaleString("en-US", {
+        style: "currency",
+        currency: currencyCode,
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+      })
+        .replace(/\d/g, "")
+        .trim();
     } catch {
       return currencyCode;
     }
   };
 
-  const symbol = getSymbol(currency);
+  const symbol = useMemo(() => getSymbol(currency), [currency]);
 
-  const format = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
+  // Convert USD → selected currency
+  const format = (amountUSD: number) => {
+    const converted = amountUSD * rate;
+
+    return new Intl.NumberFormat("en-US", {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
-    }).format(amount);
+    }).format(converted);
   };
 
   return (
-    <CurrencyContext.Provider value={{ 
-      currency, 
-      symbol, 
-      setCurrency, 
-      format 
-    }}>
+    <CurrencyContext.Provider
+      value={{
+        currency,
+        symbol,
+        setCurrency,
+        format,
+      }}
+    >
       {children}
     </CurrencyContext.Provider>
   );

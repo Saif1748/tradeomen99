@@ -1,21 +1,23 @@
 import { CaretLeft, CaretRight } from "@phosphor-icons/react";
 import { useState } from "react";
-
-const tradingDays: Record<number, { pnl: number; trades: number }> = {
-  7: { pnl: 628, trades: 2 },
-  8: { pnl: -120, trades: 1 },
-  12: { pnl: 340, trades: 3 },
-  15: { pnl: 890, trades: 4 },
-  18: { pnl: -45, trades: 1 },
-  20: { pnl: 156, trades: 2 },
-  22: { pnl: -85, trades: 1 },
-  23: { pnl: 248, trades: 1 },
-};
+import { useCalendar } from "@/hooks/use-calendar";
+import { useCurrency } from "@/contexts/CurrencyContext";
 
 const MiniCalendar = () => {
-  const [currentMonth] = useState(new Date(2024, 11)); // December 2024
-  const daysInMonth = new Date(2024, 12, 0).getDate();
-  const firstDayOfMonth = new Date(2024, 11, 1).getDay();
+  const [currentMonth, setCurrentMonth] = useState(new Date()); // Start with today
+
+  // Fetch real data using your existing hook
+  // We pass an empty Map for notes since the dashboard doesn't display them
+  const { monthData } = useCalendar(currentMonth, new Map());
+
+  // Currency conversion for display
+  const { format: formatUSD, symbol } = useCurrency();
+
+  const year = currentMonth.getFullYear();
+  const month = currentMonth.getMonth();
+
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const firstDayOfMonth = new Date(year, month, 1).getDay();
 
   const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   const monthName = currentMonth.toLocaleDateString("en-US", {
@@ -23,23 +25,47 @@ const MiniCalendar = () => {
     year: "numeric",
   });
 
+  const handlePrevMonth = () => {
+    setCurrentMonth(new Date(year, month - 1, 1));
+  };
+
+  const handleNextMonth = () => {
+    setCurrentMonth(new Date(year, month + 1, 1));
+  };
+
   const renderCalendarDays = () => {
-    const cells = [];
+    const cells: JSX.Element[] = [];
 
     // Empty cells for days before the first day of month
     for (let i = 0; i < firstDayOfMonth; i++) {
-      cells.push(
-        <div key={`empty-${i}`} className="h-12 rounded-lg" />
-      );
+      cells.push(<div key={`empty-${i}`} className="h-12 rounded-lg" />);
     }
 
     // Days of the month
     for (let day = 1; day <= daysInMonth; day++) {
-      const tradingData = tradingDays[day];
-      const hasTrading = !!tradingData;
-      const isProfit = tradingData?.pnl > 0;
-      const isLoss = tradingData?.pnl < 0;
-      const isToday = day === 23;
+      // Look up data from the Map using the date string key
+      const date = new Date(year, month, day);
+      const dateKey = date.toDateString();
+      const dayData = monthData.get(dateKey);
+
+      // Determine status based on real data
+      const hasTrading = !!(dayData && dayData.tradeCount > 0);
+      const isProfit = dayData ? dayData.totalPnL > 0 : false;
+
+      // Correct "Today" check
+      const today = new Date();
+      const isToday =
+        day === today.getDate() &&
+        month === today.getMonth() &&
+        year === today.getFullYear();
+
+      // Prepare PnL display (converted from USD -> selected currency)
+      let pnlDisplay = "";
+      if (hasTrading && dayData) {
+        const absUsd = Math.abs(dayData.totalPnL || 0);
+        // formatUSD expects USD input and returns converted formatted string (no symbol)
+        pnlDisplay = `${isProfit ? "+" : "-"}${symbol}${formatUSD(absUsd)}`;
+      }
 
       cells.push(
         <div
@@ -64,10 +90,12 @@ const MiniCalendar = () => {
           {hasTrading && (
             <span
               className={`text-[9px] font-light ${
-                isProfit ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
+                isProfit
+                  ? "text-emerald-600 dark:text-emerald-400"
+                  : "text-rose-600 dark:text-rose-400"
               }`}
             >
-              {isProfit ? "+" : ""}${Math.abs(tradingData.pnl)}
+              {pnlDisplay}
             </span>
           )}
         </div>
@@ -83,17 +111,17 @@ const MiniCalendar = () => {
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-light text-foreground">{monthName}</h3>
         <div className="flex items-center gap-1">
-          <button className="p-1.5 rounded-lg hover:bg-secondary/50 transition-colors">
-            <CaretLeft
-              weight="bold"
-              className="w-3.5 h-3.5 text-muted-foreground"
-            />
+          <button
+            onClick={handlePrevMonth}
+            className="p-1.5 rounded-lg hover:bg-secondary/50 transition-colors"
+          >
+            <CaretLeft weight="bold" className="w-3.5 h-3.5 text-muted-foreground" />
           </button>
-          <button className="p-1.5 rounded-lg hover:bg-secondary/50 transition-colors">
-            <CaretRight
-              weight="bold"
-              className="w-3.5 h-3.5 text-muted-foreground"
-            />
+          <button
+            onClick={handleNextMonth}
+            className="p-1.5 rounded-lg hover:bg-secondary/50 transition-colors"
+          >
+            <CaretRight weight="bold" className="w-3.5 h-3.5 text-muted-foreground" />
           </button>
         </div>
       </div>

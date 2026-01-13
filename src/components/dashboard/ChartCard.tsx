@@ -19,9 +19,13 @@ interface ChartCardProps {
   title: string;
   type: "area" | "bar" | "radar";
   data: any[];
+  valueFormatter?: (value: number) => string;
 }
 
-const ChartCard = ({ title, type, data }: ChartCardProps) => {
+const ChartCard = ({ title, type, data, valueFormatter }: ChartCardProps) => {
+  const formatValue = (value: number) =>
+    valueFormatter ? valueFormatter(value) : value;
+
   const renderChart = () => {
     switch (type) {
       case "area":
@@ -33,25 +37,26 @@ const ChartCard = ({ title, type, data }: ChartCardProps) => {
                   <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.4} />
                   <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0} />
                 </linearGradient>
-                <linearGradient id="areaGradientNeg" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="hsl(0 70% 50%)" stopOpacity={0} />
-                  <stop offset="100%" stopColor="hsl(0 70% 50%)" stopOpacity={0.4} />
-                </linearGradient>
               </defs>
+
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+
               <XAxis
                 dataKey="date"
                 tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }}
                 tickLine={false}
                 axisLine={false}
               />
+
               <YAxis
                 tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }}
                 tickLine={false}
                 axisLine={false}
-                tickFormatter={(value) => `$${value}`}
+                tickFormatter={formatValue}
               />
+
               <Tooltip
+                formatter={(value: number) => formatValue(value)}
                 contentStyle={{
                   backgroundColor: "hsl(var(--card))",
                   border: "1px solid hsl(var(--border))",
@@ -59,6 +64,7 @@ const ChartCard = ({ title, type, data }: ChartCardProps) => {
                   color: "hsl(var(--foreground))",
                 }}
               />
+
               <Area
                 type="monotone"
                 dataKey="value"
@@ -75,19 +81,23 @@ const ChartCard = ({ title, type, data }: ChartCardProps) => {
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={data}>
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+
               <XAxis
                 dataKey="date"
                 tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }}
                 tickLine={false}
                 axisLine={false}
               />
+
               <YAxis
                 tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }}
                 tickLine={false}
                 axisLine={false}
-                tickFormatter={(value) => `$${value}`}
+                tickFormatter={formatValue}
               />
+
               <Tooltip
+                formatter={(value: number) => formatValue(value)}
                 contentStyle={{
                   backgroundColor: "hsl(var(--card))",
                   border: "1px solid hsl(var(--border))",
@@ -95,16 +105,8 @@ const ChartCard = ({ title, type, data }: ChartCardProps) => {
                   color: "hsl(var(--foreground))",
                 }}
               />
-              <Bar
-                dataKey="positive"
-                fill="hsl(160 60% 45%)"
-                radius={[4, 4, 0, 0]}
-              />
-              <Bar
-                dataKey="negative"
-                fill="hsl(0 70% 50%)"
-                radius={[4, 4, 0, 0]}
-              />
+
+              <Bar dataKey="value" fill="hsl(160 60% 45%)" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         );
@@ -119,7 +121,6 @@ const ChartCard = ({ title, type, data }: ChartCardProps) => {
                 tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }}
               />
               <Radar
-                name="Score"
                 dataKey="value"
                 stroke="hsl(var(--primary))"
                 fill="hsl(var(--primary))"
