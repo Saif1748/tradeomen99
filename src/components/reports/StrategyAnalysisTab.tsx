@@ -1,6 +1,7 @@
 import { ArrowUp, ArrowDown } from "@phosphor-icons/react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
-import { useSettings } from "@/contexts/SettingsContext";
+// ✅ Fix: Import from the new hook file instead of SettingsContext
+import { useCurrency } from "@/hooks/use-currency";
 import { Skeleton } from "@/components/ui/skeleton";
 
 interface StrategyAnalysisTabProps {
@@ -10,7 +11,13 @@ interface StrategyAnalysisTabProps {
 }
 
 const StrategyAnalysisTab = ({ data, isLoading, isError }: StrategyAnalysisTabProps) => {
-  const { formatCurrency } = useSettings();
+  // ✅ Fix: Use Global Currency Hook
+  const { format, symbol } = useCurrency();
+
+  // Helper function to maintain existing API signature for formatting
+  const formatCurrency = (val: number) => {
+    return `${symbol}${format(val)}`;
+  };
 
   if (isLoading) {
     return (
@@ -120,7 +127,7 @@ const StrategyAnalysisTab = ({ data, isLoading, isError }: StrategyAnalysisTabPr
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={strategyData} layout="vertical" margin={{ left: 10, right: 30 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} opacity={0.3} />
-                <XAxis type="number" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }} tickFormatter={(value) => `$${value}`} />
+                <XAxis type="number" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }} tickFormatter={(value) => `${symbol}${value}`} />
                 <YAxis type="category" dataKey="name" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} width={100} axisLine={false} tickLine={false} />
                 <Tooltip 
                   contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "12px" }} 
@@ -144,7 +151,7 @@ const StrategyAnalysisTab = ({ data, isLoading, isError }: StrategyAnalysisTabPr
               <BarChart data={strategyData} margin={{ top: 10, right: 10, left: 10, bottom: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} opacity={0.3} />
                 <XAxis dataKey="name" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }} tickLine={false} axisLine={false} />
-                <YAxis tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={(value) => `$${value}`} />
+                <YAxis tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={(value) => `${symbol}${value}`} />
                 <Tooltip 
                   contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "12px" }} 
                   formatter={(value: number) => [formatCurrency(value), "Total P&L"]} 

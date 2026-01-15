@@ -12,7 +12,9 @@ import MiniCalendar from "@/components/dashboard/MiniCalendar";
 
 import { useDashboardStats } from "@/hooks/use-dashboard-stats";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useCurrency } from "@/contexts/CurrencyContext";
+
+// ✅ Fix: Import from the new hook file
+import { useCurrency } from "@/hooks/use-currency"; 
 
 const Dashboard = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);

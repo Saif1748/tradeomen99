@@ -1,3 +1,5 @@
+// src/components/ai-chat/ChatHistorySidebar.tsx
+
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { 
@@ -28,13 +30,20 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import type { ChatSession } from "@/services/api/types";
 
-interface ChatHistory {
-  id: string;
-  title: string;
-  timestamp: string;
-  preview: string;
-}
+// Helper to format timestamps relative to now (e.g. "2 hours ago", "Dec 12")
+const formatTime = (dateString: string) => {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffHours = diffMs / (1000 * 60 * 60);
+
+  if (diffHours < 24 && now.getDate() === date.getDate()) {
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+  return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+};
 
 interface ChatHistorySidebarProps {
   isOpen: boolean;
@@ -42,7 +51,7 @@ interface ChatHistorySidebarProps {
   onNewChat: () => void;
   onSelectChat: (id: string) => void;
   currentChatId?: string;
-  chats: ChatHistory[];
+  chats: ChatSession[];
   onRenameChat?: (id: string, newTitle: string) => void;
   onDeleteChat?: (id: string) => void;
   onArchiveChat?: (id: string) => void;
@@ -62,9 +71,9 @@ const ChatHistorySidebar = ({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
 
-  const startEditing = (chat: ChatHistory) => {
+  const startEditing = (chat: ChatSession) => {
     setEditingId(chat.id);
-    setEditTitle(chat.title);
+    setEditTitle(chat.topic);
   };
 
   const saveTitle = () => {
@@ -104,7 +113,6 @@ const ChatHistorySidebar = ({
           {/* Header */}
           <div className="flex items-center justify-between p-4 flex-shrink-0">
             <h2 className="text-sm font-semibold text-foreground tracking-tight">History</h2>
-            {/* FIXED: Removed md:hidden so this Close button appears on Desktop too */}
             <Button
               variant="ghost"
               size="icon"
@@ -185,7 +193,7 @@ const ChatHistorySidebar = ({
                             />
                             
                             <span className="truncate flex-1">
-                              {chat.title}
+                              {chat.topic}
                             </span>
 
                             {/* Hover Gradient Mask */}
@@ -196,9 +204,9 @@ const ChatHistorySidebar = ({
                         </TooltipTrigger>
                         
                         <TooltipContent side="right" className="bg-popover text-popover-foreground border-border text-xs shadow-xl translate-x-2">
-                          {chat.title}
+                          {chat.topic}
                           <div className="text-[10px] text-muted-foreground mt-1 opacity-70 font-normal">
-                            {chat.timestamp}
+                            {formatTime(chat.created_at)}
                           </div>
                         </TooltipContent>
 
@@ -222,18 +230,22 @@ const ChatHistorySidebar = ({
                                 <PencilSimple className="w-3.5 h-3.5" />
                                 Rename
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => onArchiveChat?.(chat.id)} className="gap-2 text-xs cursor-pointer">
-                                <Archive className="w-3.5 h-3.5" />
-                                Archive
-                              </DropdownMenuItem>
+                              {onArchiveChat && (
+                                <DropdownMenuItem onClick={() => onArchiveChat(chat.id)} className="gap-2 text-xs cursor-pointer">
+                                  <Archive className="w-3.5 h-3.5" />
+                                  Archive
+                                </DropdownMenuItem>
+                              )}
                               <DropdownMenuSeparator />
-                              <DropdownMenuItem 
-                                onClick={() => onDeleteChat?.(chat.id)} 
-                                className="gap-2 text-xs text-destructive focus:text-destructive cursor-pointer"
-                              >
-                                <Trash className="w-3.5 h-3.5" />
-                                Delete chat
-                              </DropdownMenuItem>
+                              {onDeleteChat && (
+                                <DropdownMenuItem 
+                                  onClick={() => onDeleteChat(chat.id)} 
+                                  className="gap-2 text-xs text-destructive focus:text-destructive cursor-pointer"
+                                >
+                                  <Trash className="w-3.5 h-3.5" />
+                                  Delete chat
+                                </DropdownMenuItem>
+                              )}
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </div>
@@ -244,8 +256,6 @@ const ChatHistorySidebar = ({
               )}
             </div>
           </ScrollArea>
-          
-          {/* Footer Removed as requested */}
         </motion.div>
       </>
     </TooltipProvider>

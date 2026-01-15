@@ -43,6 +43,8 @@ import { Calendar } from "@/components/ui/calendar";
 // ✅ Hooks & API
 import { useTrades, UITrade } from "@/hooks/use-trades";
 import { tradesApi } from "@/services/api/modules/trades";
+// ✅ Fix: Import from the new hook file
+import { useCurrency } from "@/hooks/use-currency";
 
 const Trades = () => {
   // --- 1. Pagination & Data ---
@@ -61,7 +63,8 @@ const Trades = () => {
     deleteTrade 
   } = useTrades({ page, limit: pageSize });
 
-
+  // ✅ Fix: Ensure Currency Hook is initialized on the page
+  const { symbol, format: formatCurrency } = useCurrency();
 
   // --- 2. Local UI State ---
   const [searchQuery, setSearchQuery] = useState("");
@@ -128,7 +131,8 @@ const Trades = () => {
           comparison = (a.pnl || 0) - (b.pnl || 0);
           break;
         case "rMultiple":
-          comparison = a.rMultiple - b.rMultiple;
+          // Check if property exists to be safe
+          comparison = (a.rMultiple || 0) - (b.rMultiple || 0);
           break;
         default:
           comparison = 0;

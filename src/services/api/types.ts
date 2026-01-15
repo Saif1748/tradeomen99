@@ -3,16 +3,17 @@
 // ------------------------------------------------------------------
 // Enums (Matches app/schemas/common_schemas.py)
 // ------------------------------------------------------------------
-export type PlanTier = "FREE" | "PRO" | "PREMIUM"; // Note: Backend may still use FOUNDER in DB, but config maps to PREMIUM
+export type PlanTier = "FREE" | "PRO" | "PREMIUM"; 
 export type InstrumentType = "STOCK" | "CRYPTO" | "FOREX" | "FUTURES";
 export type TradeSide = "LONG" | "SHORT";
 export type TradeStatus = "OPEN" | "CLOSED";
 
 // ------------------------------------------------------------------
-// User & Auth (CRITICAL FOR DASHBOARD)
+// User & Auth (SYNCED WITH core.ts)
 // ------------------------------------------------------------------
 export interface UserProfile {
-  id: string;
+  id: string;          // Frontend ID
+  user_id: string;     // Backend ID mapping
   email?: string;
   full_name?: string;
   username?: string;
@@ -43,7 +44,7 @@ export interface UserUsageReport {
   };
   trades: {
     used: number;
-    limit: number | null; // null = Unlimited
+    limit: number | null; 
   };
   ai_cost_tokens: number;
 }
@@ -71,12 +72,12 @@ export interface Trade {
 
   // Metadata
   notes?: string | null;
-  encrypted_notes?: string | null; // DB Column
+  encrypted_notes?: string | null; 
   tags?: string[];
   
   // Screenshots
   screenshots?: string[] | string | null; 
-  encrypted_screenshots?: string[] | string | null; // DB Column
+  encrypted_screenshots?: string[] | string | null; 
   
   strategy_id?: string | null;
   strategies?: {
@@ -106,7 +107,7 @@ export interface CreateTradeInput {
   tags?: string[];
   strategy_id?: string;
   metadata?: Record<string, any>;
-  screenshots?: string[]; // Base64 strings (for upload)
+  screenshots?: string[]; 
 }
 
 export interface UpdateTradeInput extends Partial<CreateTradeInput> {}
@@ -158,6 +159,10 @@ export interface ChatSession {
   created_at: string;
 }
 
+export interface SessionUpdate {
+  topic: string;
+}
+
 export interface ChatMessage {
   id?: string;
   role: "user" | "assistant" | "system";
@@ -168,8 +173,9 @@ export interface ChatMessage {
 export interface ChatRequest {
   message: string;
   session_id?: string;
-  model?: string; // e.g., "gemini-1.5-flash"
+  model?: string; 
   provider?: string;
+  web_search?: boolean;
 }
 
 export interface ChatUsage {
@@ -181,7 +187,7 @@ export interface ChatUsage {
 }
 
 export interface ToolCallData {
-  type: string; // e.g. "import-confirmation"
+  type: string; 
   data: Record<string, any>;
 }
 
@@ -196,13 +202,19 @@ export interface ChatResponse {
 // Utilities / Uploads
 // ------------------------------------------------------------------
 export interface UploadResponse {
-  type: string;
+  status: string;
   file_path: string;
   filename: string;
   mapping: Record<string, string>;
   detected_headers: string[];
   preview: Record<string, any>[];
   message: string;
+}
+
+export interface ImportConfirmSchema {
+  file_path: string;
+  mapping: Record<string, string>;
+  session_id?: string;
 }
 
 export interface ScreenshotUploadResponse {
@@ -233,59 +245,44 @@ export interface NewsResult {
 }
 
 export interface DashboardStats {
-  // Money
   netPL: number;
   grossProfit: number;
   grossLoss: number;
   fees: number;
   maxDrawdown: number;
-
-  // Ratios
   profitFactor: number;
   winRate: number;
   payoffRatio: number;
   expectancy: number;
   sharpeRatio: number;
   sqn: number;
-
-  // Trade Stats
   totalTrades: number;
   avgWin: number;
   avgLoss: number;
   largestWin: number;
   largestLoss: number;
   avgHoldTimeHours: number;
-
-  // Streaks & Bias
   maxWinStreak: number;
   maxLossStreak: number;
   longWinRate: number;
   shortWinRate: number;
-
-  // Charts
   dailyData: { date: string; value: number }[];
   cumulativeData: { date: string; value: number }[];
   strategyPerformance: { name: string; value: number }[];
   topInstruments: { symbol: string; type: string; pnl: number; winRate: number }[];
 }
+
 // ------------------------------------------------------------------
 // Calendar (Specific for Calendar View)
 // ------------------------------------------------------------------
-
-/**
- * Simplified trade object for the calendar view/modal
- */
 export interface CalendarTrade {
   id: string;
   symbol: string;
-  direction: string; // Will be lowercased 'long' | 'short' from RPC
+  direction: string; 
   pnl: number;
   strategy: string;
 }
 
-/**
- * Aggregated data for a single day in the calendar
- */
 export interface DayData {
   date: Date;
   totalPnL: number;
@@ -293,6 +290,6 @@ export interface DayData {
   winRate: number;
   bestStrategy: string;
   emotion: string;
-  trades: CalendarTrade[]; // Uses the simplified calendar trade interface
+  trades: CalendarTrade[]; 
   note?: string;
 }

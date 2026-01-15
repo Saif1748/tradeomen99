@@ -3,7 +3,8 @@ import { ArrowLeft, PencilSimple, Trash, TrendUp, TrendDown, Sparkle } from "@ph
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { useCurrency } from "@/contexts/CurrencyContext";
+// ✅ Fix: Import from the new hook file
+import { useCurrency } from "@/hooks/use-currency";
 import { Skeleton } from "@/components/ui/skeleton";
 
 // ✅ Import the new hook
@@ -36,7 +37,8 @@ interface StrategyDetailProps {
 const StrategyDetail = ({ strategy: data, onBack, onEdit, onDelete }: StrategyDetailProps) => {
   const strategy = data as ExtendedStrategy;
   const [activeTab, setActiveTab] = useState("rules");
-  const { format, currency } = useCurrency();
+  // ✅ Fix: Use Global Currency Hook for formatting
+  const { format, symbol: currency } = useCurrency(); // Renamed symbol to currency for compatibility with existing variable name if preferred, or just use symbol directly
 
   // --- 1. Fetch Linked Trades ---
   const { data: trades, isLoading: tradesLoading } = useStrategyTrades(strategy.id);
@@ -108,7 +110,7 @@ const StrategyDetail = ({ strategy: data, onBack, onEdit, onDelete }: StrategyDe
         <div className="glass-card p-5 rounded-xl">
           <p className="text-sm text-muted-foreground mb-1">Net P&L ({currency})</p>
           <p className={`text-2xl font-medium ${pnlColor}`}>
-            {netPnl >= 0 ? '+' : '-'}{format(Math.abs(netPnl))}
+            {netPnl >= 0 ? '+' : '-'}{currency}{format(Math.abs(netPnl))}
           </p>
         </div>
         <div className="glass-card p-5 rounded-xl">
@@ -127,7 +129,7 @@ const StrategyDetail = ({ strategy: data, onBack, onEdit, onDelete }: StrategyDe
           <div>
             <p className="text-sm text-muted-foreground mb-1">Expectancy</p>
             <p className={`text-xl font-medium ${expectancyColor}`}>
-              {expectancy >= 0 ? '+' : '-'}{format(Math.abs(expectancy))}
+              {expectancy >= 0 ? '+' : '-'}{currency}{format(Math.abs(expectancy))}
             </p>
           </div>
           <div>
@@ -135,7 +137,7 @@ const StrategyDetail = ({ strategy: data, onBack, onEdit, onDelete }: StrategyDe
             <div className="flex items-center gap-2">
               <TrendUp weight="regular" className="w-4 h-4 text-emerald-400" />
               <p className="text-xl font-medium text-emerald-400">
-                +{format(Math.abs(avgWin))}
+                +{currency}{format(Math.abs(avgWin))}
               </p>
             </div>
           </div>
@@ -144,7 +146,7 @@ const StrategyDetail = ({ strategy: data, onBack, onEdit, onDelete }: StrategyDe
             <div className="flex items-center gap-2">
               <TrendDown weight="regular" className="w-4 h-4 text-rose-400" />
               <p className="text-xl font-medium text-rose-400">
-                -{format(Math.abs(avgLoss))}
+                -{currency}{format(Math.abs(avgLoss))}
               </p>
             </div>
           </div>
@@ -203,7 +205,7 @@ const StrategyDetail = ({ strategy: data, onBack, onEdit, onDelete }: StrategyDe
                       <td className={`px-4 py-3 ${trade.direction === 'LONG' ? 'text-emerald-400' : 'text-rose-400'}`}>{trade.direction}</td>
                       <td className="px-4 py-3"><Badge variant="outline" className="text-[10px] uppercase">{trade.status}</Badge></td>
                       <td className={`px-4 py-3 text-right font-bold ${trade.pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                        {trade.pnl >= 0 ? '+' : '-'}{format(Math.abs(trade.pnl))}
+                        {trade.pnl >= 0 ? '+' : '-'}{currency}{format(Math.abs(trade.pnl))}
                       </td>
                     </tr>
                   ))}

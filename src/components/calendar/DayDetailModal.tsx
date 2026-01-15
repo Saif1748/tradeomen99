@@ -1,326 +1,203 @@
-import { useState } from "react";
-import { DayData, Trade } from "@/lib/calendarData";
-import { cn } from "@/lib/utils";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { CalendarDayStats } from "@/hooks/use-calendar";
 import { 
   TrendUp, 
   TrendDown, 
   Target, 
-  Smiley, 
-  SmileyMeh, 
-  SmileySad,
-  Lightning,
-  ChartLineUp,
-  ChartLineDown,
-  NotePencil,
-  FloppyDisk,
-  X
+  Lightning, 
+  Spinner,
+  Crown
 } from "@phosphor-icons/react";
+import { cn } from "@/lib/utils";
+// ✅ Fix: Import from the new hook file
+import { useCurrency } from "@/hooks/use-currency";
 
 interface DayDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
-  dayData: DayData | null;
-  onSaveNote?: (date: Date, note: string) => void;
+  dayData: CalendarDayStats | null;
 }
 
-const formatPnL = (value: number) => {
-  const sign = value >= 0 ? '+' : '';
-  return `${sign}$${Math.abs(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+// Sub-component to lazy load trades for the specific day
+const DayTradesList = ({ date }: { date: string }) => {
+  // ✅ Fix: Use Global Currency Hook
+  const { format: formatCurrency, symbol } = useCurrency();
+
+  const { data: trades, isLoading } = useQuery({
+    queryKey: ["day-trades", date],
+    queryFn: async () => {
+      // Create local start/end times for the selected date
+      // We assume the date string is YYYY-MM-DD
+      const start = new Date(date);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(date);
+      end.setHours(23, 59, 59, 999);
+
+      const { data, error } = await supabase
+        .from("trades")
+        .select("id, symbol, direction, pnl, strategies(name)")
+        .gte("entry_time", start.toISOString())
+        .lte("entry_time", end.toISOString())
+        .order("entry_time", { ascending: false });
+        
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center p-8">
+        <Spinner className="animate-spin w-6 h-6 text-primary" />
+      </div>
+    );
+  }
+
+  if (!trades?.length) {
+    return <p className="text-center text-muted-foreground p-4 text-sm">No trades found for this day.</p>;
+  }
+
+  return (
+    <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+      {trades.map((trade: any) => (
+        <div key={trade.id} className="flex items-center justify-between p-3 rounded-lg bg-secondary/30 border border-border/50">
+          <div className="flex items-center gap-3">
+            <div className={cn(
+              "w-8 h-8 rounded-lg flex items-center justify-center",
+              trade.direction === 'LONG' ? "bg-emerald-500/20" : "bg-rose-500/20"
+            )}>
+              {trade.direction === 'LONG' ? (
+                <TrendUp weight="bold" className="w-4 h-4 text-emerald-400" />
+              ) : (
+                <TrendDown weight="bold" className="w-4 h-4 text-rose-400" />
+              )}
+            </div>
+            <div>
+              <span className="text-sm font-medium text-foreground">{trade.symbol}</span>
+              <span className="text-xs text-muted-foreground block capitalize">{trade.direction.toLowerCase()}</span>
+            </div>
+          </div>
+          <div className="text-right">
+            <span className={cn(
+              "text-sm font-semibold",
+              (trade.pnl || 0) > 0 ? "text-emerald-400" : "text-rose-400"
+            )}>
+              {/* ✅ Fix: Format Trade PnL */}
+              {(trade.pnl || 0) >= 0 ? "+" : "-"}{symbol}{formatCurrency(Math.abs(trade.pnl || 0))}
+            </span>
+            <span className="text-xs text-muted-foreground block">
+              {trade.strategies?.name || "No Strategy"}
+            </span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 };
 
-const TradeRow = ({ trade }: { trade: Trade }) => (
-  <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/30 border border-border/50">
-    <div className="flex items-center gap-3">
-      <div className={cn(
-        "w-8 h-8 rounded-lg flex items-center justify-center",
-        trade.direction === 'long' ? "bg-emerald-500/20" : "bg-rose-500/20"
-      )}>
-        {trade.direction === 'long' ? (
-          <TrendUp weight="bold" className="w-4 h-4 text-emerald-400" />
-        ) : (
-          <TrendDown weight="bold" className="w-4 h-4 text-rose-400" />
-        )}
-      </div>
-      <div>
-        <span className="text-sm font-medium text-foreground">{trade.symbol}</span>
-        <span className="text-xs text-muted-foreground block capitalize">{trade.direction}</span>
-      </div>
-    </div>
-    <div className="text-right">
-      <span className={cn(
-        "text-sm font-semibold",
-        trade.pnl > 0 ? "text-emerald-400" : "text-rose-400"
-      )}>
-        {formatPnL(trade.pnl)}
-      </span>
-      <span className="text-xs text-muted-foreground block">{trade.strategy}</span>
-    </div>
-  </div>
-);
-
-const OverviewCard = ({ 
-  title, 
-  value, 
-  icon, 
-  className 
-}: { 
-  title: string; 
-  value: string | number; 
-  icon: React.ReactNode;
-  className?: string;
-}) => (
-  <div className={cn("p-4 rounded-xl bg-secondary/30 border border-border/50", className)}>
+const OverviewCard = ({ title, value, icon }: { title: string; value: string | number; icon: React.ReactNode }) => (
+  <div className="p-4 rounded-xl bg-secondary/30 border border-border/50">
     <div className="flex items-center gap-2 mb-2">
       {icon}
       <span className="text-xs text-muted-foreground">{title}</span>
     </div>
-    <span className="text-lg font-semibold text-foreground">{value}</span>
+    <span className="text-lg font-semibold text-foreground truncate block">{value}</span>
   </div>
 );
 
-const ModalContent = ({ 
-  dayData, 
-  onSaveNote 
-}: { 
-  dayData: DayData; 
-  onSaveNote?: (date: Date, note: string) => void;
-}) => {
-  const [isEditingNote, setIsEditingNote] = useState(false);
-  const [noteText, setNoteText] = useState(dayData.note || "");
+const ModalContent = ({ dayData }: { dayData: CalendarDayStats }) => {
+  // ✅ Fix: Use Global Currency Hook
+  const { format: formatCurrency, symbol } = useCurrency();
 
-  const getEmotionIcon = () => {
-    switch (dayData.emotion) {
-      case 'positive':
-        return <Smiley weight="fill" className="w-5 h-5 text-emerald-400" />;
-      case 'negative':
-        return <SmileySad weight="fill" className="w-5 h-5 text-rose-400" />;
-      default:
-        return <SmileyMeh weight="fill" className="w-5 h-5 text-yellow-400" />;
-    }
-  };
-
-  const getEmotionText = () => {
-    switch (dayData.emotion) {
-      case 'positive': return 'Positive';
-      case 'negative': return 'Frustrated';
-      default: return 'Neutral';
-    }
-  };
-
-  const handleSaveNote = () => {
-    onSaveNote?.(dayData.date, noteText);
-    setIsEditingNote(false);
-  };
+  // Calculate win rate on the fly
+  const winRate = dayData.trade_count > 0 
+    ? Math.round((dayData.win_count / dayData.trade_count) * 100) 
+    : 0;
 
   return (
     <Tabs defaultValue="overview" className="w-full">
       <TabsList className="w-full mb-4 bg-secondary/50">
         <TabsTrigger value="overview" className="flex-1">Overview</TabsTrigger>
         <TabsTrigger value="trades" className="flex-1">Trades</TabsTrigger>
-        <TabsTrigger value="notes" className="flex-1">Notes</TabsTrigger>
-        <TabsTrigger value="insights" className="flex-1">Insights</TabsTrigger>
       </TabsList>
 
       <TabsContent value="overview" className="space-y-4">
         <div className="grid grid-cols-2 gap-3">
           <OverviewCard
             title="Total P&L"
-            value={formatPnL(dayData.totalPnL)}
-            icon={dayData.totalPnL >= 0 ? (
-              <TrendUp weight="bold" className="w-4 h-4 text-emerald-400" />
-            ) : (
+            // ✅ Fix: Format Total PnL
+            value={`${dayData.daily_pnl >= 0 ? "+" : "-"}${symbol}${formatCurrency(Math.abs(dayData.daily_pnl))}`}
+            icon={dayData.daily_pnl >= 0 ? 
+              <TrendUp weight="bold" className="w-4 h-4 text-emerald-400" /> : 
               <TrendDown weight="bold" className="w-4 h-4 text-rose-400" />
-            )}
+            }
           />
           <OverviewCard
             title="Win Rate"
-            value={`${dayData.winRate}%`}
+            value={`${winRate}%`}
             icon={<Target weight="bold" className="w-4 h-4 text-primary" />}
           />
           <OverviewCard
             title="Trades"
-            value={dayData.tradeCount}
+            value={dayData.trade_count}
             icon={<Lightning weight="bold" className="w-4 h-4 text-yellow-400" />}
           />
           <OverviewCard
-            title="Emotion"
-            value={getEmotionText()}
-            icon={getEmotionIcon()}
+            title="Best Strategy"
+            value={dayData.best_strategy || "N/A"}
+            icon={<Crown weight="bold" className="w-4 h-4 text-purple-400" />}
           />
         </div>
       </TabsContent>
 
-      <TabsContent value="trades" className="space-y-4">
-        {/* Best & Worst Trade */}
-        <div className="grid grid-cols-2 gap-3">
-          {dayData.bestTrade && (
-            <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
-              <div className="flex items-center gap-2 mb-2">
-                <ChartLineUp weight="bold" className="w-4 h-4 text-emerald-400" />
-                <span className="text-xs text-emerald-400">Best Trade</span>
-              </div>
-              <span className="text-sm font-semibold text-foreground block">{dayData.bestTrade.symbol}</span>
-              <span className="text-lg font-bold text-emerald-400">{formatPnL(dayData.bestTrade.pnl)}</span>
-            </div>
-          )}
-          {dayData.worstTrade && (
-            <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20">
-              <div className="flex items-center gap-2 mb-2">
-                <ChartLineDown weight="bold" className="w-4 h-4 text-rose-400" />
-                <span className="text-xs text-rose-400">Worst Trade</span>
-              </div>
-              <span className="text-sm font-semibold text-foreground block">{dayData.worstTrade.symbol}</span>
-              <span className="text-lg font-bold text-rose-400">{formatPnL(dayData.worstTrade.pnl)}</span>
-            </div>
-          )}
-        </div>
-
-        {/* Trade List */}
-        <div className="space-y-2 max-h-[300px] overflow-y-auto">
-          {dayData.trades.map(trade => (
-            <TradeRow key={trade.id} trade={trade} />
-          ))}
-        </div>
-      </TabsContent>
-
-      <TabsContent value="notes" className="space-y-4">
-        <div className="p-4 rounded-xl bg-secondary/30 border border-border/50">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <NotePencil weight="bold" className="w-5 h-5 text-primary" />
-              <span className="text-sm font-medium text-foreground">Daily Note</span>
-            </div>
-            {!isEditingNote && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setIsEditingNote(true)}
-                className="text-xs"
-              >
-                {noteText ? "Edit" : "Add Note"}
-              </Button>
-            )}
-          </div>
-          
-          {isEditingNote ? (
-            <div className="space-y-3">
-              <Textarea
-                value={noteText}
-                onChange={(e) => setNoteText(e.target.value)}
-                placeholder="Write your thoughts about this trading day... What went well? What could be improved?"
-                className="min-h-[120px] bg-background/50 border-border/50 resize-none"
-              />
-              <div className="flex items-center gap-2 justify-end">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setNoteText(dayData.note || "");
-                    setIsEditingNote(false);
-                  }}
-                >
-                  <X weight="bold" className="w-4 h-4 mr-1" />
-                  Cancel
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={handleSaveNote}
-                  className="bg-primary hover:bg-primary/90"
-                >
-                  <FloppyDisk weight="bold" className="w-4 h-4 mr-1" />
-                  Save
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              {noteText || "No notes for this day. Click 'Add Note' to write your thoughts."}
-            </p>
-          )}
-        </div>
-        
-        <div className="p-3 rounded-lg bg-muted/30 border border-border/30">
-          <p className="text-xs text-muted-foreground">
-            💡 Tip: Journaling your trades helps identify patterns in your behavior and improve performance over time.
-          </p>
-        </div>
-      </TabsContent>
-
-      <TabsContent value="insights" className="space-y-4">
-        <div className="p-4 rounded-xl bg-primary/10 border border-primary/20">
-          <div className="flex items-center gap-2 mb-2">
-            <Lightning weight="fill" className="w-5 h-5 text-primary" />
-            <span className="text-sm font-medium text-foreground">Best Strategy</span>
-          </div>
-          <p className="text-lg font-semibold text-primary">{dayData.bestStrategy}</p>
-          <p className="text-xs text-muted-foreground mt-1">
-            This strategy performed best for you on this day.
-          </p>
-        </div>
-
-        <div className="p-4 rounded-xl bg-secondary/30 border border-border/50">
-          <div className="flex items-center gap-2 mb-2">
-            <Target weight="bold" className="w-5 h-5 text-muted-foreground" />
-            <span className="text-sm font-medium text-foreground">AI Insights</span>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            {dayData.totalPnL > 0 
-              ? "Great trading day! Your discipline and strategy execution were on point. Consider journaling what worked well."
-              : "Review your entries and exits. Look for patterns in your losing trades to improve future performance."
-            }
-          </p>
-        </div>
+      <TabsContent value="trades">
+        <DayTradesList date={dayData.trade_date} />
       </TabsContent>
     </Tabs>
   );
 };
 
-const DayDetailModal = ({ isOpen, onClose, dayData, onSaveNote }: DayDetailModalProps) => {
+const DayDetailModal = ({ isOpen, onClose, dayData }: DayDetailModalProps) => {
   const isMobile = useIsMobile();
+  // ✅ Fix: Use Global Currency Hook for Header
+  const { format: formatCurrency, symbol } = useCurrency();
 
   if (!dayData) return null;
 
-  const dateTitle = dayData.date.toLocaleDateString('en-US', { 
-    weekday: 'long', 
-    year: 'numeric', 
-    month: 'long', 
-    day: 'numeric' 
+  // Convert "YYYY-MM-DD" string to a Date object safely for formatting
+  // Appending "T00:00:00" ensures local time interpretation isn't messed up by UTC conversion
+  const dateObj = new Date(dayData.trade_date + "T00:00:00");
+  
+  const dateTitle = dateObj.toLocaleDateString('en-US', { 
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
   });
+
+  const headerContent = (
+    <div className="flex items-center gap-3">
+      <span className="text-foreground">{dateTitle}</span>
+      <Badge variant="outline" className={cn(
+        dayData.daily_pnl >= 0 ? "border-emerald-500/50 text-emerald-400" : "border-rose-500/50 text-rose-400"
+      )}>
+        {/* ✅ Fix: Format Header PnL */}
+        {dayData.daily_pnl >= 0 ? "+" : "-"}{symbol}{formatCurrency(Math.abs(dayData.daily_pnl))}
+      </Badge>
+    </div>
+  );
 
   if (isMobile) {
     return (
       <Sheet open={isOpen} onOpenChange={onClose}>
-        <SheetContent side="bottom" className="h-[85vh] rounded-t-3xl">
+        <SheetContent side="bottom" className="h-[65vh] rounded-t-3xl">
           <SheetHeader className="mb-4">
-            <SheetTitle className="text-left">
-              <div className="flex items-center gap-3">
-                <span className="text-foreground">{dateTitle}</span>
-                <Badge variant="outline" className={cn(
-                  dayData.totalPnL >= 0 ? "border-emerald-500/50 text-emerald-400" : "border-rose-500/50 text-rose-400"
-                )}>
-                  {formatPnL(dayData.totalPnL)}
-                </Badge>
-              </div>
-            </SheetTitle>
+            <SheetTitle className="text-left">{headerContent}</SheetTitle>
           </SheetHeader>
-          <ModalContent dayData={dayData} onSaveNote={onSaveNote} />
+          <ModalContent dayData={dayData} />
         </SheetContent>
       </Sheet>
     );
@@ -330,18 +207,9 @@ const DayDetailModal = ({ isOpen, onClose, dayData, onSaveNote }: DayDetailModal
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-md bg-card border-border">
         <DialogHeader>
-          <DialogTitle>
-            <div className="flex items-center gap-3">
-              <span className="text-foreground">{dateTitle}</span>
-              <Badge variant="outline" className={cn(
-                dayData.totalPnL >= 0 ? "border-emerald-500/50 text-emerald-400" : "border-rose-500/50 text-rose-400"
-              )}>
-                {formatPnL(dayData.totalPnL)}
-              </Badge>
-            </div>
-          </DialogTitle>
+          <DialogTitle>{headerContent}</DialogTitle>
         </DialogHeader>
-        <ModalContent dayData={dayData} onSaveNote={onSaveNote} />
+        <ModalContent dayData={dayData} />
       </DialogContent>
     </Dialog>
   );

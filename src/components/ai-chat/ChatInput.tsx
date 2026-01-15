@@ -11,6 +11,7 @@ import {
   Trash,
   X,
   Image as ImageIcon,
+  Globe, // Added for web search indicator
 } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,9 +20,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { toast } from "sonner"; // Assuming you have this, otherwise remove
 
 interface ChatInputProps {
-  onSend: (message: string, attachments?: File[]) => void;
+  onSend: (message: string, attachments?: File[], isWebSearch?: boolean) => void;
   isLoading?: boolean;
   centered?: boolean;
   onClearChat?: () => void;
@@ -35,12 +37,21 @@ const contextChips = [
   { label: "Strategy review", icon: FileText },
 ];
 
-const ChatInput = ({ onSend, isLoading, centered, onClearChat, defaultValue = "" }: ChatInputProps) => {
+const ChatInput = ({ 
+  onSend, 
+  isLoading, 
+  centered, 
+  onClearChat, 
+  defaultValue = "" 
+}: ChatInputProps) => {
   const [message, setMessage] = useState(defaultValue);
   const [files, setFiles] = useState<File[]>([]);
+  const [isWebSearch, setIsWebSearch] = useState(false); // Local state for web search toggle
+
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Auto-resize textarea
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
@@ -52,9 +63,10 @@ const ChatInput = ({ onSend, isLoading, centered, onClearChat, defaultValue = ""
 
   const handleSend = () => {
     if ((message.trim() || files.length > 0) && !isLoading) {
-      onSend(message.trim(), files);
+      onSend(message.trim(), files, isWebSearch);
       setMessage("");
       setFiles([]);
+      setIsWebSearch(false); // Reset search mode after send
       if (textareaRef.current) {
         textareaRef.current.style.height = "auto";
       }
@@ -78,6 +90,7 @@ const ChatInput = ({ onSend, isLoading, centered, onClearChat, defaultValue = ""
       const newFiles = Array.from(e.target.files);
       setFiles((prev) => [...prev, ...newFiles]);
     }
+    // Reset input so same file can be selected again if needed
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -102,6 +115,7 @@ const ChatInput = ({ onSend, isLoading, centered, onClearChat, defaultValue = ""
         ref={fileInputRef}
         className="hidden"
         onChange={handleFileSelect}
+        accept=".csv,.txt,.pdf,.png,.jpg,.jpeg" // Industry standard safe types
       />
 
       {/* Context Chips - ONLY visible when centered (Empty State) AND no files attached */}
@@ -124,8 +138,13 @@ const ChatInput = ({ onSend, isLoading, centered, onClearChat, defaultValue = ""
       )}
 
       <div className="relative">
-        <div className="flex flex-col p-2 rounded-[26px] bg-secondary/40 backdrop-blur-xl border border-border/30 focus-within:border-primary/30 transition-colors">
+        <div className={
+          `flex flex-col p-2 rounded-[26px] bg-secondary/40 backdrop-blur-xl border transition-colors ${
+            isWebSearch ? "border-blue-500/50 bg-blue-500/5" : "border-border/30 focus-within:border-primary/30"
+          }`
+        }>
           
+          {/* File Attachments Preview */}
           <AnimatePresence>
             {files.length > 0 && (
               <motion.div 
@@ -140,7 +159,7 @@ const ChatInput = ({ onSend, isLoading, centered, onClearChat, defaultValue = ""
                     initial={{ opacity: 0, scale: 0.9 }}
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.9 }}
-                    className="relative group flex items-center gap-2 px-3 py-2 bg-background/50 rounded-xl border border-border/50 shrink-0"
+                    className="relative group flex items-center gap-2 px-3 py-2 bg-background/80 rounded-xl border border-border/50 shrink-0"
                   >
                     <div className="p-1.5 rounded-lg bg-secondary text-primary">
                       {file.type.startsWith("image/") ? (
@@ -167,6 +186,22 @@ const ChatInput = ({ onSend, isLoading, centered, onClearChat, defaultValue = ""
             )}
           </AnimatePresence>
 
+          {/* Web Search Indicator Badge */}
+          {isWebSearch && (
+            <div className="px-3 pt-1">
+              <span className="inline-flex items-center gap-1 text-[10px] font-medium text-blue-500 bg-blue-500/10 px-2 py-0.5 rounded-full">
+                <Globe className="w-3 h-3" />
+                Web Search Active
+                <button 
+                  onClick={() => setIsWebSearch(false)}
+                  className="ml-1 hover:text-blue-700"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            </div>
+          )}
+
           <div className="flex items-end gap-2">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -178,16 +213,28 @@ const ChatInput = ({ onSend, isLoading, centered, onClearChat, defaultValue = ""
                   <Plus weight="bold" className="w-5 h-5" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-48">
+              <DropdownMenuContent align="start" className="w-52">
                 <DropdownMenuItem className="gap-2 cursor-pointer" onClick={triggerFileUpload}>
                   <FileText weight="regular" className="w-4 h-4" />
                   Attach file
                 </DropdownMenuItem>
-                <DropdownMenuItem className="gap-2 cursor-pointer">
-                  <MagnifyingGlass weight="regular" className="w-4 h-4" />
+                <DropdownMenuItem 
+                  className="gap-2 cursor-pointer"
+                  onClick={() => {
+                    setIsWebSearch(true);
+                    textareaRef.current?.focus();
+                  }}
+                >
+                  <Globe weight="regular" className="w-4 h-4" />
                   Web search
                 </DropdownMenuItem>
-                <DropdownMenuItem className="gap-2 cursor-pointer">
+                <DropdownMenuItem 
+                  className="gap-2 cursor-pointer"
+                  onClick={() => {
+                    setMessage((prev) => (prev ? `${prev} Analyze recent trades` : "Analyze recent trades"));
+                    textareaRef.current?.focus();
+                  }}
+                >
                   <ChartLine weight="regular" className="w-4 h-4" />
                   Analyze my trades
                 </DropdownMenuItem>
@@ -214,10 +261,11 @@ const ChatInput = ({ onSend, isLoading, centered, onClearChat, defaultValue = ""
               className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground resize-none focus:outline-none py-2.5 px-1 max-h-[200px] leading-relaxed min-h-[40px]"
             />
 
-            {!message && (
-               <Button
+            {!message && files.length === 0 && (
+              <Button
                 variant="ghost"
                 size="icon"
+                onClick={() => toast.info("Voice input coming soon!")}
                 className="h-9 w-9 rounded-full text-muted-foreground hover:text-foreground hover:bg-secondary/60 flex-shrink-0 mb-0.5"
               >
                 <Microphone weight="regular" className="w-5 h-5" />

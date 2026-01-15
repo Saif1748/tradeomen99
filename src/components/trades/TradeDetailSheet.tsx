@@ -29,6 +29,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { UITrade } from "@/hooks/use-trades";
 import { tradesApi } from "@/services/api/modules/trades";
+// ✅ Fix: Import from the new hook file
+import { useCurrency } from "@/hooks/use-currency";
 
 interface TradeDetailSheetProps {
   trade: UITrade | null;
@@ -47,18 +49,18 @@ const TradeDetailSheet = ({
   onDelete,
   allTrades = [],
 }: TradeDetailSheetProps) => {
+  // ✅ Fix: Use Global Currency Hook
+  const { format: formatCurrency, symbol } = useCurrency();
+
   // --- 1. Fetch Full Details (Notes & Signed Screenshots) ---
-  // The list view trade object might contain raw/encrypted paths. 
-  // We need to hit the backend to get signed URLs and full notes.
   const { data: fullDetails, isLoading } = useQuery({
     queryKey: ["trade", trade?.id],
     queryFn: async () => {
       if (!trade?.id) return null;
-      // Fetch trade details which includes 'screenshots_signed' and decrypted 'notes'
       return await tradesApi.getOne(trade.id);
     },
-    enabled: !!trade && open, // Only fetch when sheet is open
-    staleTime: 1000 * 60 * 5, // Cache for 5 mins
+    enabled: !!trade && open,
+    staleTime: 1000 * 60 * 5,
   });
 
   if (!trade) return null;
@@ -82,11 +84,7 @@ const TradeDetailSheet = ({
     .slice(0, 3);
 
   // --- Resolve Data for Display ---
-  // Prefer fresh data from the single-fetch, fallback to the list prop
   const displayNotes = fullDetails?.notes || trade.notes || "";
-  
-  // The backend returns 'screenshots_signed' as an array of { path, url } objects
-  // We cast to any here because the TS type definition might not include this dynamic field yet
   const signedScreenshots = (fullDetails as any)?.screenshots_signed || [];
 
   return (
@@ -156,11 +154,8 @@ const TradeDetailSheet = ({
                   (trade.pnl || 0) >= 0 ? "text-emerald-400" : "text-rose-400"
                 }`}
               >
-                {(trade.pnl || 0) >= 0 ? "+" : ""}$
-                {Math.abs(trade.pnl || 0).toLocaleString("en-US", {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}
+                {/* ✅ Fix: Dynamic Currency Formatting */}
+                {(trade.pnl || 0) >= 0 ? "+" : ""}{symbol}{formatCurrency(Math.abs(trade.pnl || 0))}
               </p>
             </div>
 
@@ -174,7 +169,8 @@ const TradeDetailSheet = ({
                   <span className="text-muted-foreground">Entry</span>
                 </div>
                 <span className="font-medium text-foreground">
-                  ${trade.entryPrice.toLocaleString()}
+                  {/* ✅ Fix: Dynamic Currency Entry Price */}
+                  {symbol}{formatCurrency(trade.entryPrice)}
                 </span>
               </div>
 
@@ -188,7 +184,8 @@ const TradeDetailSheet = ({
                   <span className="text-muted-foreground">Exit</span>
                 </div>
                 <span className="font-medium text-foreground">
-                  {trade.exitPrice ? `$${trade.exitPrice.toLocaleString()}` : "-"}
+                  {/* ✅ Fix: Dynamic Currency Exit Price */}
+                  {trade.exitPrice ? `${symbol}${formatCurrency(trade.exitPrice)}` : "-"}
                 </span>
               </div>
 
@@ -202,7 +199,8 @@ const TradeDetailSheet = ({
                   <span className="text-muted-foreground">Stop Loss</span>
                 </div>
                 <span className="font-medium text-foreground">
-                  {trade.stopLoss ? `$${trade.stopLoss.toLocaleString()}` : "-"}
+                  {/* ✅ Fix: Dynamic Currency Stop Loss */}
+                  {trade.stopLoss ? `${symbol}${formatCurrency(trade.stopLoss)}` : "-"}
                 </span>
               </div>
 
@@ -216,7 +214,8 @@ const TradeDetailSheet = ({
                   <span className="text-muted-foreground">Target</span>
                 </div>
                 <span className="font-medium text-foreground">
-                  {trade.target ? `$${trade.target.toLocaleString()}` : "-"}
+                  {/* ✅ Fix: Dynamic Currency Target */}
+                  {trade.target ? `${symbol}${formatCurrency(trade.target)}` : "-"}
                 </span>
               </div>
             </div>
@@ -243,7 +242,8 @@ const TradeDetailSheet = ({
                   <span className="text-muted-foreground">Total Risk</span>
                 </div>
                 <span className="font-medium text-foreground">
-                  ${totalRisk.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                  {/* ✅ Fix: Dynamic Currency Formatting */}
+                  {symbol}{formatCurrency(totalRisk)}
                 </span>
               </div>
 
@@ -281,12 +281,13 @@ const TradeDetailSheet = ({
                   <span className="text-muted-foreground">Fees</span>
                 </div>
                 <span className="font-medium text-foreground">
-                  ${trade.fees.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                  {/* ✅ Fix: Dynamic Currency Formatting */}
+                  {symbol}{formatCurrency(trade.fees)}
                 </span>
               </div>
             </div>
 
-            {/* Trade Notes (Uses fetched fresh data) */}
+            {/* Trade Notes */}
             <div className="glass-card p-4 rounded-xl">
               <div className="flex items-center gap-2 mb-3">
                 <Note weight="regular" className="w-4 h-4 text-muted-foreground" />
@@ -303,7 +304,7 @@ const TradeDetailSheet = ({
               )}
             </div>
 
-            {/* Screenshots (Uses Signed URLs from Backend) */}
+            {/* Screenshots */}
             <div className="glass-card p-4 rounded-xl">
               <div className="flex items-center gap-2 mb-3">
                 <Image weight="regular" className="w-4 h-4 text-muted-foreground" />
@@ -399,10 +400,8 @@ const TradeDetailSheet = ({
                           (relatedTrade.pnl || 0) >= 0 ? "text-emerald-400" : "text-rose-400"
                         }`}
                       >
-                        {(relatedTrade.pnl || 0) >= 0 ? "+" : ""}$
-                        {Math.abs(relatedTrade.pnl || 0).toLocaleString("en-US", {
-                          minimumFractionDigits: 2,
-                        })}
+                        {/* ✅ Fix: Dynamic Currency Formatting for Related Trades */}
+                        {(relatedTrade.pnl || 0) >= 0 ? "+" : ""}{symbol}{formatCurrency(Math.abs(relatedTrade.pnl || 0))}
                       </span>
                     </div>
                   ))}

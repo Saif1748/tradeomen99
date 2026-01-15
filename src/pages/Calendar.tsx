@@ -4,7 +4,6 @@ import { setMonth, setYear, getMonth, getYear } from "date-fns";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import PageHeader from "@/components/dashboard/PageHeader";
 import CalendarGrid from "@/components/calendar/CalendarGrid";
-import { getMonthStats } from "@/lib/calendarData";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -15,18 +14,23 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
-// ✅ Import your new custom hook
+// ✅ Import Hook & Types
 import { useCalendar } from "@/hooks/use-calendar";
+// ✅ Fix: Import from the new hook file
+import { useCurrency } from "@/hooks/use-currency";
 
 const Calendar = () => {
   const today = new Date();
+  // Initialize to the first of the current month to ensure stable queries
   const [currentDate, setCurrentDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
   const [colorMode, setColorMode] = useState<'pnl' | 'winrate'>('pnl');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [notes, setNotes] = useState<Map<string, string>>(new Map());
 
-  // ✅ Use the new hook (Fetching + Transformation happens inside)
-  const { monthData, isLoading } = useCalendar(currentDate, notes);
+  // ✅ Fetch efficient SQL stats (No notes param needed)
+  const { data: monthDataMap, isLoading } = useCalendar(currentDate);
+  
+  // ✅ Fix: Use Global Currency Hook
+  const { format: formatCurrency, symbol } = useCurrency();
 
   // Generate years for the dropdown
   const currentYearInt = new Date().getFullYear();
@@ -37,32 +41,36 @@ const Calendar = () => {
     "July", "August", "September", "October", "November", "December"
   ];
 
-  // Calculate Monthly Stats (P&L, Win Rate) for the top cards
-  // We filter the transformed 'monthData' to ensure stats reflect only the selected month
+  // ✅ Efficient Client-Side Aggregation
+  // Since the DB already did the heavy lifting per day, we just sum up ~30 numbers here.
   const monthStats = useMemo(() => {
-    if (isLoading) return { monthlyPnL: 0, winRate: 0, totalTrades: 0, tradingDays: 0 };
+    if (isLoading || !monthDataMap) {
+      return { monthlyPnL: 0, winRate: 0, totalTrades: 0, tradingDays: 0 };
+    }
 
-    const currentMonthDays = Array.from(monthData.values()).filter(d => 
-      d.date.getMonth() === currentDate.getMonth() && 
-      d.date.getFullYear() === currentDate.getFullYear()
-    );
-    
-    // Create a temporary map for the helper function
-    const currentMonthMap = new Map();
-    currentMonthDays.forEach(d => currentMonthMap.set(d.date.toDateString(), d));
-    
-    return getMonthStats(currentMonthMap);
-  }, [monthData, currentDate, isLoading]);
+    let totalPnL = 0;
+    let totalTrades = 0;
+    let totalWins = 0;
+    let tradingDays = 0;
 
-  // Handlers
-  const handleSaveNote = (date: Date, note: string) => {
-    setNotes(prev => {
-      const newNotes = new Map(prev);
-      newNotes.set(date.toDateString(), note);
-      return newNotes;
-    });
-  };
+    for (const dayStat of monthDataMap.values()) {
+      totalPnL += dayStat.daily_pnl;
+      totalTrades += dayStat.trade_count;
+      totalWins += dayStat.win_count;
+      if (dayStat.trade_count > 0) tradingDays++;
+    }
 
+    const winRate = totalTrades > 0 ? Math.round((totalWins / totalTrades) * 100) : 0;
+
+    return {
+      monthlyPnL: totalPnL,
+      winRate,
+      totalTrades,
+      tradingDays
+    };
+  }, [monthDataMap, isLoading]);
+
+  // Navigation Handlers
   const goToPreviousMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
   const goToNextMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
   const goToToday = () => setCurrentDate(new Date(today.getFullYear(), today.getMonth(), 1));
@@ -71,7 +79,13 @@ const Calendar = () => {
 
   const formatPnL = (value: number) => {
     const sign = value >= 0 ? '+' : '';
-    return `${sign}$${Math.abs(value).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+    // ✅ Fix: Dynamic Currency Formatting 
+    // Using Math.round to match the original style (no decimals for large numbers in summary)
+    // But formatCurrency handles decimals based on locale, usually 2. 
+    // Let's stick to user preference via hook but maybe trim for the big header if needed.
+    // actually formatCurrency returns a string like "1,234.56". 
+    // We can just use it directly for consistency.
+    return `${sign}${symbol}${formatCurrency(Math.abs(value))}`;
   };
 
   return (
@@ -166,13 +180,12 @@ const Calendar = () => {
             <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-sm bg-muted/30" /><span>No Trades</span></div>
           </div>
 
-          {/* Grid */}
+          {/* Grid - Passes the Map directly */}
           <CalendarGrid
             year={currentDate.getFullYear()}
             month={currentDate.getMonth()}
-            monthData={monthData}
+            monthData={monthDataMap}
             colorMode={colorMode}
-            onSaveNote={handleSaveNote}
           />
         </div>
       </div>

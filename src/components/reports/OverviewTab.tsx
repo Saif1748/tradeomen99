@@ -5,9 +5,9 @@ import {
   Target, 
   Scales, 
   CurrencyDollar, 
-  ChartBar,
-  Pulse,
-  ArrowUp,
+  ChartBar, 
+  Pulse, 
+  ArrowUp, 
   ArrowDown
 } from "@phosphor-icons/react";
 import {
@@ -25,7 +25,8 @@ import {
   Cell,
   ReferenceLine
 } from "recharts";
-import { useSettings } from "@/contexts/SettingsContext";
+// ✅ Fix: Import from the new hook file instead of SettingsContext
+import { useCurrency } from "@/hooks/use-currency";
 import { Skeleton } from "@/components/ui/skeleton";
 
 interface OverviewTabProps {
@@ -35,7 +36,13 @@ interface OverviewTabProps {
 }
 
 const OverviewTab = ({ data, isLoading, isError }: OverviewTabProps) => {
-  const { formatCurrency } = useSettings();
+  // ✅ Fix: Use Global Currency Hook
+  const { format, symbol } = useCurrency();
+
+  // Helper function to format currency with symbol
+  const formatCurrency = (val: number) => {
+    return `${symbol}${format(val)}`;
+  };
 
   if (isLoading) {
     return (
@@ -61,7 +68,7 @@ const OverviewTab = ({ data, isLoading, isError }: OverviewTabProps) => {
   // ✅ Extract data from SQL JSON response
   const stats = data?.stats || {};
   const equityCurve = data?.equityCurve || [];
-  const dailyPnLData = data?.dailyPnL || [];
+  // const dailyPnLData = data?.dailyPnL || []; // Unused variable
   const longShortData = data?.longShort || [];
 
   // ✅ Advanced Metric Calculations with safe fallbacks
@@ -204,7 +211,7 @@ const OverviewTab = ({ data, isLoading, isError }: OverviewTabProps) => {
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} opacity={0.3} />
               <XAxis dataKey="date" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }} axisLine={false} tickLine={false} minTickGap={40} />
-              <YAxis tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={(val) => `$${val}`} />
+              <YAxis tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={(val) => `${symbol}${val}`} />
               <Tooltip
                 contentStyle={{ backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))", borderRadius: "12px", fontSize: "12px" }}
                 formatter={(value: number) => [formatCurrency(value), "Equity"]}

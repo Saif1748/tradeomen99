@@ -34,13 +34,17 @@ import { useStrategies, UIStrategy } from "@/hooks/use-strategies";
 import { useAuth } from "@/hooks/use-Auth";
 import { useModal } from "@/contexts/ModalContext"; 
 import { Skeleton } from "@/components/ui/skeleton";
+// ✅ Fix: Import from the new hook file
+import { useCurrency } from "@/hooks/use-currency";
 
 const Strategies = () => {
   // --- 1. Real Data Hooks ---
   const { strategies: realStrategies, isLoading, createStrategy, deleteStrategy } = useStrategies();
   const { profile } = useAuth();
   const { openUpgradeModal } = useModal();
-
+  
+  // ✅ Fix: Use Currency Hook
+  const { format, symbol } = useCurrency();
 
   // --- 2. State ---
   const [selectedStrategy, setSelectedStrategy] = useState<Strategy | null>(null);

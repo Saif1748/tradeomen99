@@ -1,4 +1,6 @@
 import { Crosshair, ChartBar, TrendUp, Lightning } from "@phosphor-icons/react";
+// ✅ Fix: Import from the new hook file
+import { useCurrency } from "@/hooks/use-currency";
 
 interface StrategyStatsCardsProps {
   totalStrategies: number;
@@ -13,6 +15,9 @@ const StrategyStatsCards = ({
   avgWinRate,
   totalPnl
 }: StrategyStatsCardsProps) => {
+  // ✅ Fix: Use Global Currency Hook for formatting
+  const { format, symbol } = useCurrency();
+
   const stats = [
     {
       icon: <Crosshair weight="regular" className="w-4 h-4 text-muted-foreground" />,
@@ -34,8 +39,9 @@ const StrategyStatsCards = ({
     },
     {
       icon: <Lightning weight="regular" className="w-4 h-4 text-muted-foreground" />,
-      label: "Total P&L",
-      value: `${totalPnl >= 0 ? '+' : ''}$${totalPnl.toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
+      label: `Total P&L`, // Optional: You could add ({symbol}) here if you want explicit clarity
+      // ✅ Fix: Use symbol and format function for dynamic currency support
+      value: `${totalPnl >= 0 ? '+' : '-'}${symbol}${format(Math.abs(totalPnl))}`,
       color: totalPnl >= 0 ? "text-emerald-400" : "text-rose-400"
     }
   ];

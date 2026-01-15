@@ -25,7 +25,8 @@ import {
   Legend
 } from "recharts";
 import { format } from "date-fns";
-import { useSettings } from "@/contexts/SettingsContext";
+// ✅ Fix: Import from the new hook file instead of SettingsContext
+import { useCurrency } from "@/hooks/use-currency";
 import { Skeleton } from "@/components/ui/skeleton";
 
 interface TradeAnalysisTabProps {
@@ -37,7 +38,13 @@ interface TradeAnalysisTabProps {
 const COLORS = ["hsl(270 70% 55%)", "hsl(200 70% 50%)", "hsl(160 60% 45%)", "hsl(45 90% 55%)", "hsl(320 70% 50%)", "hsl(30 80% 55%)", "hsl(180 60% 45%)", "hsl(0 70% 50%)"];
 
 const TradeAnalysisTab = ({ data, isLoading, isError }: TradeAnalysisTabProps) => {
-  const { formatCurrency } = useSettings();
+  // ✅ Fix: Use Global Currency Hook
+  const { format, symbol } = useCurrency();
+
+  // Helper function to format currency with symbol
+  const formatCurrency = (val: number) => {
+    return `${symbol}${format(val)}`;
+  };
   
   if (isLoading) {
     return (
@@ -89,7 +96,7 @@ const TradeAnalysisTab = ({ data, isLoading, isError }: TradeAnalysisTabProps) =
     },
     { 
       label: "Total Volume", 
-      value: `$${((kpis.totalVolume || 0) / 1000).toFixed(1)}k`, 
+      value: `${symbol}${((kpis.totalVolume || 0) / 1000).toFixed(1)}k`, // Custom format for K volume
       icon: Pulse,
       subtext: "Notional Value",
       color: "text-purple-400"
@@ -178,8 +185,8 @@ const TradeAnalysisTab = ({ data, isLoading, isError }: TradeAnalysisTabProps) =
             <ResponsiveContainer width="100%" height="100%">
               <ScatterChart margin={{ top: 10, right: 10, bottom: 10, left: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} />
-                <XAxis type="number" dataKey="risk" name="Risk" tick={{ fontSize: 10 }} label={{ value: 'Risk ($)', position: 'bottom', offset: 0, fill: 'hsl(var(--muted-foreground))', fontSize: 10 }} />
-                <YAxis type="number" dataKey="pnl" name="PnL" tick={{ fontSize: 10 }} label={{ value: 'PnL ($)', angle: -90, position: 'insideLeft', fill: 'hsl(var(--muted-foreground))', fontSize: 10 }} />
+                <XAxis type="number" dataKey="risk" name="Risk" tick={{ fontSize: 10 }} label={{ value: `Risk (${symbol})`, position: 'bottom', offset: 0, fill: 'hsl(var(--muted-foreground))', fontSize: 10 }} />
+                <YAxis type="number" dataKey="pnl" name="PnL" tick={{ fontSize: 10 }} label={{ value: `PnL (${symbol})`, angle: -90, position: 'insideLeft', fill: 'hsl(var(--muted-foreground))', fontSize: 10 }} />
                 <Tooltip 
                   cursor={{ strokeDasharray: '3 3' }}
                   contentStyle={{ backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))", borderRadius: "8px", fontSize: "12px" }}

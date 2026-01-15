@@ -1,7 +1,8 @@
 import { useNavigate } from "react-router-dom";
 import { format } from "date-fns";
 import { useTrades, UITrade } from "@/hooks/use-trades";
-import { useCurrency } from "@/contexts/CurrencyContext";
+// ✅ Fix: Import from the new hook file
+import { useCurrency } from "@/hooks/use-currency";
 import { Skeleton } from "@/components/ui/skeleton";
 
 const RecentTrades = () => {
@@ -91,6 +92,7 @@ const RecentTrades = () => {
                 >
                   {isWin ? "+" : "-"}
                   {symbol}
+                  {/* Convert USD PnL to Selected Currency */}
                   {formatUSD(Math.abs(pnlUSD))}
                 </span>
               </div>

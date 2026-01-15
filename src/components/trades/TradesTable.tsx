@@ -10,6 +10,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+// ✅ Fix: Import from the new hook file
+import { useCurrency } from "@/hooks/use-currency";
 
 interface TradesTableProps {
   trades: UITrade[];
@@ -26,6 +28,8 @@ const TradesTable = ({
   sortDirection,
   onSort,
 }: TradesTableProps) => {
+  // ✅ Fix: Use Currency Hook
+  const { format: formatCurrency, symbol } = useCurrency();
 
   const SortIcon = ({ field }: { field: string }) => {
     if (sortField !== field) {
@@ -108,10 +112,8 @@ const TradesTable = ({
                       </Badge>
                     </TableCell>
                     <TableCell className={`font-bold tabular-nums text-sm ${!isLoss ? "text-emerald-500" : "text-rose-500"}`}>
-                      {!isLoss ? "+" : "-"}${Math.abs(trade.pnl || 0).toLocaleString("en-US", {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2
-                      })}
+                      {/* ✅ Fix: Dynamic Currency Formatting */}
+                      {!isLoss ? "+" : "-"}{symbol}{formatCurrency(Math.abs(trade.pnl || 0))}
                     </TableCell>
                     <TableCell className={`font-medium tabular-nums text-sm ${!isRLoss ? "text-emerald-500" : "text-rose-500"}`}>
                       {!isRLoss ? "+" : "-"}{Math.abs(trade.rMultiple).toFixed(2)}R
@@ -173,7 +175,8 @@ const TradesTable = ({
                   </Badge>
                 </div>
                 <span className={`text-lg font-bold tabular-nums ${!isLoss ? "text-emerald-500" : "text-rose-500"}`}>
-                  {!isLoss ? "+" : "-"}${Math.abs(trade.pnl || 0).toFixed(0)}
+                  {/* ✅ Fix: Dynamic Currency Formatting Mobile */}
+                  {!isLoss ? "+" : "-"}{symbol}{formatCurrency(Math.abs(trade.pnl || 0))}
                 </span>
               </div>
               <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -183,9 +186,9 @@ const TradesTable = ({
                   <span className="truncate text-foreground/80">{trade.strategy}</span>
                   {/* Show first tag on mobile if available */}
                   {trade.tags.length > 0 && (
-                     <span className="border border-primary/20 bg-primary/5 text-primary px-1 rounded-[4px] text-[9px] truncate max-w-[60px]">
+                      <span className="border border-primary/20 bg-primary/5 text-primary px-1 rounded-[4px] text-[9px] truncate max-w-[60px]">
                         {trade.tags[0]}
-                     </span>
+                      </span>
                   )}
                 </div>
                 <span className={`font-semibold shrink-0 ${trade.rMultiple >= 0 ? "text-emerald-500" : "text-rose-500"}`}>

@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { DayData } from "@/lib/calendarData";
+import { CalendarDayStats } from "@/hooks/use-calendar";
 import CalendarDayCell from "./CalendarDayCell";
 import DayDetailModal from "./DayDetailModal";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -7,18 +7,26 @@ import { useIsMobile } from "@/hooks/use-mobile";
 interface CalendarGridProps {
   year: number;
   month: number;
-  monthData: Map<string, DayData>;
+  monthData: Map<string, CalendarDayStats> | undefined;
   colorMode: 'pnl' | 'winrate';
-  onSaveNote?: (date: Date, note: string) => void;
 }
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const WEEKDAYS_SHORT = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
-const CalendarGrid = ({ year, month, monthData, colorMode, onSaveNote }: CalendarGridProps) => {
-  const [selectedDay, setSelectedDay] = useState<DayData | null>(null);
+const CalendarGrid = ({ year, month, monthData, colorMode }: CalendarGridProps) => {
+  const [selectedDay, setSelectedDay] = useState<CalendarDayStats | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const isMobile = useIsMobile();
+
+  // Helper to generate YYYY-MM-DD key using local time components
+  // This matches the format returned by your SQL function
+  const getDateKey = (date: Date) => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
 
   const calendarDays = useMemo(() => {
     const firstDay = new Date(year, month, 1);
@@ -68,8 +76,12 @@ const CalendarGrid = ({ year, month, monthData, colorMode, onSaveNote }: Calenda
   };
 
   const handleDayClick = (date: Date | null, isCurrentMonth: boolean) => {
-    if (!date || !isCurrentMonth) return;
-    const dayData = monthData.get(date.toDateString());
+    if (!date || !isCurrentMonth || !monthData) return;
+    
+    const dateKey = getDateKey(date);
+    const dayData = monthData.get(dateKey);
+
+    // Only open modal if there is data (or you can allow opening empty days if you plan to add 'Add Trade' feature later)
     if (dayData) {
       setSelectedDay(dayData);
       setIsModalOpen(true);
@@ -92,26 +104,32 @@ const CalendarGrid = ({ year, month, monthData, colorMode, onSaveNote }: Calenda
 
       {/* Calendar Grid */}
       <div className="grid grid-cols-7 gap-1 sm:gap-2">
-        {calendarDays.map((dayInfo, index) => (
-          <CalendarDayCell
-            key={index}
-            day={dayInfo.day}
-            date={dayInfo.date}
-            dayData={dayInfo.date && dayInfo.isCurrentMonth ? monthData.get(dayInfo.date.toDateString()) || null : null}
-            isCurrentMonth={dayInfo.isCurrentMonth}
-            isToday={isToday(dayInfo.date)}
-            colorMode={colorMode}
-            onClick={() => handleDayClick(dayInfo.date, dayInfo.isCurrentMonth)}
-          />
-        ))}
+        {calendarDays.map((dayInfo, index) => {
+          // Safe data retrieval
+          const data = (dayInfo.date && dayInfo.isCurrentMonth && monthData) 
+            ? monthData.get(getDateKey(dayInfo.date)) || null 
+            : null;
+
+          return (
+            <CalendarDayCell
+              key={index}
+              day={dayInfo.day}
+              date={dayInfo.date}
+              dayData={data}
+              isCurrentMonth={dayInfo.isCurrentMonth}
+              isToday={isToday(dayInfo.date)}
+              colorMode={colorMode}
+              onClick={() => handleDayClick(dayInfo.date, dayInfo.isCurrentMonth)}
+            />
+          );
+        })}
       </div>
 
-      {/* Day Detail Modal/Sheet */}
+      {/* Day Detail Modal */}
       <DayDetailModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         dayData={selectedDay}
-        onSaveNote={onSaveNote}
       />
     </>
   );

@@ -1,4 +1,6 @@
 import { Strategy } from "@/lib/strategiesData";
+// ✅ Fix: Import from the new hook file
+import { useCurrency } from "@/hooks/use-currency";
 
 interface StrategyCardProps {
   strategy: Strategy;
@@ -6,8 +8,10 @@ interface StrategyCardProps {
 }
 
 const StrategyCard = ({ strategy, onClick }: StrategyCardProps) => {
+  // ✅ Fix: Use Global Currency Hook for formatting
+  const { format, symbol } = useCurrency();
+
   // --- 1. Defensive Fallbacks ---
-  // Ensuring numbers exist before calling .toFixed() to prevent crashes
   const winRate = strategy.winRate ?? 0;
   const netPnl = strategy.netPnl ?? 0;
   const totalTrades = strategy.totalTrades ?? 0;
@@ -76,9 +80,9 @@ const StrategyCard = ({ strategy, onClick }: StrategyCardProps) => {
 
         {/* P&L */}
         <div>
-          <p className="text-xs text-muted-foreground uppercase tracking-wider">NET P&L (USD)</p>
+          <p className="text-xs text-muted-foreground uppercase tracking-wider">NET P&L ({symbol})</p>
           <p className={`text-xl font-medium ${pnlColor}`}>
-            {netPnl >= 0 ? '+' : ''}${Math.abs(netPnl).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+            {netPnl >= 0 ? '+' : ''}{symbol}{format(Math.abs(netPnl))}
           </p>
           <p className="text-xs text-muted-foreground">{strategy.style}</p>
         </div>
@@ -89,23 +93,22 @@ const StrategyCard = ({ strategy, onClick }: StrategyCardProps) => {
         <div>
           <p className="text-muted-foreground uppercase tracking-wider">PROFIT FACTOR</p>
           <p className="text-foreground font-medium">
-            {/* Displaying 100+ for the DB cap, else original format */}
             {profitFactor >= 100 ? "100.00+" : profitFactor.toFixed(2)}
           </p>
         </div>
         <div>
           <p className="text-muted-foreground uppercase tracking-wider">EXPECTANCY</p>
           <p className={expectancy >= 0 ? "text-emerald-400" : "text-rose-400"}>
-            {expectancy >= 0 ? '+' : '-'}${Math.abs(expectancy).toFixed(2)}
+            {expectancy >= 0 ? '+' : '-'}{symbol}{format(Math.abs(expectancy))}
           </p>
         </div>
         <div>
           <p className="text-muted-foreground uppercase tracking-wider">AVG WIN</p>
-          <p className={avgWinColor}>+${Math.abs(avgWin).toFixed(2)}</p>
+          <p className={avgWinColor}>+{symbol}{format(Math.abs(avgWin))}</p>
         </div>
         <div>
           <p className="text-muted-foreground uppercase tracking-wider">AVG LOSS</p>
-          <p className={avgLossColor}>-${Math.abs(avgLoss).toFixed(2)}</p>
+          <p className={avgLossColor}>-{symbol}{format(Math.abs(avgLoss))}</p>
         </div>
       </div>
     </div>

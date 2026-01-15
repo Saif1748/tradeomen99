@@ -1,8 +1,13 @@
+// src/components/AIChat.tsx
+
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChatCircle, Lightning, List } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { toast } from "sonner"; // Assuming you use sonner or similar for notifications
+
+// Layout & Components
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import ChatMessage from "@/components/ai-chat/ChatMessage";
 import ChatInput from "@/components/ai-chat/ChatInput";
@@ -11,131 +16,154 @@ import ThinkingIndicator from "@/components/ai-chat/ThinkingIndicator";
 import EmptyState from "@/components/ai-chat/EmptyState";
 import MobileSidebar from "@/components/dashboard/MobileSidebar";
 
+// API
+import { aiApi } from "@/services/api/modules/ai";
+import type { ChatSession, ChatMessage as ApiChatMessage } from "@/services/api/types";
+
+// Local UI Message Interface
 interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
   attachments?: File[];
+  isStreaming?: boolean;
 }
-
-interface ChatSession {
-  id: string;
-  title: string;
-  timestamp: string;
-  preview: string;
-  messages: Message[];
-}
-
-// Mock chat history
-const mockChatHistory: ChatSession[] = [
-  {
-    id: "1",
-    title: "AAPL Trade Analysis",
-    timestamp: "2 hours ago",
-    preview: "What was my win rate on AAPL trades last month?",
-    messages: [],
-  },
-  {
-    id: "2",
-    title: "Risk Management Review",
-    timestamp: "Yesterday",
-    preview: "Can you analyze my position sizing?",
-    messages: [],
-  },
-  {
-    id: "3",
-    title: "Strategy Performance",
-    timestamp: "3 days ago",
-    preview: "How is my momentum strategy performing?",
-    messages: [],
-  },
-];
 
 const AIChat = () => {
+  // State
   const [messages, setMessages] = useState<Message[]>([]);
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  
   const [isLoading, setIsLoading] = useState(false);
-  const [isStreaming, setIsStreaming] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [currentChatId, setCurrentChatId] = useState<string | undefined>();
-  const [chatHistory] = useState<ChatSession[]>(mockChatHistory);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  
   const scrollRef = useRef<HTMLDivElement>(null);
-
   const hasMessages = messages.length > 0;
 
-  // Auto-scroll to bottom on new messages
+  // 1. Initial Load: Fetch Sessions
+  useEffect(() => {
+    fetchSessions();
+  }, []);
+
+  // 2. Auto-scroll to bottom
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages, isLoading]);
 
-  const simulateAIResponse = (userMessage: string) => {
-    setIsLoading(true);
+  // --- API Helpers ---
 
-    // Simulate thinking delay
-    setTimeout(() => {
-      setIsLoading(false);
-      setIsStreaming(true);
-
-      // Simulate streaming response
-      const response = `Based on your trading data, here's what I found regarding "${userMessage}":\n\n**Key Insights:**\n- Your recent trades show a positive trend in risk management\n- Win rate has improved by 12% over the last month\n- Average position size aligns well with your account balance\n\n**Recommendations:**\n1. Consider scaling into positions gradually\n2. Your stop-loss placement has been effective\n3. The current strategy shows consistency\n\nWould you like me to dive deeper into any specific aspect?`;
-
-      let currentIndex = 0;
-      const assistantMessageId = Date.now().toString();
-
-      // Add empty assistant message
-      setMessages((prev) => [
-        ...prev,
-        { id: assistantMessageId, role: "assistant", content: "" },
-      ]);
-
-      // Stream characters
-      const interval = setInterval(() => {
-        currentIndex += 3;
-        if (currentIndex >= response.length) {
-          currentIndex = response.length;
-          clearInterval(interval);
-          setIsStreaming(false);
-        }
-
-        setMessages((prev) =>
-          prev.map((msg) =>
-            msg.id === assistantMessageId
-              ? { ...msg, content: response.slice(0, currentIndex) }
-              : msg
-          )
-        );
-      }, 15);
-    }, 1000);
+  const fetchSessions = async () => {
+    try {
+      const data = await aiApi.getSessions();
+      setSessions(data);
+    } catch (error) {
+      console.error("Failed to load sessions", error);
+    }
   };
 
-  const handleSend = (message: string, attachments?: File[]) => {
-    const userMessage: Message = {
-      id: Date.now().toString(),
+  const loadSessionMessages = async (sessionId: string) => {
+    try {
+      setIsLoading(true);
+      const history = await aiApi.getHistory(sessionId);
+      
+      // Map API messages to UI messages
+      const uiMessages: Message[] = history.map((msg) => ({
+        id: msg.id || Date.now().toString(), // Fallback ID if missing
+        role: msg.role as "user" | "assistant",
+        content: msg.content,
+      }));
+      
+      setMessages(uiMessages);
+    } catch (error) {
+      toast.error("Failed to load chat history");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // --- Event Handlers ---
+
+  const handleSend = async (text: string, attachments?: File[]) => {
+    if (!text.trim() && (!attachments || attachments.length === 0)) return;
+
+    // 1. Optimistically add User Message
+    const tempId = Date.now().toString();
+    const userMsg: Message = {
+      id: tempId,
       role: "user",
-      content: message,
-      attachments: attachments
+      content: text,
+      attachments: attachments,
     };
-    setMessages((prev) => [...prev, userMessage]);
-    
-    // If there are attachments, we might want to modify the AI response logic here
-    // For now, we just pass the text to the simulator
-    simulateAIResponse(message);
+    setMessages((prev) => [...prev, userMsg]);
+    setIsLoading(true);
+
+    try {
+      let activeSessionId = currentChatId || "";
+      let uploadedContext = "";
+
+      // 2. Handle File Uploads (If any)
+      // Note: This implements a simple "upload & analyze" flow. 
+      // Complex CSV imports usually require a dedicated Confirmation Modal.
+      if (attachments && attachments.length > 0) {
+        try {
+          // Upload the first file (MVP limit)
+          const uploadRes = await aiApi.uploadFile(attachments[0], activeSessionId || "new", text);
+          uploadedContext = `\n\n[System: User uploaded file '${uploadRes.filename}'. Analysis preview: ${uploadRes.message}]`;
+        } catch (err) {
+          toast.error("Failed to upload file");
+        }
+      }
+
+      // 3. Send Message to AI
+      // If we don't have a session ID yet, passing "" or "new" (handled by backend logic or empty string)
+      const response = await aiApi.sendMessage(
+        activeSessionId, 
+        text + uploadedContext
+      );
+
+      // 4. Update Session State (New Chat Created?)
+      if (!currentChatId && response.session_id) {
+        setCurrentChatId(response.session_id);
+        // Refresh session list to show the new one in sidebar
+        fetchSessions(); 
+      }
+
+      // 5. Add AI Response
+      const aiMsg: Message = {
+        id: Date.now().toString(), // or use response.id if available
+        role: "assistant",
+        content: response.response,
+      };
+      setMessages((prev) => [...prev, aiMsg]);
+
+    } catch (error) {
+      console.error(error);
+      toast.error("Failed to send message");
+      // Optional: Remove the optimistic user message on failure
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleNewChat = () => {
     setMessages([]);
     setCurrentChatId(undefined);
+    setHistoryOpen(false); // Optional: close sidebar on mobile
   };
 
   const handleSelectChat = (id: string) => {
+    if (id === currentChatId) return;
     setCurrentChatId(id);
-    // In a real app, load messages for this chat
-    setMessages([]);
+    loadSessionMessages(id);
+    setHistoryOpen(false); // Close sidebar on mobile
   };
 
   const handleClearChat = () => {
+    // Just clear view, don't delete unless explicit
     setMessages([]);
   };
 
@@ -148,7 +176,7 @@ const AIChat = () => {
         onNewChat={handleNewChat}
         onSelectChat={handleSelectChat}
         currentChatId={currentChatId}
-        chats={chatHistory}
+        chats={sessions} // Passing real sessions
       />
 
       {/* Mobile Sidebar */}
@@ -158,7 +186,7 @@ const AIChat = () => {
       />
 
       <div className="h-screen flex flex-col">
-        {/* Header - Updated for centering and no border */}
+        {/* Header */}
         <header className="relative flex items-center justify-between px-4 sm:px-6 lg:px-8 h-14 sm:h-16 flex-shrink-0">
           <div className="flex items-center gap-2 z-10">
             {/* Mobile menu button */}
@@ -184,7 +212,6 @@ const AIChat = () => {
             <span className="text-sm font-medium text-foreground">TradeOmen AI</span>
           </div>
 
-          {/* Empty div for spacing to balance the layout */}
           <div className="w-10" />
         </header>
 
@@ -192,7 +219,7 @@ const AIChat = () => {
         <div className="flex-1 flex flex-col min-h-0">
           <AnimatePresence mode="wait">
             {!hasMessages ? (
-              /* Empty State - Centered Layout */
+              /* Empty State */
               <motion.div
                 key="empty"
                 initial={{ opacity: 0 }}
@@ -219,17 +246,14 @@ const AIChat = () => {
                 {/* Scrollable Messages Area */}
                 <ScrollArea className="flex-1" ref={scrollRef}>
                   <div className="max-w-3xl mx-auto px-4 py-4 sm:py-6 space-y-4 sm:space-y-6">
-                    {messages.map((message, index) => (
+                    {messages.map((message) => (
                       <ChatMessage
                         key={message.id}
                         role={message.role}
                         content={message.content}
-                        // Pass attachments to ChatMessage if you updated that component to support them
-                        isStreaming={
-                          isStreaming &&
-                          index === messages.length - 1 &&
-                          message.role === "assistant"
-                        }
+                        // Note: Backend currently returns full response at once.
+                        // 'isStreaming' is removed as the standard backend isn't streaming chunks yet.
+                        isStreaming={false} 
                       />
                     ))}
 
@@ -244,7 +268,7 @@ const AIChat = () => {
                 <div className="flex-shrink-0 pb-4 pt-2 bg-gradient-to-t from-background via-background to-transparent">
                   <ChatInput
                     onSend={handleSend}
-                    isLoading={isLoading || isStreaming}
+                    isLoading={isLoading}
                     onClearChat={handleClearChat}
                   />
                 </div>

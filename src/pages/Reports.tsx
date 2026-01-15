@@ -3,12 +3,12 @@ import {
   ChartLine, 
   Funnel, 
   Export, 
-  CalendarBlank,
-  SquaresFour,
-  ChartBar,
-  Strategy,
-  Clock,
-  Sparkle,
+  CalendarBlank, 
+  SquaresFour, 
+  ChartBar, 
+  Strategy, 
+  Clock, 
+  Sparkle, 
   X
 } from "@phosphor-icons/react";
 import { DateRange } from "react-day-picker";
@@ -47,6 +47,8 @@ import { motion } from "framer-motion";
 // ✅ Import hooks
 import { useReports, ReportTab } from "@/hooks/use-reports";
 import { useStrategies } from "@/hooks/use-strategies";
+// ✅ Fix: Import from the new hook file
+import { useCurrency } from "@/hooks/use-currency";
 
 const Reports = () => {
   // --- 1. State Management ---
@@ -59,6 +61,8 @@ const Reports = () => {
   const [strategyFilter, setStrategyFilter] = useState("all");
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
 
+  // ✅ Fix: Ensure Currency Hook is initialized
+  const { symbol, format: formatCurrency } = useCurrency();
 
   // --- 2. Data Fetching ---
   // ✅ Dynamic Strategies: Fetching actual names from your DB

@@ -1,5 +1,7 @@
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { Skeleton } from "@/components/ui/skeleton";
+// ✅ Fix: Import from the new hook file
+import { useCurrency } from "@/hooks/use-currency";
 
 interface TimeAnalysisTabProps {
   data: any;
@@ -8,6 +10,13 @@ interface TimeAnalysisTabProps {
 }
 
 const TimeAnalysisTab = ({ data, isLoading, isError }: TimeAnalysisTabProps) => {
+  // ✅ Fix: Use Global Currency Hook
+  const { format, symbol } = useCurrency();
+
+  // Helper function to format currency with symbol
+  const formatCurrency = (val: number) => {
+    return `${symbol}${format(val)}`;
+  };
   
   if (isLoading) {
     return (
@@ -47,7 +56,7 @@ const TimeAnalysisTab = ({ data, isLoading, isError }: TimeAnalysisTabProps) => 
     if (normalized >= 0.7) return "hsl(142, 71%, 35%)"; // Strong Green
     if (normalized >= 0.4) return "hsl(142, 40%, 25%)"; // Subtle Green
     if (normalized >= 0.2) return "hsl(38, 92%, 25%)";  // Amber/Neutral
-    return "hsl(346, 84%, 30%)";                       // Muted Red
+    return "hsl(346, 84%, 30%)";                        // Muted Red
   };
 
   return (
@@ -69,7 +78,7 @@ const TimeAnalysisTab = ({ data, isLoading, isError }: TimeAnalysisTabProps) => 
               <div className="mt-2 pt-2 border-t border-white/10 space-y-0.5">
                 <p className="text-[10px] text-foreground/60">{day.trades || 0} trades</p>
                 <p className={`text-[10px] font-bold ${day.pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                  {day.trades > 0 ? `${day.pnl >= 0 ? '+' : ''}$${Math.abs(day.pnl).toFixed(0)}` : '-'}
+                  {day.trades > 0 ? `${day.pnl >= 0 ? '+' : ''}${formatCurrency(Math.abs(day.pnl))}` : '-'}
                 </p>
               </div>
             </div>
@@ -96,12 +105,12 @@ const TimeAnalysisTab = ({ data, isLoading, isError }: TimeAnalysisTabProps) => 
                 tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }} 
                 tickLine={false} 
                 axisLine={false} 
-                tickFormatter={(value) => `$${value}`} 
+                tickFormatter={(value) => `${symbol}${value}`} 
               />
               <Tooltip 
                 contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "12px" }} 
                 formatter={(value: number, name: string) => [
-                  name === "pnl" ? `$${value.toFixed(2)}` : `${(value || 0).toFixed(1)}%`, 
+                  name === "pnl" ? formatCurrency(value) : `${(value || 0).toFixed(1)}%`, 
                   name === "pnl" ? "Net P&L" : "Win Rate"
                 ]} 
               />
@@ -145,7 +154,7 @@ const TimeAnalysisTab = ({ data, isLoading, isError }: TimeAnalysisTabProps) => 
                 <div className="flex justify-between items-center">
                   <span className="text-xs text-muted-foreground">Profitability</span>
                   <span className={`text-sm font-bold tabular-nums ${(session.pnl || 0) >= 0 ? 'text-emerald-500' : 'text-rose-400'}`}>
-                    {session.pnl >= 0 ? '+' : ''}${Math.abs(session.pnl || 0).toLocaleString()}
+                    {session.pnl >= 0 ? '+' : ''}{formatCurrency(Math.abs(session.pnl || 0))}
                   </span>
                 </div>
               </div>

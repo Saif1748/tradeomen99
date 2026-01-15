@@ -1,14 +1,14 @@
 import { CaretLeft, CaretRight } from "@phosphor-icons/react";
 import { useState } from "react";
 import { useCalendar } from "@/hooks/use-calendar";
-import { useCurrency } from "@/contexts/CurrencyContext";
+// ✅ Fix: Import from the new hook file
+import { useCurrency } from "@/hooks/use-currency";
 
 const MiniCalendar = () => {
   const [currentMonth, setCurrentMonth] = useState(new Date()); // Start with today
 
-  // Fetch real data using your existing hook
-  // We pass an empty Map for notes since the dashboard doesn't display them
-  const { monthData } = useCalendar(currentMonth, new Map());
+  // ✅ FIX 1: Use new hook signature (returns 'data', no notes param needed)
+  const { data: monthData } = useCalendar(currentMonth);
 
   // Currency conversion for display
   const { format: formatUSD, symbol } = useCurrency();
@@ -33,6 +33,14 @@ const MiniCalendar = () => {
     setCurrentMonth(new Date(year, month + 1, 1));
   };
 
+  // ✅ FIX 2: Helper to match SQL "YYYY-MM-DD" format
+  const getDateKey = (date: Date) => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
+
   const renderCalendarDays = () => {
     const cells: JSX.Element[] = [];
 
@@ -43,14 +51,15 @@ const MiniCalendar = () => {
 
     // Days of the month
     for (let day = 1; day <= daysInMonth; day++) {
-      // Look up data from the Map using the date string key
       const date = new Date(year, month, day);
-      const dateKey = date.toDateString();
-      const dayData = monthData.get(dateKey);
+      
+      // ✅ FIX 3: Use correct key format
+      const dateKey = getDateKey(date);
+      const dayData = monthData?.get(dateKey);
 
-      // Determine status based on real data
-      const hasTrading = !!(dayData && dayData.tradeCount > 0);
-      const isProfit = dayData ? dayData.totalPnL > 0 : false;
+      // ✅ FIX 4: Use correct SQL property names (trade_count, daily_pnl)
+      const hasTrading = !!(dayData && dayData.trade_count > 0);
+      const isProfit = dayData ? dayData.daily_pnl > 0 : false;
 
       // Correct "Today" check
       const today = new Date();
@@ -59,11 +68,17 @@ const MiniCalendar = () => {
         month === today.getMonth() &&
         year === today.getFullYear();
 
-      // Prepare PnL display (converted from USD -> selected currency)
+      // Prepare PnL display
       let pnlDisplay = "";
       if (hasTrading && dayData) {
-        const absUsd = Math.abs(dayData.totalPnL || 0);
-        // formatUSD expects USD input and returns converted formatted string (no symbol)
+        // Convert USD PnL to Selected Currency
+        const absUsd = Math.abs(dayData.daily_pnl || 0);
+        // formatUSD already returns a formatted string with decimals, so we just construct the sign + symbol part carefully
+        // But formatUSD usually returns "1,234.56" (string). 
+        // We want: "+$1.2k" or "+₹100" style depending on space. 
+        // Given space is tiny, let's keep it simple or use compact notation if needed.
+        // For MiniCalendar, just showing the number might be tight.
+        // Let's stick to the user's snippet logic:
         pnlDisplay = `${isProfit ? "+" : "-"}${symbol}${formatUSD(absUsd)}`;
       }
 
@@ -89,7 +104,7 @@ const MiniCalendar = () => {
           </span>
           {hasTrading && (
             <span
-              className={`text-[9px] font-light ${
+              className={`text-[9px] font-light truncate w-full text-center px-0.5 ${
                 isProfit
                   ? "text-emerald-600 dark:text-emerald-400"
                   : "text-rose-600 dark:text-rose-400"
