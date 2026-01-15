@@ -26,7 +26,7 @@ import StrategyCard from "@/components/strategies/StrategyCard";
 import CreateStrategyModal from "@/components/strategies/CreateStrategyModal";
 import EditStrategyModal from "@/components/strategies/EditStrategyModal";
 import StrategyDetail from "@/components/strategies/StrategyDetail";
-import { Strategy, calculateStrategyStats, strategyStyles } from "@/lib/strategiesData";
+import { Strategy, strategyStyles } from "@/lib/strategiesData"; 
 import { toast } from "sonner";
 
 // ✅ Hooks & Context
@@ -37,9 +37,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 const Strategies = () => {
   // --- 1. Real Data Hooks ---
-  const { strategies: realStrategies, isLoading, createStrategy, updateStrategy, deleteStrategy } = useStrategies();
+  const { strategies: realStrategies, isLoading, createStrategy, deleteStrategy } = useStrategies();
   const { profile } = useAuth();
   const { openUpgradeModal } = useModal();
+
 
   // --- 2. State ---
   const [selectedStrategy, setSelectedStrategy] = useState<Strategy | null>(null);
@@ -48,62 +49,65 @@ const Strategies = () => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [styleFilter, setStyleFilter] = useState("all");
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // --- 3. Data Adapter (API -> UI) ---
-  // We create a "Hybrid" object that satisfies both the Legacy UI components
-  // and the new EditModal which might expect backend fields.
+
+  // --- 3. Data Adapter (DB -> UI) ---
   const strategies: Strategy[] = useMemo(() => {
     return realStrategies.map((s: UIStrategy) => {
-      // Map Backend Rules (Object) -> UI Rules (Array of Groups)
       const ruleGroups = s.rules 
         ? Object.entries(s.rules).map(([name, rules], i) => ({
             id: `g-${i}`,
             name,
-            rules
+            rules: Array.isArray(rules) ? rules : []
           }))
         : [];
 
-      const mapped = {
+      return {
         id: s.id,
         name: s.name,
         description: s.description,
-        
-        // UI uses 'icon', Backend uses 'emoji'
-        icon: s.emoji, 
-        emoji: s.emoji, // Keep both for compatibility
-        
+        icon: s.emoji,
+        emoji: s.emoji,
         color: s.color,
-        color_hex: s.color, // Keep both
-        
+        color_hex: s.color,
         style: s.style,
-        
-        // UI uses 'instruments', Backend uses 'instrumentTypes'
         instruments: s.instrumentTypes || [],
-        instrument_types: s.instrumentTypes, // For EditModal
-        
-        // UI uses 'ruleGroups', Backend uses 'rules' object
+        instrument_types: s.instrumentTypes,
         ruleGroups: ruleGroups,
-        rules: s.rules, // For EditModal
-        
+        rules: s.rules,
         track_missed_trades: s.trackMissed,
         createdAt: s.createdAt.toISOString(),
         
-        // Mock/Placeholder Stats for UI visualization
-        totalTrades: Math.floor(Math.random() * 50),
-        winRate: Math.floor(Math.random() * 100),
-        netPnl: Math.floor(Math.random() * 5000) - 1000,
-        profitFactor: (Math.random() * 2 + 0.5),
-        expectancy: Math.random() * 100,
-        avgWin: 200,
-        avgLoss: 100
-      };
-      
-      return mapped as unknown as Strategy;
+        // ✅ Real Stats from Supabase RPC
+        totalTrades: s.stats.totalTrades,
+        winRate: s.stats.winRate,
+        netPnl: s.stats.netPL,
+        profitFactor: s.stats.profitFactor,
+        avgWin: s.stats.avgWinner,
+        avgLoss: s.stats.avgLoser,
+        expectancy: s.stats.expectancy, // ✅ Fixed: Now using real DB value
+      } as unknown as Strategy;
     });
   }, [realStrategies]);
 
-  const stats = useMemo(() => calculateStrategyStats(strategies), [strategies]);
+
+  // --- 4. Aggregate Global Stats ---
+  const globalStats = useMemo(() => {
+    const totalStrategies = strategies.length;
+    const combinedTrades = strategies.reduce((acc, s) => acc + (s.totalTrades || 0), 0);
+    
+    // Weighted Win Rate (Actual total wins / actual total trades)
+    const totalWins = strategies.reduce((acc, s) => acc + ((s.winRate / 100) * s.totalTrades), 0);
+    const avgWinRate = combinedTrades > 0 ? (totalWins / combinedTrades) * 100 : 0;
+    
+    return {
+      totalStrategies,
+      combinedTrades,
+      avgWinRate,
+      totalPnl: strategies.reduce((acc, s) => acc + (s.netPnl || 0), 0)
+    };
+  }, [strategies]);
+
 
   const filteredStrategies = useMemo(() => {
     return strategies.filter(s => {
@@ -114,12 +118,11 @@ const Strategies = () => {
     });
   }, [strategies, searchQuery, styleFilter]);
 
-  // --- 4. Handlers (Connected to API) ---
 
+  // --- 5. Handlers ---
   const handleCreateClick = () => {
     const plan = profile?.plan_tier || "FREE";
     const limit = (plan === "PRO" || plan === "PREMIUM") ? 1000 : 1;
-
     if (strategies.length >= limit) {
       openUpgradeModal(`Free plan is limited to ${limit} strategy. Upgrade for unlimited.`);
       return;
@@ -128,33 +131,17 @@ const Strategies = () => {
   };
 
   const handleCreateStrategy = (newStrategy: any) => {
-    // Map UI form fields to API payload
     const payload = {
         ...newStrategy,
-        emoji: newStrategy.icon, // UI returns icon, API needs emoji
+        emoji: newStrategy.icon, 
         color: newStrategy.color || "#FFFFFF",
-        instrumentTypes: newStrategy.instruments, // UI returns instruments
+        instrumentTypes: newStrategy.instruments,
         trackMissed: false
     };
-
-    createStrategy(payload, {
-        onSuccess: () => {
-            setCreateModalOpen(false);
-        }
-    });
+    createStrategy(payload, { onSuccess: () => setCreateModalOpen(false) });
   };
 
   const handleUpdateStrategy = (updatedStrategy: Strategy) => {
-    // The EditModal now handles the transformation, so we just pass the ID and the raw data structure
-    // But since we are using the hook inside the modal, we just need to trigger the refresh here if needed
-    // or simply update local state. 
-    // Actually, react-query invalidation in the hook will auto-update 'strategies',
-    // so we just need to update the selectedStrategy view.
-    
-    // We fetch the fresh object from the updated list to keep 'selectedStrategy' in sync
-    // This is handled by the hook's onSuccess usually, but here we can just update the view
-    // assuming the modal handles the mutation.
-    
     setSelectedStrategy(updatedStrategy);
   };
 
@@ -168,16 +155,12 @@ const Strategies = () => {
     });
   };
 
-  // --- 5. Render ---
 
+  // --- 6. Render ---
   if (isLoading) {
     return (
       <DashboardLayout>
-        <PageHeader 
-            title="Strategies" 
-            icon={<Sword weight="duotone" className="w-6 h-6 text-primary" />} 
-            onMobileMenuOpen={() => setMobileMenuOpen(true)}
-        />
+        <PageHeader title="Strategies" icon={<Sword weight="duotone" className="w-6 h-6 text-primary" />} />
         <div className="p-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {[1, 2, 3].map(i => <Skeleton key={i} className="h-[280px] rounded-xl" />)}
         </div>
@@ -185,15 +168,11 @@ const Strategies = () => {
     );
   }
 
-  // Detail View
+
   if (selectedStrategy) {
     return (
       <DashboardLayout>
-        <PageHeader
-          title="Strategy Detail"
-          icon={<Sword weight="duotone" className="w-6 h-6 text-primary" />}
-          onMobileMenuOpen={() => setMobileMenuOpen(true)}
-        />
+        <PageHeader title="Strategy Detail" icon={<Sword weight="duotone" className="w-6 h-6 text-primary" />} />
         <div className="px-4 sm:px-6 lg:px-8 pb-6 pt-4">
           <StrategyDetail
             strategy={selectedStrategy}
@@ -202,14 +181,12 @@ const Strategies = () => {
             onDelete={() => setDeleteDialogOpen(true)}
           />
         </div>
-
         <EditStrategyModal
           open={editModalOpen}
           onOpenChange={setEditModalOpen}
           strategy={selectedStrategy}
           onUpdateStrategy={handleUpdateStrategy}
         />
-
         <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
           <AlertDialogContent>
             <AlertDialogHeader>
@@ -220,10 +197,7 @@ const Strategies = () => {
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={handleDeleteStrategy}
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              >
+              <AlertDialogAction onClick={handleDeleteStrategy} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
                 Delete
               </AlertDialogAction>
             </AlertDialogFooter>
@@ -233,31 +207,24 @@ const Strategies = () => {
     );
   }
 
-  // Main List View
+
   return (
     <DashboardLayout>
-      <PageHeader
-        title="Strategies"
-        icon={<Sword weight="duotone" className="w-6 h-6 text-primary" />}
-        onMobileMenuOpen={() => setMobileMenuOpen(true)}
-      >
+      <PageHeader title="Strategies" icon={<Sword weight="duotone" className="w-6 h-6 text-primary" />}>
         <Button onClick={handleCreateClick} className="glow-button gap-2 text-white">
           <Plus weight="bold" className="w-4 h-4" />
           <span className="hidden sm:inline">New Strategy</span>
-          <span className="sm:hidden">New</span>
         </Button>
       </PageHeader>
 
       <div className="px-4 sm:px-6 lg:px-8 pb-6 pt-4 space-y-4 sm:space-y-6">
-        {/* Stats Cards */}
         <StrategyStatsCards
-          totalStrategies={stats.totalStrategies}
-          combinedTrades={stats.combinedTrades}
-          avgWinRate={stats.avgWinRate}
-          totalPnl={stats.totalPnl}
+          totalStrategies={globalStats.totalStrategies}
+          combinedTrades={globalStats.combinedTrades}
+          avgWinRate={globalStats.avgWinRate}
+          totalPnl={globalStats.totalPnl}
         />
 
-        {/* Search & Filter */}
         <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
           <div className="relative flex-1 sm:max-w-md">
             <MagnifyingGlass weight="regular" className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -282,7 +249,6 @@ const Strategies = () => {
           </Select>
         </div>
 
-        {/* Strategy Cards Grid */}
         {filteredStrategies.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
             {filteredStrategies.map(strategy => (

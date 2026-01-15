@@ -4,168 +4,149 @@ import {
   Target,
   TrendUp,
 } from "@phosphor-icons/react";
-import { Trade, calculateTradeStats } from "@/lib/tradesData";
+import { UITrade } from "@/hooks/use-trades";
 
 interface TradesStatsCardsProps {
-  trades: Trade[];
+  trades: UITrade[];
 }
 
-const TradesStatsCards = ({ trades }: TradesStatsCardsProps) => {
-  const stats = calculateTradeStats(trades);
+// ⚡ Industry Grade Stats Calculation
+const calculateStats = (trades: UITrade[]) => {
+  const totalTrades = trades.length;
+  const wins = trades.filter((t) => (t.pnl || 0) > 0).length;
+  const losses = trades.filter((t) => (t.pnl || 0) < 0).length;
+  const winRate = totalTrades > 0 ? (wins / totalTrades) * 100 : 0;
+  const totalPnl = trades.reduce((acc, t) => acc + (t.pnl || 0), 0);
+  const avgRMultiple = totalTrades > 0 
+    ? trades.reduce((acc, t) => acc + (t.rMultiple || 0), 0) / totalTrades 
+    : 0;
+  
+  const bestTrade = trades.length > 0 
+    ? [...trades].sort((a, b) => (b.pnl || 0) - (a.pnl || 0))[0] 
+    : { pnl: 0, symbol: "N/A" };
 
-  // Mobile: Show only 4 essential cards
+  return { totalTrades, wins, losses, winRate, totalPnl, avgRMultiple, bestTrade };
+};
+
+const TradesStatsCards = ({ trades }: TradesStatsCardsProps) => {
+  const stats = calculateStats(trades);
+
+  // Helper for explicit signs
+  const formatPnl = (val: number) => (val >= 0 ? "+" : "-") + `$${Math.abs(val).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const formatR = (val: number) => (val >= 0 ? "+" : "-") + `${Math.abs(val).toFixed(2)}R`;
+
   const mobileCards = [
     {
       title: "Total P&L",
-      value: `$${Math.abs(stats.totalPnl).toLocaleString("en-US", {
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 0,
-      })}`,
-      isPnl: true,
+      value: formatPnl(stats.totalPnl),
       isPositive: stats.totalPnl >= 0,
       icon: <CurrencyDollar weight="regular" className="w-4 h-4" />,
     },
     {
       title: "Win Rate",
       value: `${stats.winRate.toFixed(0)}%`,
-      subtitle: `${stats.wins}W/${stats.losses}L`,
+      subtitle: `${stats.wins}W / ${stats.losses}L`,
       icon: <Target weight="regular" className="w-4 h-4" />,
     },
     {
-      title: "Trades",
+      title: "Total Trades",
       value: stats.totalTrades.toString(),
       icon: <ChartLineUp weight="regular" className="w-4 h-4" />,
     },
     {
       title: "Avg R",
-      value: `${stats.avgRMultiple >= 0 ? "+" : ""}${stats.avgRMultiple.toFixed(2)}R`,
-      isPnl: true,
+      value: formatR(stats.avgRMultiple),
       isPositive: stats.avgRMultiple >= 0,
       icon: <TrendUp weight="regular" className="w-4 h-4" />,
     },
   ];
 
   return (
-    <>
-      {/* Mobile: Compact 2x2 grid */}
+    <div className="space-y-4 sm:space-y-6">
+      {/* Mobile Grid */}
       <div className="grid grid-cols-2 gap-2 sm:hidden">
         {mobileCards.map((card, index) => (
-          <div
-            key={index}
-            className="glass-card p-3 rounded-xl"
-          >
+          <div key={index} className="glass-card p-3 rounded-xl border border-border/40 shadow-sm">
             <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
                 {card.title}
               </span>
-              <div className="text-primary">{card.icon}</div>
+              <div className="text-primary/70">{card.icon}</div>
             </div>
-            <p
-              className={`text-lg font-semibold tracking-tight ${
-                card.isPnl
-                  ? card.isPositive
-                    ? "text-emerald-600 dark:text-emerald-400"
-                    : "text-rose-600 dark:text-rose-400"
-                  : "text-foreground"
-              }`}
-            >
-              {card.isPnl && card.isPositive && card.title === "Total P&L" ? "+" : ""}
+            <p className={`text-lg font-bold tabular-nums ${
+              card.title.includes("P&L") || card.title.includes("Avg R")
+                ? card.isPositive ? "text-emerald-500" : "text-rose-500"
+                : "text-foreground"
+            }`}>
               {card.value}
             </p>
             {card.subtitle && (
-              <p className="text-[10px] text-muted-foreground">{card.subtitle}</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">{card.subtitle}</p>
             )}
           </div>
         ))}
       </div>
 
-      {/* Desktop/Tablet: Full 5-card layout */}
-      <div className="hidden sm:grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 sm:gap-4">
+      {/* Desktop Grid */}
+      <div className="hidden sm:grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
         {[
           {
             title: "Total Trades",
             value: stats.totalTrades.toString(),
-            subtitle: "This month",
-            icon: <ChartLineUp weight="regular" className="w-5 h-5" />,
+            subtitle: "Filtered results",
+            icon: <ChartLineUp weight="duotone" className="w-5 h-5" />,
           },
           {
             title: "Total P&L",
-            value: `$${Math.abs(stats.totalPnl).toLocaleString("en-US", {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2,
-            })}`,
-            trend: stats.totalPnl >= 0 ? ("up" as const) : ("down" as const),
-            trendValue: "+18.2%",
-            icon: <CurrencyDollar weight="regular" className="w-5 h-5" />,
+            value: formatPnl(stats.totalPnl),
+            isPositive: stats.totalPnl >= 0,
+            icon: <CurrencyDollar weight="duotone" className="w-5 h-5" />,
           },
           {
             title: "Win Rate",
             value: `${stats.winRate.toFixed(1)}%`,
             subtitle: `${stats.wins} wins / ${stats.losses} losses`,
-            icon: <Target weight="regular" className="w-5 h-5" />,
+            icon: <Target weight="duotone" className="w-5 h-5" />,
           },
           {
             title: "Avg R-Multiple",
-            value: `${stats.avgRMultiple.toFixed(2)}R`,
-            trend: stats.avgRMultiple >= 0 ? ("up" as const) : ("down" as const),
-            trendValue: "+0.12R",
-            icon: <TrendUp weight="regular" className="w-5 h-5" />,
+            value: formatR(stats.avgRMultiple),
+            isPositive: stats.avgRMultiple >= 0,
+            icon: <TrendUp weight="duotone" className="w-5 h-5" />,
           },
           {
             title: "Best Trade",
-            value: `+$${stats.bestTrade.pnl.toLocaleString("en-US", {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2,
-            })}`,
-            subtitle: `${stats.bestTrade.symbol}`,
-            icon: <CurrencyDollar weight="regular" className="w-5 h-5" />,
+            value: formatPnl(stats.bestTrade.pnl || 0),
+            subtitle: stats.bestTrade.symbol || "N/A",
+            isPositive: (stats.bestTrade.pnl || 0) >= 0,
+            icon: <CurrencyDollar weight="duotone" className="w-5 h-5" />,
           },
         ].map((card, index) => (
-          <div
-            key={index}
-            className="glass-card card-glow p-5 rounded-2xl hover:scale-[1.02] transition-transform duration-300"
-          >
-            <div className="flex items-start justify-between mb-3">
-              <span className="text-sm font-light text-muted-foreground">
+          <div key={index} className="glass-card p-5 rounded-2xl border border-border/50 hover:border-primary/20 transition-all duration-300">
+            <div className="flex items-start justify-between mb-4">
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                 {card.title}
               </span>
-              <div className="text-primary">{card.icon}</div>
+              <div className="text-primary bg-primary/10 p-1.5 rounded-lg">{card.icon}</div>
             </div>
-            <div className="flex items-end justify-between">
-              <div>
-                <p
-                  className={`text-2xl font-normal tracking-tight-premium ${
-                    card.title === "Best Trade" || card.title === "Total P&L"
-                      ? stats.totalPnl >= 0
-                        ? "text-emerald-600 dark:text-emerald-400"
-                        : "text-rose-600 dark:text-rose-400"
-                      : "text-foreground"
-                  }`}
-                >
-                  {card.value}
+            <div>
+              <p className={`text-2xl font-bold tabular-nums tracking-tight ${
+                card.title.includes("P&L") || card.title.includes("R-Multiple") || card.title === "Best Trade"
+                  ? card.isPositive ? "text-emerald-500" : "text-rose-500"
+                  : "text-foreground"
+              }`}>
+                {card.value}
+              </p>
+              {card.subtitle && (
+                <p className="text-xs font-medium text-muted-foreground mt-1.5 opacity-80">
+                  {card.subtitle}
                 </p>
-                {card.subtitle && (
-                  <p className="text-xs font-light text-muted-foreground mt-1">
-                    {card.subtitle}
-                  </p>
-                )}
-              </div>
-              {card.trend && card.trendValue && (
-                <span
-                  className={`text-xs font-light px-2 py-1 rounded-lg ${
-                    card.trend === "up"
-                      ? "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10"
-                      : "text-rose-600 dark:text-rose-400 bg-rose-500/10"
-                  }`}
-                >
-                  {card.trendValue}
-                </span>
               )}
             </div>
           </div>
         ))}
       </div>
-    </>
+    </div>
   );
 };
 

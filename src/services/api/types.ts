@@ -268,3 +268,31 @@ export interface DashboardStats {
   strategyPerformance: { name: string; value: number }[];
   topInstruments: { symbol: string; type: string; pnl: number; winRate: number }[];
 }
+// ------------------------------------------------------------------
+// Calendar (Specific for Calendar View)
+// ------------------------------------------------------------------
+
+/**
+ * Simplified trade object for the calendar view/modal
+ */
+export interface CalendarTrade {
+  id: string;
+  symbol: string;
+  direction: string; // Will be lowercased 'long' | 'short' from RPC
+  pnl: number;
+  strategy: string;
+}
+
+/**
+ * Aggregated data for a single day in the calendar
+ */
+export interface DayData {
+  date: Date;
+  totalPnL: number;
+  tradeCount: number;
+  winRate: number;
+  bestStrategy: string;
+  emotion: string;
+  trades: CalendarTrade[]; // Uses the simplified calendar trade interface
+  note?: string;
+}

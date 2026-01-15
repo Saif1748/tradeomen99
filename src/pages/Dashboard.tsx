@@ -18,25 +18,30 @@ const Dashboard = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { format, symbol } = useCurrency();
 
-  const [dateRange, setDateRange] = useState<DateRange | undefined>({
-    from: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
-    to: new Date(),
-  });
-
-  const { data: stats, isLoading } = useDashboardStats();
 
   /* ===============================
-     SYSTEM QUALITY = Avg Win / Avg Loss
+     DATE RANGE STATE (Default: All Time)
      =============================== */
-  const payoffRatio =
-    stats?.avgLoss && Math.abs(stats.avgLoss) > 0
-      ? Math.abs(stats.avgWin / stats.avgLoss)
-      : 0;
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
+
 
   /* ===============================
-     RADAR DATA (normalized)
+     DATA FETCHING
      =============================== */
-  const radarChartData = [
+  const { data: stats, isLoading } = useDashboardStats(dateRange);
+
+
+  /* ===============================
+     DERIVED METRICS & FORMATTING
+     =============================== */
+  const payoffRatio = stats?.payoffRatio || 0;
+  const netPlTrend = stats?.netPL !== undefined && stats.netPL >= 0 ? "up" : "down";
+
+
+  /* ===============================
+     RADAR DATA (Trading Personality)
+     =============================== */
+  const radarChartData = useMemo(() => [
     { metric: "Win %", value: stats?.winRate || 0 },
     {
       metric: "Profit Factor",
@@ -48,31 +53,15 @@ const Dashboard = () => {
     },
     { metric: "Long Win%", value: stats?.longWinRate || 0 },
     { metric: "Short Win%", value: stats?.shortWinRate || 0 },
-  ];
+  ], [stats, payoffRatio]);
+
 
   /* ===============================
-     CHART DATA (currency converted)
+     CHART DATA
      =============================== */
-  const dailyData = useMemo(
-    () =>
-      (stats?.dailyData || []).map((d) => ({
-        ...d,
-        value: d.value,
-      })),
-    [stats]
-  );
+  const dailyData = useMemo(() => stats?.dailyData || [], [stats]);
+  const cumulativeData = useMemo(() => stats?.cumulativeData || [], [stats]);
 
-  const cumulativeData = useMemo(
-    () =>
-      (stats?.cumulativeData || []).map((d) => ({
-        ...d,
-        value: d.value,
-      })),
-    [stats]
-  );
-
-  const netPlTrend =
-    stats?.netPL !== undefined && stats.netPL >= 0 ? "up" : "down";
 
   return (
     <DashboardLayout>
@@ -82,15 +71,18 @@ const Dashboard = () => {
         setDateRange={setDateRange}
       />
 
-      {/* Welcome */}
+
+      {/* Welcome Section */}
       <div className="px-4 sm:px-6 lg:px-8 pb-4 pt-2">
-        <p className="text-sm text-muted-foreground">
-          Welcome back! Here's your real-time trading performance.
+        <p className="text-sm text-muted-foreground font-light">
+          Welcome back! Here's your real-time trading performance overview.
         </p>
       </div>
 
+
       <div className="px-4 sm:px-6 lg:px-8 pb-6 space-y-4 sm:space-y-6">
-        {/* === METRICS ROW === */}
+        
+        {/* === MAIN METRICS ROW === */}
         {isLoading ? (
           <div className="grid grid-cols-2 xl:grid-cols-5 gap-3 h-[120px]">
             {[1, 2, 3, 4, 5].map((i) => (
@@ -102,7 +94,7 @@ const Dashboard = () => {
           </div>
         ) : (
           <div className="grid grid-cols-2 xl:grid-cols-5 gap-3">
-            {/* Net P&L */}
+            {/* Net P&L Card */}
             <MetricCard
               title="Net P&L"
               value={`${symbol}${format(stats?.netPL || 0)}`}
@@ -116,7 +108,8 @@ const Dashboard = () => {
               }
             />
 
-            {/* Expectancy */}
+
+            {/* Expectancy Card */}
             <MetricCard
               title="Expectancy"
               value={`${symbol}${format(stats?.expectancy || 0)}`}
@@ -129,26 +122,27 @@ const Dashboard = () => {
                 )
               }
               trend="neutral"
-              trendValue={
-                payoffRatio ? `R:R ${payoffRatio.toFixed(2)}` : "0.00"
-              }
+              trendValue={payoffRatio ? `R:R ${payoffRatio.toFixed(2)}` : "0.00"}
             />
 
-            {/* Profit Factor */}
+
+            {/* Profit Factor Gauge */}
             <GaugeMetric
               title="Profit Factor"
               value={stats?.profitFactor || 0}
               type="arc"
             />
 
-            {/* Win Rate */}
+
+            {/* Win Rate Gauge */}
             <GaugeMetric
               title="Win Rate"
               value={stats?.winRate || 0}
               type="donut"
             />
 
-            {/* 🔥 FIXED SYSTEM QUALITY */}
+
+            {/* Payoff Ratio Gauge */}
             <GaugeMetric
               title="Avg Win / Avg Loss"
               value={payoffRatio}
@@ -157,7 +151,8 @@ const Dashboard = () => {
           </div>
         )}
 
-        {/* Mobile Gauges */}
+
+        {/* === MOBILE ONLY GAUGES === */}
         <div className="grid grid-cols-3 gap-2 xl:hidden">
           <GaugeMetric
             title="Profit Factor"
@@ -179,7 +174,8 @@ const Dashboard = () => {
           />
         </div>
 
-        {/* === CHARTS === */}
+
+        {/* === ANALYTICS CHARTS === */}
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
           <ChartCard
             title="Trading Personality"
@@ -187,12 +183,14 @@ const Dashboard = () => {
             data={radarChartData}
           />
 
+
           <ChartCard
             title="Equity Curve"
             type="area"
             data={cumulativeData}
             valueFormatter={(v) => `${symbol}${format(v)}`}
           />
+
 
           <ChartCard
             title="Daily P&L"
@@ -202,7 +200,8 @@ const Dashboard = () => {
           />
         </div>
 
-        {/* === BOTTOM === */}
+
+        {/* === RECENT ACTIVITY SECTION === */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
           <RecentTrades />
           <MiniCalendar />
@@ -211,5 +210,6 @@ const Dashboard = () => {
     </DashboardLayout>
   );
 };
+
 
 export default Dashboard;

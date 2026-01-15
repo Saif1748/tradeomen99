@@ -2,47 +2,60 @@ import { request, API_BASE_URL, ApiError } from "../core";
 import { supabase } from "@/integrations/supabase/client";
 import type { 
   Trade, 
-  PaginatedTradesResponse, 
   ScreenshotUploadResponse, 
   TradeScreenshot 
 } from "../types";
 
 export const tradesApi = {
   /**
-   * Get paginated trades.
-   * supports optional date range filtering for calendar views.
+   * NOTE: getAll() is removed from this service.
+   * Paginated reads are performed directly via Supabase in the use-trades hook
+   * to satisfy the "Read Fast" requirement and leverage RLS.
    */
-  getAll: (page = 1, limit = 35, filters?: { startDate?: string; endDate?: string }) => {
-    const params = new URLSearchParams({
-      page: String(page),
-      limit: String(limit),
-    });
 
-    // Add date filters if present
-    if (filters?.startDate) params.append("start_date", filters.startDate);
-    if (filters?.endDate) params.append("end_date", filters.endDate);
 
-    return request<PaginatedTradesResponse>(`/trades/?${params.toString()}`);
-  },
-
-  // ... keep other existing methods (getOne, create, update, delete, etc.) ...
+  /**
+   * Fetch a single trade by ID.
+   * Used by the Backend to provide sensitive data (notes/screenshots) 
+   * that are excluded from the general Supabase list.
+   */
   getOne: (id: string) => request<Trade>(`/trades/${id}`),
 
+
+  /**
+   * Create a new trade.
+   * Scoped to FastAPI to handle ownership validation and plan limits.
+   */
   create: (data: Partial<Trade>) =>
     request<Trade>("/trades/", {
       method: "POST",
       body: JSON.stringify(data),
     }),
 
+
+  /**
+   * Update an existing trade.
+   * Backend handles PnL recalculations and ownership checks.
+   */
   update: (id: string, data: Partial<Trade>) =>
     request<Trade>(`/trades/${id}`, {
       method: "PUT",
       body: JSON.stringify(data),
     }),
 
+
+  /**
+   * Delete a trade.
+   * Ensures clean removal of linked files and metadata via Backend.
+   */
   delete: (id: string) =>
     request<void>(`/trades/${id}`, { method: "DELETE" }),
 
+
+  /**
+   * Export trades to CSV.
+   * Backend verifies PRO/PREMIUM status before generation.
+   */
   export: async () => {
     const { data: { session } } = await supabase.auth.getSession();
     const token = session?.access_token;
@@ -61,6 +74,11 @@ export const tradesApi = {
     return response.blob();
   },
 
+
+  /**
+   * Upload screenshots for a trade.
+   * Backend manages storage bucket security and antivirus scanning.
+   */
   uploadScreenshots: (files: File[], tradeId?: string) => {
     const form = new FormData();
     files.forEach((file) => form.append("files", file));
@@ -71,6 +89,10 @@ export const tradesApi = {
     });
   },
 
-  getScreenshots: (tradeId: string) =>
-    request<{ files: TradeScreenshot[] }>(`/trades/${tradeId}/screenshots`),
+
+  /**
+   * Fetch screenshot metadata for a specific trade.
+   */
+  getScreenshots: (id: string) =>
+    request<{ files: TradeScreenshot[] }>(`/trades/${id}/screenshots`),
 };

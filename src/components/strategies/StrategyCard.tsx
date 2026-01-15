@@ -6,14 +6,25 @@ interface StrategyCardProps {
 }
 
 const StrategyCard = ({ strategy, onClick }: StrategyCardProps) => {
-  const winRateColor = strategy.winRate >= 70 ? "stroke-primary" : strategy.winRate >= 50 ? "stroke-amber-400" : "stroke-rose-400";
-  const pnlColor = strategy.netPnl >= 0 ? "text-emerald-400" : "text-rose-400";
+  // --- 1. Defensive Fallbacks ---
+  // Ensuring numbers exist before calling .toFixed() to prevent crashes
+  const winRate = strategy.winRate ?? 0;
+  const netPnl = strategy.netPnl ?? 0;
+  const totalTrades = strategy.totalTrades ?? 0;
+  const profitFactor = strategy.profitFactor ?? 0;
+  const expectancy = strategy.expectancy ?? 0;
+  const avgWin = strategy.avgWin ?? 0;
+  const avgLoss = strategy.avgLoss ?? 0;
+
+  // --- 2. Original Design Logic ---
+  const winRateColor = winRate >= 70 ? "stroke-primary" : winRate >= 50 ? "stroke-amber-400" : "stroke-rose-400";
+  const pnlColor = netPnl >= 0 ? "text-emerald-400" : "text-rose-400";
   const avgWinColor = "text-emerald-400";
   const avgLossColor = "text-rose-400";
   
   // Calculate stroke dasharray for win rate circle
   const circumference = 2 * Math.PI * 32;
-  const strokeDasharray = `${(strategy.winRate / 100) * circumference} ${circumference}`;
+  const strokeDasharray = `${(winRate / 100) * circumference} ${circumference}`;
 
   return (
     <div
@@ -22,13 +33,13 @@ const StrategyCard = ({ strategy, onClick }: StrategyCardProps) => {
     >
       {/* Header */}
       <div className="flex items-start gap-3 mb-4">
-        <span className="text-2xl">{strategy.icon}</span>
+        <span className="text-2xl">{strategy.icon || strategy.emoji}</span>
         <div className="flex-1 min-w-0">
           <h3 className="font-medium text-foreground tracking-tight-premium truncate">
             {strategy.name}
           </h3>
           <span className="text-xs text-muted-foreground">
-            {strategy.totalTrades} trades
+            {totalTrades} trades
           </span>
         </div>
       </div>
@@ -58,7 +69,7 @@ const StrategyCard = ({ strategy, onClick }: StrategyCardProps) => {
             />
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className="text-sm font-medium text-foreground">{Math.round(strategy.winRate)}%</span>
+            <span className="text-sm font-medium text-foreground">{Math.round(winRate)}%</span>
             <span className="text-[10px] text-muted-foreground">WIN</span>
           </div>
         </div>
@@ -67,7 +78,7 @@ const StrategyCard = ({ strategy, onClick }: StrategyCardProps) => {
         <div>
           <p className="text-xs text-muted-foreground uppercase tracking-wider">NET P&L (USD)</p>
           <p className={`text-xl font-medium ${pnlColor}`}>
-            {strategy.netPnl >= 0 ? '+' : ''}${Math.abs(strategy.netPnl).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+            {netPnl >= 0 ? '+' : ''}${Math.abs(netPnl).toLocaleString(undefined, { minimumFractionDigits: 2 })}
           </p>
           <p className="text-xs text-muted-foreground">{strategy.style}</p>
         </div>
@@ -77,21 +88,24 @@ const StrategyCard = ({ strategy, onClick }: StrategyCardProps) => {
       <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
         <div>
           <p className="text-muted-foreground uppercase tracking-wider">PROFIT FACTOR</p>
-          <p className="text-foreground font-medium">{strategy.profitFactor.toFixed(2)}</p>
+          <p className="text-foreground font-medium">
+            {/* Displaying 100+ for the DB cap, else original format */}
+            {profitFactor >= 100 ? "100.00+" : profitFactor.toFixed(2)}
+          </p>
         </div>
         <div>
           <p className="text-muted-foreground uppercase tracking-wider">EXPECTANCY</p>
-          <p className={strategy.expectancy >= 0 ? "text-emerald-400" : "text-rose-400"}>
-            ${strategy.expectancy.toFixed(2)}
+          <p className={expectancy >= 0 ? "text-emerald-400" : "text-rose-400"}>
+            {expectancy >= 0 ? '+' : '-'}${Math.abs(expectancy).toFixed(2)}
           </p>
         </div>
         <div>
           <p className="text-muted-foreground uppercase tracking-wider">AVG WIN</p>
-          <p className={avgWinColor}>+${strategy.avgWin.toFixed(2)}</p>
+          <p className={avgWinColor}>+${Math.abs(avgWin).toFixed(2)}</p>
         </div>
         <div>
           <p className="text-muted-foreground uppercase tracking-wider">AVG LOSS</p>
-          <p className={avgLossColor}>-${strategy.avgLoss.toFixed(2)}</p>
+          <p className={avgLossColor}>-${Math.abs(avgLoss).toFixed(2)}</p>
         </div>
       </div>
     </div>
