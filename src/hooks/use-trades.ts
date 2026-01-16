@@ -137,12 +137,31 @@ export function useTrades({ page, limit }: { page: number; limit: number }) {
     refetchOnWindowFocus: false,
   });
 
+  // --- Cascading Invalidation Helper ---
+  // ✅ This ensures that when a trade changes, ALL financial stats update immediately.
+  const invalidateFinancials = () => {
+    // 1. The Trades list itself
+    queryClient.invalidateQueries({ queryKey: ["trades"] });
+    
+    // 2. The Dashboard (PnL, Win Rate)
+    queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+    
+    // 3. The Calendar (Daily PnL)
+    queryClient.invalidateQueries({ queryKey: ["calendar-stats"] });
+    
+    // 4. Reports (Analysis charts)
+    queryClient.invalidateQueries({ queryKey: ["reports"] });
+
+    // 5. Strategy Stats (Win rates per strategy)
+    queryClient.invalidateQueries({ queryKey: ["strategies"] });
+  };
+
   // --- Mutations (FastAPI Backend) ---
-  
+   
   const createMutation = useMutation({
     mutationFn: (data: any) => tradesApi.create(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["trades"] });
+      invalidateFinancials(); // Trigger the cascade
       toast.success("Trade logged");
     },
     onError: (err: any) => toast.error(err.message || "Failed to create trade"),
@@ -151,7 +170,7 @@ export function useTrades({ page, limit }: { page: number; limit: number }) {
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: any }) => tradesApi.update(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["trades"] });
+      invalidateFinancials(); // Trigger the cascade
       toast.success("Trade updated");
     },
     onError: (err: any) => toast.error(err.message || "Failed to update trade"),
@@ -160,7 +179,7 @@ export function useTrades({ page, limit }: { page: number; limit: number }) {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => tradesApi.delete(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["trades"] });
+      invalidateFinancials(); // Trigger the cascade
       toast.success("Trade deleted");
     },
     onError: (err: any) => toast.error(err.message || "Failed to delete trade"),

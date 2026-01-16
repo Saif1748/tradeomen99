@@ -12,16 +12,23 @@ import {
   X
 } from "@phosphor-icons/react";
 import { DateRange } from "react-day-picker";
+import { format } from "date-fns";
+import { motion } from "framer-motion";
+import { toast } from "sonner";
+
+// Components
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import PageHeader from "@/components/dashboard/PageHeader";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Button } from "@/components/ui/button";
+import MobileSidebar from "@/components/dashboard/MobileSidebar"; // ✅ Added missing import
 import OverviewTab from "@/components/reports/OverviewTab";
 import TradeAnalysisTab from "@/components/reports/TradeAnalysisTab";
 import StrategyAnalysisTab from "@/components/reports/StrategyAnalysisTab";
 import TimeAnalysisTab from "@/components/reports/TimeAnalysisTab";
 import AIInsightsTab from "@/components/reports/AIInsightsTab";
-import { toast } from "sonner";
+
+// UI Components
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
 import {
   Sheet,
   SheetContent,
@@ -41,13 +48,10 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { format } from "date-fns";
-import { motion } from "framer-motion";
 
-// ✅ Import hooks
+// Hooks
 import { useReports, ReportTab } from "@/hooks/use-reports";
 import { useStrategies } from "@/hooks/use-strategies";
-// ✅ Fix: Import from the new hook file
 import { useCurrency } from "@/hooks/use-currency";
 
 const Reports = () => {
@@ -59,16 +63,17 @@ const Reports = () => {
   });
   const [instrumentFilter, setInstrumentFilter] = useState("all");
   const [strategyFilter, setStrategyFilter] = useState("all");
+  
+  // Filters Sheet State
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
+  // ✅ FIX: Mobile Sidebar State (Was missing in previous version)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // ✅ Fix: Ensure Currency Hook is initialized
+  // Hook Initialization
   const { symbol, format: formatCurrency } = useCurrency();
-
-  // --- 2. Data Fetching ---
-  // ✅ Dynamic Strategies: Fetching actual names from your DB
   const { strategyNames } = useStrategies();
 
-  // ✅ Reports Data: Fetching filtered data from SQL RPCs
+  // Reports Data Fetching
   const { data, isLoading, isError } = useReports(activeTab, {
     instrument: instrumentFilter,
     strategy: strategyFilter,
@@ -76,8 +81,7 @@ const Reports = () => {
     to: dateRange?.to
   });
 
-
-  // --- 3. UI Helpers ---
+  // --- UI Helpers ---
   const activeFilterCount = (instrumentFilter !== "all" ? 1 : 0) + (strategyFilter !== "all" ? 1 : 0);
   const hasActiveFilters = activeFilterCount > 0;
 
@@ -95,13 +99,19 @@ const Reports = () => {
     setDateRange(undefined);
   };
 
-
   return (
     <DashboardLayout>
       <PageHeader
         title="Reports"
         icon={<ChartLine weight="duotone" className="w-6 h-6 text-primary" />}
-        onMobileMenuOpen={() => {}} // PageHeader expects a function
+        // ✅ FIX: Wire up the mobile menu trigger
+        onMobileMenuOpen={() => setMobileMenuOpen(true)}
+      />
+
+      {/* ✅ FIX: Add Mobile Sidebar Component */}
+      <MobileSidebar 
+        open={mobileMenuOpen} 
+        onClose={() => setMobileMenuOpen(false)} 
       />
 
       <div className="px-4 sm:px-6 lg:px-8 pb-6 pt-4 space-y-4 sm:space-y-6">
@@ -173,7 +183,6 @@ const Reports = () => {
           </div>
         </div>
 
-
         {/* Mobile Filters Trigger */}
         <div className="sm:hidden flex items-center gap-2">
           <Popover>
@@ -211,7 +220,6 @@ const Reports = () => {
             )}
           </Button>
         </div>
-
 
         {/* Tabs System */}
         <Tabs value={activeTab} onValueChange={(val) => setActiveTab(val as ReportTab)} className="w-full">
@@ -276,6 +284,9 @@ const Reports = () => {
             transition={{ duration: 0.3 }}
             className="mt-4 sm:mt-6"
           >
+            {/* Note: data passed here is potentially cached via TanStack Query.
+              Each component below should handle 'isLoading' gracefullly.
+            */}
             <TabsContent value="overview" className="mt-0 outline-none">
               <OverviewTab data={data} isLoading={isLoading} isError={isError} />
             </TabsContent>
@@ -294,7 +305,6 @@ const Reports = () => {
           </motion.div>
         </Tabs>
       </div>
-
 
       {/* Mobile Filters Sheet */}
       <Sheet open={filterSheetOpen} onOpenChange={setFilterSheetOpen}>

@@ -1,6 +1,5 @@
 import { ArrowUp, ArrowDown } from "@phosphor-icons/react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
-// ✅ Fix: Import from the new hook file instead of SettingsContext
 import { useCurrency } from "@/hooks/use-currency";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -11,10 +10,8 @@ interface StrategyAnalysisTabProps {
 }
 
 const StrategyAnalysisTab = ({ data, isLoading, isError }: StrategyAnalysisTabProps) => {
-  // ✅ Fix: Use Global Currency Hook
   const { format, symbol } = useCurrency();
 
-  // Helper function to maintain existing API signature for formatting
   const formatCurrency = (val: number) => {
     return `${symbol}${format(val)}`;
   };
@@ -31,23 +28,27 @@ const StrategyAnalysisTab = ({ data, isLoading, isError }: StrategyAnalysisTabPr
     );
   }
 
-  if (isError || !data) {
+  // ✅ FIX: Strict Array Check
+  // This prevents the "find is not a function" crash if the API returns an Object or Null
+  const strategyData = Array.isArray(data) ? data : [];
+
+  if (isError || !strategyData.length) {
     return (
       <div className="h-64 flex items-center justify-center glass-card rounded-2xl border border-rose-500/20 text-rose-400">
-        Failed to load strategy performance data.
+        {isError ? "Failed to load strategy performance data." : "No strategy data available for this period."}
       </div>
     );
   }
 
-  // ✅ Consume data from SQL RPC (get_strategy_analysis)
-  const strategyData = data || [];
-
   // Logic to identify best/worst for UI highlighting
-  const bestStrategy = strategyData.length > 0 ? strategyData[0]?.name : null;
+  // Safe access ensuring we don't crash on empty arrays
+  const bestStrategy = strategyData[0]?.name || null;
+  
   const worstProfitFactor = strategyData.length > 0 
-    ? Math.min(...strategyData.map((s: any) => s.profitFactor || 0)) 
+    ? Math.min(...strategyData.map((s: any) => Number(s.profitFactor) || 0)) 
     : 0;
-  const worstStrategy = strategyData.find((s: any) => (s.profitFactor || 0) === worstProfitFactor)?.name;
+    
+  const worstStrategy = strategyData.find((s: any) => (Number(s.profitFactor) || 0) === worstProfitFactor)?.name;
 
   return (
     <div className="space-y-6">
@@ -71,32 +72,36 @@ const StrategyAnalysisTab = ({ data, isLoading, isError }: StrategyAnalysisTabPr
               <tbody>
                 {strategyData.map((strategy: any) => {
                   const isBest = strategy.name === bestStrategy;
-                  const isWorst = strategy.name === worstStrategy && (strategy.profitFactor || 0) < 1;
-                  const pnl = strategy.totalPnl || 0;
+                  const isWorst = strategy.name === worstStrategy && (Number(strategy.profitFactor) || 0) < 1;
+                  const pnl = Number(strategy.totalPnl) || 0;
+                  const pf = Number(strategy.profitFactor) || 0;
+                  const winRate = Number(strategy.winRate) || 0;
+                  const avgPnl = Number(strategy.avgPnl) || 0;
+                  const maxDD = Number(strategy.maxDrawdown) || 0;
                   
                   return (
-                    <tr key={strategy.name} className={`border-b border-border/50 last:border-0 transition-colors hover:bg-secondary/10 ${isBest ? 'bg-emerald-500/5' : isWorst ? 'bg-rose-500/5' : ''}`}>
+                    <tr key={strategy.name || Math.random()} className={`border-b border-border/50 last:border-0 transition-colors hover:bg-secondary/10 ${isBest ? 'bg-emerald-500/5' : isWorst ? 'bg-rose-500/5' : ''}`}>
                       <td className="p-4">
                         <div className="flex items-center gap-2">
-                          <span className="text-foreground font-semibold">{strategy.name}</span>
+                          <span className="text-foreground font-semibold">{strategy.name || "Unknown"}</span>
                           {isBest && <ArrowUp weight="bold" className="w-3.5 h-3.5 text-emerald-400" />}
                           {isWorst && <ArrowDown weight="bold" className="w-3.5 h-3.5 text-rose-400" />}
                         </div>
                       </td>
                       <td className="p-4 text-center text-muted-foreground tabular-nums">{strategy.trades || 0}</td>
                       <td className="p-4 text-center tabular-nums">
-                        <span className={(strategy.winRate || 0) >= 50 ? 'text-emerald-400' : 'text-rose-400'}>
-                          {(strategy.winRate || 0).toFixed(1)}%
+                        <span className={winRate >= 50 ? 'text-emerald-400' : 'text-rose-400'}>
+                          {winRate.toFixed(1)}%
                         </span>
                       </td>
                       <td className="p-4 text-center tabular-nums">
-                        <span className={(strategy.profitFactor || 0) >= 1.5 ? 'text-emerald-400' : (strategy.profitFactor || 0) >= 1 ? 'text-foreground' : 'text-rose-400'}>
-                          {(strategy.profitFactor || 0).toFixed(2)}
+                        <span className={pf >= 1.5 ? 'text-emerald-400' : pf >= 1 ? 'text-foreground' : 'text-rose-400'}>
+                          {pf.toFixed(2)}
                         </span>
                       </td>
                       <td className="p-4 text-center tabular-nums">
-                        <span className={(strategy.avgPnl || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
-                          {strategy.avgPnl >= 0 ? "+" : ""}{formatCurrency(strategy.avgPnl || 0)}
+                        <span className={avgPnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
+                          {avgPnl >= 0 ? "+" : ""}{formatCurrency(avgPnl)}
                         </span>
                       </td>
                       <td className="p-4 text-center tabular-nums font-medium">
@@ -105,8 +110,8 @@ const StrategyAnalysisTab = ({ data, isLoading, isError }: StrategyAnalysisTabPr
                         </span>
                       </td>
                       <td className="p-4 text-center tabular-nums">
-                        <span className={(strategy.maxDrawdown || 0) > 15 ? 'text-rose-400' : 'text-muted-foreground'}>
-                          {(strategy.maxDrawdown || 0).toFixed(1)}%
+                        <span className={maxDD > 15 ? 'text-rose-400' : 'text-muted-foreground'}>
+                          {maxDD.toFixed(1)}%
                         </span>
                       </td>
                     </tr>
@@ -117,7 +122,6 @@ const StrategyAnalysisTab = ({ data, isLoading, isError }: StrategyAnalysisTabPr
           </div>
         </div>
       </div>
-
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Avg P&L per Strategy Chart */}
@@ -135,7 +139,7 @@ const StrategyAnalysisTab = ({ data, isLoading, isError }: StrategyAnalysisTabPr
                 />
                 <Bar dataKey="avgPnl" radius={[0, 4, 4, 0]} barSize={20}>
                   {strategyData.map((entry: any, index: number) => (
-                    <Cell key={`cell-${index}`} fill={(entry.avgPnl || 0) >= 0 ? "hsl(142, 71%, 45%)" : "hsl(346, 84%, 61%)"} />
+                    <Cell key={`cell-${index}`} fill={(Number(entry.avgPnl) || 0) >= 0 ? "hsl(142, 71%, 45%)" : "hsl(346, 84%, 61%)"} />
                   ))}
                 </Bar>
               </BarChart>
@@ -158,7 +162,7 @@ const StrategyAnalysisTab = ({ data, isLoading, isError }: StrategyAnalysisTabPr
                 />
                 <Bar dataKey="totalPnl" radius={[4, 4, 0, 0]} barSize={30}>
                   {strategyData.map((entry: any, index: number) => (
-                    <Cell key={`cell-${index}`} fill={(entry.totalPnl || 0) >= 0 ? "hsl(142, 71%, 45%)" : "hsl(346, 84%, 61%)"} />
+                    <Cell key={`cell-${index}`} fill={(Number(entry.totalPnl) || 0) >= 0 ? "hsl(142, 71%, 45%)" : "hsl(346, 84%, 61%)"} />
                   ))}
                 </Bar>
               </BarChart>

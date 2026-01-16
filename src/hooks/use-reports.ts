@@ -2,7 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-Auth";
 
-export type ReportTab = "overview" | "analysis" | "strategy" | "time";
+// ✅ FIX 1: Add 'ai-insights' to the type definition so it matches the UI
+export type ReportTab = "overview" | "analysis" | "strategy" | "time" | "ai-insights";
 
 export interface ReportFilters {
   instrument: string;
@@ -11,26 +12,25 @@ export interface ReportFilters {
   to?: Date;
 }
 
-/**
- * Industry-grade hook for fetching trade reports with SQL-side filtering.
- * Refetches automatically when user, tab, or filters change.
- */
 export function useReports(
   tab: ReportTab, 
   filters: ReportFilters = { instrument: "all", strategy: "all" }
 ) {
   const { user } = useAuth();
 
-  // Mapping tab names to their respective SQL RPC functions
+  // ✅ FIX 2: Define RPCs for all tabs. 
+  // For 'ai-insights', we typically need the 'overview' data to feed the AI, 
+  // or a specific 'get_ai_stats' RPC. I'm mapping it to 'get_overview_report' 
+  // as a safe default so it doesn't crash.
   const rpcMap: Record<ReportTab, string> = {
     overview: "get_overview_report",
     analysis: "get_trade_analysis",
     strategy: "get_strategy_analysis",
     time: "get_time_analysis",
+    "ai-insights": "get_overview_report", // Fallback to overview data for AI context
   };
 
   return useQuery({
-    // ✅ Optional chaining on filters ensures the queryKey never crashes
     queryKey: [
       "reports", 
       user?.id, 
@@ -41,11 +41,15 @@ export function useReports(
       filters?.to?.toISOString() || "now"
     ],
     queryFn: async () => {
-      // Return null immediately if no user session exists
       if (!user?.id) return null;
 
-      // Ensure we use the correct parameter names defined in the SQL functions
-      const { data, error } = await supabase.rpc(rpcMap[tab], {
+      const rpcName = rpcMap[tab];
+      if (!rpcName) {
+        console.warn(`No RPC defined for tab: ${tab}`);
+        return null;
+      }
+
+      const { data, error } = await supabase.rpc(rpcName, {
         p_user_id: user.id,
         p_instrument: filters?.instrument || "all",
         p_strategy: filters?.strategy || "all",
@@ -54,20 +58,20 @@ export function useReports(
       });
 
       if (error) {
-        // Detailed error logging for debugging SQL issues
-        console.error(`[RPC Error] ${rpcMap[tab]}:`, error.message);
+        console.error(`[RPC Error] ${rpcName}:`, error.message);
         throw new Error(error.message);
       }
 
       return data;
     },
-    // Only run the query if the user is authenticated
     enabled: !!user?.id,
     
-    // Performance Settings
-    staleTime: 1000 * 60 * 5,    // Consider data fresh for 5 minutes
-    gcTime: 1000 * 60 * 30,       // Keep in cache for 30 minutes
-    refetchOnWindowFocus: false,  // Avoid unnecessary refetches on tab switching
-    retry: 1,                     // Retry once on failure
+    // ✅ FIX 3: Industry Grade Caching & UX
+    staleTime: 1000 * 60 * 5,    
+    gcTime: 1000 * 60 * 30,       
+    refetchOnWindowFocus: false,  
+    retry: 1,
+    // Prevents "White Flash" / Loading Spinner when switching tabs
+    placeholderData: (previousData) => previousData, 
   });
 }

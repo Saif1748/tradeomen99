@@ -1,9 +1,26 @@
 import { supabase } from "@/integrations/supabase/client";
-import { UserProfile } from "./types";
+
+// ✅ 1. Define or Import UserProfile (Ensure this matches your backend response)
+export interface UserProfile {
+  user_id: string;
+  email: string;
+  role: string;
+  plan_tier: "FREE" | "PRO" | "PREMIUM";
+  daily_chat_count: number;
+  monthly_ai_tokens_used: number;
+  monthly_import_count: number;
+  preferences: Record<string, any>;
+  last_chat_reset_at?: string;
+  quota_reset_at?: string;
+  created_at?: string;
+  // Legacy fields that might come from backend
+  plan_id?: string;
+  active_plan_id?: string;
+  full_name?: string;
+}
 
 /**
  * API Error Class
- * Standardized error handling for backend responses.
  */
 export class ApiError extends Error {
   status: number;
@@ -17,14 +34,10 @@ export class ApiError extends Error {
   }
 }
 
-/**
- * Base URL Configuration
- */
 export const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";
 
 /**
  * Universal Request Wrapper
- * Automatically attaches the Supabase JWT to every request.
  */
 export async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const { data: { session }, error: sessionError } = await supabase.auth.getSession();
@@ -69,29 +82,39 @@ export async function request<T>(endpoint: string, options: RequestInit = {}): P
     return await response.json();
   } catch (error) {
     if (error instanceof ApiError) throw error;
-    
     console.error("Network/Fetch Error:", error);
     throw new ApiError("Network connection failed. Check if backend is running.", 503);
   }
 }
 
 /**
- * fetchBackendProfile
- * Bootstraps the user session by fetching data from the Python backend.
+ * ✅ ROBUST PROFILE FETCHER
+ * Normalizes backend data (plan_id -> plan_tier) and parses preferences safely.
  */
 export async function fetchBackendProfile(): Promise<UserProfile> {
+  // 1. Fetch raw data (typed as any so we can inspect loose fields)
   const data = await request<any>("/auth/me");
 
-  // 1. Identify the Plan (Checking plan_tier, active_plan_id, and plan_id)
-  const rawPlan = (data.plan_tier || data.active_plan_id || data.plan_id || "FREE").toUpperCase();
+  // 2. Normalize Plan Tier
+  // Checks all possible field names for the plan
+  const rawPlan = (
+    data.plan_tier || 
+    data.active_plan_id || 
+    data.plan_id || 
+    "FREE"
+  ).toUpperCase();
   
-  let finalPlan = rawPlan;
-  // Handle legacy/alternate names if they exist in DB
-  if (rawPlan === "FOUNDER" || rawPlan === "LIFETIME") {
+  let finalPlan: "FREE" | "PRO" | "PREMIUM" = "FREE";
+
+  // Map backend values to frontend constants
+  if (rawPlan.includes("PREMIUM") || rawPlan === "FOUNDER" || rawPlan === "LIFETIME") {
     finalPlan = "PREMIUM";
+  } else if (rawPlan.includes("PRO")) {
+    finalPlan = "PRO";
   }
 
-  // 2. Parse Preferences safely
+  // 3. Normalize Preferences
+  // Handles case where DB stores JSON as a string instead of JSONB
   let parsedPreferences = {};
   try {
     if (typeof data.preferences === 'string') {
@@ -100,14 +123,15 @@ export async function fetchBackendProfile(): Promise<UserProfile> {
       parsedPreferences = data.preferences || {};
     }
   } catch (e) {
-    // If parsing fails, default to empty object so app doesn't crash
+    console.warn("Failed to parse user preferences", e);
     parsedPreferences = {}; 
   }
 
+  // 4. Return Clean Object
   return {
     ...data,
-    id: data.id || data.user_id,
-    plan_tier: finalPlan, 
+    id: data.id || data.user_id, // Ensure ID is accessible
+    plan_tier: finalPlan,        // ✅ Forced correct plan
     preferences: parsedPreferences,
   };
 }

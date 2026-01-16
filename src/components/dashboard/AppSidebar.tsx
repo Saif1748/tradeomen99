@@ -19,6 +19,7 @@ import logo from "@/assets/tradeomen-logo.png";
 import icon from "@/assets/tradeomen-icon.png";
 import SettingsModal from "@/components/settings/SettingsModal";
 import { useAuth } from "@/hooks/use-Auth";
+import { useProfile } from "@/hooks/use-profile"; // ✅ Import the new cached hook
 
 const navItems = [
   { title: "Dashboard", path: "/dashboard", icon: House },
@@ -39,8 +40,12 @@ const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
   const location = useLocation();
   const [settingsOpen, setSettingsOpen] = useState(false);
   
-  // Get auth state including syncing status
-  const { user, profile, isSyncing } = useAuth();
+  // ✅ 1. Get static auth state (User ID, Email) from Supabase wrapper
+  const { user } = useAuth();
+  
+  // ✅ 2. Get dynamic profile data (Plan, Credits) from TanStack Query
+  // This reads from the cache, so it doesn't reload on page navigation.
+  const { data: profile, isLoading } = useProfile();
   
   // Normalize plan to Uppercase to handle database inconsistencies
   const plan = (profile?.plan_tier || "FREE").toUpperCase();
@@ -87,6 +92,10 @@ const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
 
   const badgeStyle = getPlanBadgeStyles();
   const BadgeIcon = badgeStyle.Icon;
+
+  // Determine if we should show skeleton state
+  // Show skeleton only if loading AND we have no cached profile yet
+  const showSkeleton = isLoading && !profile;
 
   return (
     <>
@@ -148,7 +157,7 @@ const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
               transition={{ duration: 0.2 }}
               className="flex justify-center px-4 mb-6"
             >
-              {isSyncing ? (
+              {showSkeleton ? (
                  <div className="h-6 w-28 bg-secondary/50 rounded-full animate-pulse" />
               ) : (
                 <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-normal ${badgeStyle.container}`}>
@@ -239,7 +248,7 @@ const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
                   </p>
                   
                   {/* Bottom Mini Badge with Skeleton */}
-                  {isSyncing ? (
+                  {showSkeleton ? (
                     <div className="h-3 w-16 bg-secondary/50 rounded animate-pulse mt-1" />
                   ) : (
                     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-normal mt-0.5 border ${badgeStyle.container}`}>

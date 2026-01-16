@@ -37,7 +37,6 @@ export function useStrategies(filters?: StrategyFilters) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
-
   // --- 1. Mapper: Database (Snake) -> UI (Camel) ---
   const mapDbToUi = (s: any): UIStrategy => ({
     id: s.id,
@@ -61,7 +60,6 @@ export function useStrategies(filters?: StrategyFilters) {
     }
   });
 
-
   // --- 2. Mapper: UI (Camel) -> API (Snake) ---
   const mapUiToApi = (s: Partial<UIStrategy>): Partial<ApiStrategy> => {
     const payload: any = { ...s };
@@ -69,7 +67,6 @@ export function useStrategies(filters?: StrategyFilters) {
     if (s.instrumentTypes) payload.instrument_types = s.instrumentTypes;
     if (s.trackMissed !== undefined) payload.track_missed_trades = s.trackMissed;
     
-    // Cleanup UI-only fields before sending to FastAPI/Supabase
     delete payload.stats;
     delete payload.createdAt;
     delete payload.color;
@@ -78,8 +75,7 @@ export function useStrategies(filters?: StrategyFilters) {
     return payload;
   };
 
-
-  // --- 3. Main Query: Fetching with Stats & Filters ---
+  // --- 3. Main Query ---
   const query = useQuery({
     queryKey: [
       "strategies", 
@@ -91,7 +87,6 @@ export function useStrategies(filters?: StrategyFilters) {
     queryFn: async () => {
       if (!user?.id) return [];
 
-      // ✅ Calls the updated SQL RPC with the 4 required parameters
       const { data, error } = await supabase.rpc("get_strategies_with_stats", {
         p_user_id: user.id,
         p_instrument: filters?.instrument || "all",
@@ -107,16 +102,24 @@ export function useStrategies(filters?: StrategyFilters) {
       return (data as any[]).map(mapDbToUi);
     },
     enabled: !!user?.id,
-    staleTime: 1000 * 60 * 5, // 5 minutes
+    staleTime: 1000 * 60 * 5, 
   });
 
+  // --- Helper: Global Invalidation ---
+  // When a strategy changes, we must update Trades (names), Dashboard (stats), and Reports
+  const invalidateCascade = () => {
+    queryClient.invalidateQueries({ queryKey: ["strategies"] });
+    queryClient.invalidateQueries({ queryKey: ["trades"] });
+    queryClient.invalidateQueries({ queryKey: ["reports"] });
+    queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+  };
 
   // --- 4. Mutations ---
   const createMutation = useMutation({
     mutationFn: (newStrategy: Partial<UIStrategy>) => 
       strategiesApi.create(mapUiToApi(newStrategy)),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["strategies"] });
+      invalidateCascade();
       toast.success("Strategy created successfully");
     },
     onError: (err: any) => toast.error(err.detail || "Failed to create strategy"),
@@ -126,7 +129,7 @@ export function useStrategies(filters?: StrategyFilters) {
     mutationFn: ({ id, data }: { id: string; data: Partial<UIStrategy> }) => 
       strategiesApi.update(id, mapUiToApi(data)),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["strategies"] });
+      invalidateCascade();
       toast.success("Strategy updated");
     },
     onError: (err: any) => toast.error(err.detail || "Failed to update strategy"),
@@ -135,16 +138,14 @@ export function useStrategies(filters?: StrategyFilters) {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => strategiesApi.delete(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["strategies"] });
+      invalidateCascade();
       toast.success("Strategy deleted");
     },
     onError: (err: any) => toast.error(err.detail || "Failed to delete strategy"),
   });
 
-
   return {
     strategies: query.data || [],
-    // ✅ This helper allows you to easily populate Select components
     strategyNames: (query.data || []).map(s => s.name),
     isLoading: query.isLoading,
     isError: query.isError,
@@ -157,8 +158,8 @@ export function useStrategies(filters?: StrategyFilters) {
   };
 }
 
-
 // --- 5. Hook: Fetch Trades for a Specific Strategy ---
+// ✅ FIX: Added limit to prevent browser crash on large datasets
 export function useStrategyTrades(strategyId: string) {
   const { user } = useAuth();
 
@@ -171,11 +172,13 @@ export function useStrategyTrades(strategyId: string) {
         .from("trades")
         .select("*")
         .eq("strategy_id", strategyId)
-        .order("entry_time", { ascending: false });
+        .order("entry_time", { ascending: false })
+        .limit(50); // ✅ Safety Limit: Only fetch last 50 trades for the preview card
 
       if (error) throw error;
       return data || [];
     },
     enabled: !!user?.id && !!strategyId,
+    staleTime: 1000 * 60 * 5,
   });
 }

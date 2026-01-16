@@ -5,7 +5,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ChatCircle, Lightning, List } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { toast } from "sonner"; // Assuming you use sonner or similar for notifications
+import { toast } from "sonner";
+import { useQuery, useQueryClient } from "@tanstack/react-query"; // ✅ Added for Caching
 
 // Layout & Components
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
@@ -18,7 +19,7 @@ import MobileSidebar from "@/components/dashboard/MobileSidebar";
 
 // API
 import { aiApi } from "@/services/api/modules/ai";
-import type { ChatSession, ChatMessage as ApiChatMessage } from "@/services/api/types";
+import type { ChatSession } from "@/services/api/types";
 
 // Local UI Message Interface
 interface Message {
@@ -30,67 +31,64 @@ interface Message {
 }
 
 const AIChat = () => {
+  const queryClient = useQueryClient(); // ✅ Query Client for manual cache updates
+
   // State
+  // We keep 'messages' as local state to preserve your Optimistic UI logic perfectly
   const [messages, setMessages] = useState<Message[]>([]);
-  const [sessions, setSessions] = useState<ChatSession[]>([]);
   
+  // ✅ REPLACED: Local 'sessions' state with Cached Query
+  const { data: sessions = [], refetch: refetchSessions } = useQuery({
+    queryKey: ["chat-sessions"],
+    queryFn: aiApi.getSessions,
+    staleTime: 1000 * 60 * 5, // Cache sessions for 5 minutes
+  });
+
   const [isLoading, setIsLoading] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [currentChatId, setCurrentChatId] = useState<string | undefined>();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const hasMessages = messages.length > 0;
 
-  // 1. Initial Load: Fetch Sessions
-  useEffect(() => {
-    fetchSessions();
-  }, []);
+  // ✅ REPLACED: 'loadSessionMessages' function with a Query
+  const { data: historyData, isLoading: isHistoryLoading } = useQuery({
+    queryKey: ["chat-history", currentChatId],
+    queryFn: () => aiApi.getHistory(currentChatId!),
+    enabled: !!currentChatId, // Only fetch if we have an ID
+    staleTime: 1000 * 60 * 5, // Cache history for 5 minutes
+  });
 
-  // 2. Auto-scroll to bottom
+  // ✅ NEW: Sync Cached History to Local State
+  // This ensures that when you click a sidebar item, the messages load instantly from cache
+  useEffect(() => {
+    if (currentChatId && historyData) {
+      const uiMessages: Message[] = historyData.map((msg) => ({
+        id: msg.id || Date.now().toString(),
+        role: msg.role as "user" | "assistant",
+        content: msg.content,
+      }));
+      setMessages(uiMessages);
+    } else if (!currentChatId) {
+      // If we are in "New Chat" mode, clear messages
+      setMessages([]);
+    }
+  }, [currentChatId, historyData]);
+
+  // 2. Auto-scroll to bottom (Kept as is)
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, isLoading]);
-
-  // --- API Helpers ---
-
-  const fetchSessions = async () => {
-    try {
-      const data = await aiApi.getSessions();
-      setSessions(data);
-    } catch (error) {
-      console.error("Failed to load sessions", error);
-    }
-  };
-
-  const loadSessionMessages = async (sessionId: string) => {
-    try {
-      setIsLoading(true);
-      const history = await aiApi.getHistory(sessionId);
-      
-      // Map API messages to UI messages
-      const uiMessages: Message[] = history.map((msg) => ({
-        id: msg.id || Date.now().toString(), // Fallback ID if missing
-        role: msg.role as "user" | "assistant",
-        content: msg.content,
-      }));
-      
-      setMessages(uiMessages);
-    } catch (error) {
-      toast.error("Failed to load chat history");
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  }, [messages, isLoading, isHistoryLoading]);
 
   // --- Event Handlers ---
 
   const handleSend = async (text: string, attachments?: File[]) => {
     if (!text.trim() && (!attachments || attachments.length === 0)) return;
 
-    // 1. Optimistically add User Message
+    // 1. Optimistically add User Message (Kept exactly as your code)
     const tempId = Date.now().toString();
     const userMsg: Message = {
       id: tempId,
@@ -105,12 +103,9 @@ const AIChat = () => {
       let activeSessionId = currentChatId || "";
       let uploadedContext = "";
 
-      // 2. Handle File Uploads (If any)
-      // Note: This implements a simple "upload & analyze" flow. 
-      // Complex CSV imports usually require a dedicated Confirmation Modal.
+      // 2. Handle File Uploads
       if (attachments && attachments.length > 0) {
         try {
-          // Upload the first file (MVP limit)
           const uploadRes = await aiApi.uploadFile(attachments[0], activeSessionId || "new", text);
           uploadedContext = `\n\n[System: User uploaded file '${uploadRes.filename}'. Analysis preview: ${uploadRes.message}]`;
         } catch (err) {
@@ -119,7 +114,6 @@ const AIChat = () => {
       }
 
       // 3. Send Message to AI
-      // If we don't have a session ID yet, passing "" or "new" (handled by backend logic or empty string)
       const response = await aiApi.sendMessage(
         activeSessionId, 
         text + uploadedContext
@@ -128,22 +122,35 @@ const AIChat = () => {
       // 4. Update Session State (New Chat Created?)
       if (!currentChatId && response.session_id) {
         setCurrentChatId(response.session_id);
-        // Refresh session list to show the new one in sidebar
-        fetchSessions(); 
+        
+        // ✅ NEW: Refresh cached sessions list since we added a new one
+        refetchSessions();
+        
+        // ✅ NEW: Seed the cache for the new ID so it doesn't flicker empty
+        // This prevents the UI from clearing when the ID switches from undefined -> new_id
+        queryClient.setQueryData(["chat-history", response.session_id], [
+           // Mock the API response structure to seed cache
+           { role: "user", content: text },
+           { role: "assistant", content: response.response }
+        ]);
       }
 
-      // 5. Add AI Response
+      // 5. Add AI Response (Optimistic append preserved)
       const aiMsg: Message = {
-        id: Date.now().toString(), // or use response.id if available
+        id: Date.now().toString(),
         role: "assistant",
         content: response.response,
       };
       setMessages((prev) => [...prev, aiMsg]);
+      
+      // ✅ NEW: Invalidate history cache so next fetch gets the server's version
+      if (currentChatId) {
+        queryClient.invalidateQueries({ queryKey: ["chat-history", currentChatId] });
+      }
 
     } catch (error) {
       console.error(error);
       toast.error("Failed to send message");
-      // Optional: Remove the optimistic user message on failure
     } finally {
       setIsLoading(false);
     }
@@ -152,18 +159,17 @@ const AIChat = () => {
   const handleNewChat = () => {
     setMessages([]);
     setCurrentChatId(undefined);
-    setHistoryOpen(false); // Optional: close sidebar on mobile
+    setHistoryOpen(false);
   };
 
   const handleSelectChat = (id: string) => {
     if (id === currentChatId) return;
     setCurrentChatId(id);
-    loadSessionMessages(id);
-    setHistoryOpen(false); // Close sidebar on mobile
+    // Removed manual loadSessionMessages call; Query handles it automatically
+    setHistoryOpen(false); 
   };
 
   const handleClearChat = () => {
-    // Just clear view, don't delete unless explicit
     setMessages([]);
   };
 
@@ -176,7 +182,7 @@ const AIChat = () => {
         onNewChat={handleNewChat}
         onSelectChat={handleSelectChat}
         currentChatId={currentChatId}
-        chats={sessions} // Passing real sessions
+        chats={sessions} // ✅ Uses cached sessions
       />
 
       {/* Mobile Sidebar */}
@@ -251,8 +257,6 @@ const AIChat = () => {
                         key={message.id}
                         role={message.role}
                         content={message.content}
-                        // Note: Backend currently returns full response at once.
-                        // 'isStreaming' is removed as the standard backend isn't streaming chunks yet.
                         isStreaming={false} 
                       />
                     ))}

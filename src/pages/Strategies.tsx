@@ -28,22 +28,19 @@ import EditStrategyModal from "@/components/strategies/EditStrategyModal";
 import StrategyDetail from "@/components/strategies/StrategyDetail";
 import { Strategy, strategyStyles } from "@/lib/strategiesData"; 
 import { toast } from "sonner";
+import { Skeleton } from "@/components/ui/skeleton";
 
-// ✅ Hooks & Context
+// Hooks & Context
 import { useStrategies, UIStrategy } from "@/hooks/use-strategies";
 import { useAuth } from "@/hooks/use-Auth";
 import { useModal } from "@/contexts/ModalContext"; 
-import { Skeleton } from "@/components/ui/skeleton";
-// ✅ Fix: Import from the new hook file
 import { useCurrency } from "@/hooks/use-currency";
 
 const Strategies = () => {
   // --- 1. Real Data Hooks ---
-  const { strategies: realStrategies, isLoading, createStrategy, deleteStrategy } = useStrategies();
+  const { strategies: realStrategies, isLoading, createStrategy, deleteStrategy, updateStrategy } = useStrategies();
   const { profile } = useAuth();
   const { openUpgradeModal } = useModal();
-  
-  // ✅ Fix: Use Currency Hook
   const { format, symbol } = useCurrency();
 
   // --- 2. State ---
@@ -53,7 +50,6 @@ const Strategies = () => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [styleFilter, setStyleFilter] = useState("all");
-
 
   // --- 3. Data Adapter (DB -> UI) ---
   const strategies: Strategy[] = useMemo(() => {
@@ -82,25 +78,24 @@ const Strategies = () => {
         track_missed_trades: s.trackMissed,
         createdAt: s.createdAt.toISOString(),
         
-        // ✅ Real Stats from Supabase RPC
+        // Stats
         totalTrades: s.stats.totalTrades,
         winRate: s.stats.winRate,
         netPnl: s.stats.netPL,
         profitFactor: s.stats.profitFactor,
         avgWin: s.stats.avgWinner,
         avgLoss: s.stats.avgLoser,
-        expectancy: s.stats.expectancy, // ✅ Fixed: Now using real DB value
+        expectancy: s.stats.expectancy,
       } as unknown as Strategy;
     });
   }, [realStrategies]);
-
 
   // --- 4. Aggregate Global Stats ---
   const globalStats = useMemo(() => {
     const totalStrategies = strategies.length;
     const combinedTrades = strategies.reduce((acc, s) => acc + (s.totalTrades || 0), 0);
     
-    // Weighted Win Rate (Actual total wins / actual total trades)
+    // Weighted Win Rate
     const totalWins = strategies.reduce((acc, s) => acc + ((s.winRate / 100) * s.totalTrades), 0);
     const avgWinRate = combinedTrades > 0 ? (totalWins / combinedTrades) * 100 : 0;
     
@@ -112,7 +107,6 @@ const Strategies = () => {
     };
   }, [strategies]);
 
-
   const filteredStrategies = useMemo(() => {
     return strategies.filter(s => {
       const matchesSearch = s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -122,11 +116,11 @@ const Strategies = () => {
     });
   }, [strategies, searchQuery, styleFilter]);
 
-
   // --- 5. Handlers ---
   const handleCreateClick = () => {
-    const plan = profile?.plan_tier || "FREE";
+    const plan = (profile?.plan_tier || "FREE").toUpperCase();
     const limit = (plan === "PRO" || plan === "PREMIUM") ? 1000 : 1;
+    
     if (strategies.length >= limit) {
       openUpgradeModal(`Free plan is limited to ${limit} strategy. Upgrade for unlimited.`);
       return;
@@ -145,8 +139,30 @@ const Strategies = () => {
     createStrategy(payload, { onSuccess: () => setCreateModalOpen(false) });
   };
 
-  const handleUpdateStrategy = (updatedStrategy: Strategy) => {
-    setSelectedStrategy(updatedStrategy);
+  const handleUpdateStrategy = (updatedData: any) => {
+    // Map the UI Strategy format back to what the hook expects
+    // Note: The EditStrategyModal likely returns the legacy 'Strategy' shape
+    // We must adapt it or pass just the changed fields.
+    if (!selectedStrategy) return;
+
+    const payload = {
+        name: updatedData.name,
+        description: updatedData.description,
+        emoji: updatedData.icon,
+        color: updatedData.color,
+        style: updatedData.style,
+        instrumentTypes: updatedData.instruments,
+        rules: updatedData.rules
+    };
+
+    updateStrategy({ id: selectedStrategy.id, data: payload }, {
+        onSuccess: () => {
+            // Optimistically update the selected view or just close/refresh
+            // Since we invalidate queries, the data will refresh automatically.
+            setEditModalOpen(false);
+            // We can optionally keep the detail view open, it will re-render with new data
+        }
+    });
   };
 
   const handleDeleteStrategy = () => {
@@ -159,7 +175,6 @@ const Strategies = () => {
     });
   };
 
-
   // --- 6. Render ---
   if (isLoading) {
     return (
@@ -171,7 +186,6 @@ const Strategies = () => {
       </DashboardLayout>
     );
   }
-
 
   if (selectedStrategy) {
     return (
@@ -189,7 +203,7 @@ const Strategies = () => {
           open={editModalOpen}
           onOpenChange={setEditModalOpen}
           strategy={selectedStrategy}
-          onUpdateStrategy={handleUpdateStrategy}
+          onUpdateStrategy={handleUpdateStrategy} // ✅ Connected to Hook
         />
         <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
           <AlertDialogContent>
@@ -210,7 +224,6 @@ const Strategies = () => {
       </DashboardLayout>
     );
   }
-
 
   return (
     <DashboardLayout>

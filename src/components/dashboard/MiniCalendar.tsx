@@ -1,130 +1,53 @@
+import { useState, useMemo } from "react";
 import { CaretLeft, CaretRight } from "@phosphor-icons/react";
-import { useState } from "react";
+import { 
+  format, 
+  addMonths, 
+  subMonths, 
+  startOfWeek, 
+  endOfWeek, 
+  eachDayOfInterval, 
+  isSameMonth, 
+  isSameDay,
+  startOfMonth,
+  endOfMonth
+} from "date-fns";
 import { useCalendar } from "@/hooks/use-calendar";
-// ✅ Fix: Import from the new hook file
 import { useCurrency } from "@/hooks/use-currency";
 
 const MiniCalendar = () => {
-  const [currentMonth, setCurrentMonth] = useState(new Date()); // Start with today
+  const [currentMonth, setCurrentMonth] = useState(new Date());
 
-  // ✅ FIX 1: Use new hook signature (returns 'data', no notes param needed)
+  // ✅ FIX 1: Hook returns a Record (Plain Object), not a Map
   const { data: monthData } = useCalendar(currentMonth);
-
-  // Currency conversion for display
-  const { format: formatUSD, symbol } = useCurrency();
-
-  const year = currentMonth.getFullYear();
-  const month = currentMonth.getMonth();
-
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const firstDayOfMonth = new Date(year, month, 1).getDay();
+  const { format: formatCurrency, symbol } = useCurrency();
 
   const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const monthName = currentMonth.toLocaleDateString("en-US", {
-    month: "long",
-    year: "numeric",
-  });
 
-  const handlePrevMonth = () => {
-    setCurrentMonth(new Date(year, month - 1, 1));
-  };
+  // Navigation Handlers using date-fns for safety
+  const handlePrevMonth = () => setCurrentMonth((prev) => subMonths(prev, 1));
+  const handleNextMonth = () => setCurrentMonth((prev) => addMonths(prev, 1));
 
-  const handleNextMonth = () => {
-    setCurrentMonth(new Date(year, month + 1, 1));
-  };
+  // ✅ FIX 2: Industry Grade Date Logic (Matches CalendarGrid)
+  // Generates the full 35 or 42 day grid including padding days
+  const calendarDays = useMemo(() => {
+    const monthStart = startOfMonth(currentMonth);
+    const startDate = startOfWeek(monthStart);
+    const endDate = endOfWeek(endOfMonth(monthStart));
 
-  // ✅ FIX 2: Helper to match SQL "YYYY-MM-DD" format
-  const getDateKey = (date: Date) => {
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, '0');
-    const d = String(date.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
-  };
+    return eachDayOfInterval({ start: startDate, end: endDate });
+  }, [currentMonth]);
 
-  const renderCalendarDays = () => {
-    const cells: JSX.Element[] = [];
-
-    // Empty cells for days before the first day of month
-    for (let i = 0; i < firstDayOfMonth; i++) {
-      cells.push(<div key={`empty-${i}`} className="h-12 rounded-lg" />);
-    }
-
-    // Days of the month
-    for (let day = 1; day <= daysInMonth; day++) {
-      const date = new Date(year, month, day);
-      
-      // ✅ FIX 3: Use correct key format
-      const dateKey = getDateKey(date);
-      const dayData = monthData?.get(dateKey);
-
-      // ✅ FIX 4: Use correct SQL property names (trade_count, daily_pnl)
-      const hasTrading = !!(dayData && dayData.trade_count > 0);
-      const isProfit = dayData ? dayData.daily_pnl > 0 : false;
-
-      // Correct "Today" check
-      const today = new Date();
-      const isToday =
-        day === today.getDate() &&
-        month === today.getMonth() &&
-        year === today.getFullYear();
-
-      // Prepare PnL display
-      let pnlDisplay = "";
-      if (hasTrading && dayData) {
-        // Convert USD PnL to Selected Currency
-        const absUsd = Math.abs(dayData.daily_pnl || 0);
-        // formatUSD already returns a formatted string with decimals, so we just construct the sign + symbol part carefully
-        // But formatUSD usually returns "1,234.56" (string). 
-        // We want: "+$1.2k" or "+₹100" style depending on space. 
-        // Given space is tiny, let's keep it simple or use compact notation if needed.
-        // For MiniCalendar, just showing the number might be tight.
-        // Let's stick to the user's snippet logic:
-        pnlDisplay = `${isProfit ? "+" : "-"}${symbol}${formatUSD(absUsd)}`;
-      }
-
-      cells.push(
-        <div
-          key={day}
-          className={`h-12 rounded-lg flex flex-col items-center justify-center text-xs transition-colors cursor-pointer hover:bg-secondary/50 ${
-            isToday ? "ring-1 ring-primary" : ""
-          } ${
-            hasTrading
-              ? isProfit
-                ? "bg-emerald-400/10"
-                : "bg-rose-400/10"
-              : "bg-secondary/20"
-          }`}
-        >
-          <span
-            className={`font-normal ${
-              isToday ? "text-primary" : "text-muted-foreground"
-            }`}
-          >
-            {day}
-          </span>
-          {hasTrading && (
-            <span
-              className={`text-[9px] font-light truncate w-full text-center px-0.5 ${
-                isProfit
-                  ? "text-emerald-600 dark:text-emerald-400"
-                  : "text-rose-600 dark:text-rose-400"
-              }`}
-            >
-              {pnlDisplay}
-            </span>
-          )}
-        </div>
-      );
-    }
-
-    return cells;
-  };
+  // Helper to match SQL format
+  const getDateKey = (date: Date) => format(date, "yyyy-MM-dd");
 
   return (
     <div className="glass-card card-glow p-5 rounded-2xl">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-light text-foreground">{monthName}</h3>
+        <h3 className="text-sm font-light text-foreground">
+          {format(currentMonth, "MMMM yyyy")}
+        </h3>
         <div className="flex items-center gap-1">
           <button
             onClick={handlePrevMonth}
@@ -154,7 +77,62 @@ const MiniCalendar = () => {
       </div>
 
       {/* Calendar grid */}
-      <div className="grid grid-cols-7 gap-1">{renderCalendarDays()}</div>
+      <div className="grid grid-cols-7 gap-1">
+        {calendarDays.map((date) => {
+          const dateKey = getDateKey(date);
+          const isCurrentMonth = isSameMonth(date, currentMonth);
+          const isToday = isSameDay(date, new Date());
+          
+          // ✅ FIX 3: Access via Object key (O(1))
+          // Only show data for current month to avoid visual clutter
+          const dayData = (isCurrentMonth && monthData) ? monthData[dateKey] : null;
+
+          const hasTrading = !!(dayData && dayData.trade_count > 0);
+          const isProfit = dayData ? dayData.daily_pnl > 0 : false;
+
+          // Prepare PnL display
+          let pnlDisplay = "";
+          if (hasTrading && dayData) {
+            const absVal = Math.abs(dayData.daily_pnl || 0);
+            pnlDisplay = `${isProfit ? "+" : "-"}${symbol}${formatCurrency(absVal)}`;
+          }
+
+          return (
+            <div
+              key={dateKey}
+              className={`h-12 rounded-lg flex flex-col items-center justify-center text-xs transition-colors cursor-default ${
+                !isCurrentMonth ? "opacity-30" : ""
+              } ${isToday ? "ring-1 ring-primary" : ""} ${
+                hasTrading
+                  ? isProfit
+                    ? "bg-emerald-400/10"
+                    : "bg-rose-400/10"
+                  : isCurrentMonth ? "hover:bg-secondary/20" : ""
+              }`}
+            >
+              <span
+                className={`font-normal ${
+                  isToday ? "text-primary" : "text-muted-foreground"
+                }`}
+              >
+                {date.getDate()}
+              </span>
+              
+              {hasTrading && isCurrentMonth && (
+                <span
+                  className={`text-[9px] font-light truncate w-full text-center px-0.5 ${
+                    isProfit
+                      ? "text-emerald-600 dark:text-emerald-400"
+                      : "text-rose-600 dark:text-rose-400"
+                  }`}
+                >
+                  {pnlDisplay}
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 };
