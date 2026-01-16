@@ -1,6 +1,17 @@
-import { useState, useEffect, useMemo } from "react";
-import { Plus } from "@phosphor-icons/react";
-import { Trade, strategies, tradeTypes, defaultTags } from "@/lib/tradesData";
+import { useState, useEffect, useMemo, useRef } from "react";
+import { 
+  Plus, 
+  X, 
+  UploadSimple, 
+  Spinner, 
+  CheckCircle, 
+  CalendarBlank, 
+  Clock 
+} from "@phosphor-icons/react";
+import { format } from "date-fns";
+import { toast } from "sonner";
+
+import { tradeTypes, defaultTags } from "@/lib/tradesData";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,14 +31,119 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { format } from "date-fns";
-import { toast } from "sonner";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { cn } from "@/lib/utils";
+
+// Hooks & Types
+import { UITrade } from "@/hooks/use-trades";
+import { tradesApi } from "@/services/api/modules/trades";
+import { useStrategies } from "@/hooks/use-strategies";
+
+// --- Helper: DateTimePicker (Consistent with AddModal) ---
+interface DateTimePickerProps {
+  date: Date | undefined;
+  setDate: (date: Date | undefined) => void;
+  minDate?: Date;
+  maxDate?: Date; 
+  disabled?: boolean;
+}
+
+const DateTimePicker = ({ date, setDate, minDate, maxDate, disabled }: DateTimePickerProps) => {
+  const [timeValue, setTimeValue] = useState("12:00");
+
+  useEffect(() => {
+    if (date) {
+      setTimeValue(format(date, "HH:mm"));
+    }
+  }, [date]);
+
+  const handleDateSelect = (selectedDate: Date | undefined) => {
+    if (!selectedDate) {
+      setDate(undefined);
+      return;
+    }
+    const [hours, minutes] = timeValue.split(":").map(Number);
+    const newDate = new Date(selectedDate);
+    newDate.setHours(hours);
+    newDate.setMinutes(minutes);
+    setDate(newDate);
+  };
+
+  const handleTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newTime = e.target.value;
+    setTimeValue(newTime);
+    if (date) {
+      const [hours, minutes] = newTime.split(":").map(Number);
+      const newDate = new Date(date);
+      newDate.setHours(hours);
+      newDate.setMinutes(minutes);
+      setDate(newDate);
+    }
+  };
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          className={cn(
+            "w-full justify-start text-left font-normal bg-secondary/50 border-border/50",
+            !date && "text-muted-foreground"
+          )}
+          disabled={disabled}
+        >
+          <CalendarBlank className="mr-2 h-4 w-4" />
+          {date ? format(date, "MMM d, yyyy h:mm a") : <span>Pick date & time</span>}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-0 bg-card border-border" align="start">
+        <div className="flex flex-col sm:flex-row">
+          <div className="p-3 border-b sm:border-b-0 sm:border-r border-border/50">
+            <Calendar
+              mode="single"
+              selected={date}
+              onSelect={handleDateSelect}
+              disabled={(day) => {
+                if (maxDate && day > maxDate) return true;
+                if (minDate) {
+                   const d = new Date(day); d.setHours(0,0,0,0);
+                   const m = new Date(minDate); m.setHours(0,0,0,0);
+                   return d < m;
+                }
+                return false;
+              }}
+              initialFocus
+            />
+          </div>
+          <div className="p-4 flex flex-col gap-4 sm:w-[180px]">
+            <div className="flex items-center gap-2 text-foreground font-medium">
+              <Clock className="w-4 h-4" />
+              <span>Time</span>
+            </div>
+            <Input
+              type="time"
+              value={timeValue}
+              onChange={handleTimeChange}
+              className="bg-secondary/50 border-border/50"
+            />
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+};
+
 
 interface EditTradeModalProps {
-  trade: Trade | null;
+  trade: UITrade | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onUpdateTrade: (trade: Trade) => void;
+  onUpdateTrade: (data: any) => void;
 }
 
 const EditTradeModal = ({
@@ -36,47 +152,76 @@ const EditTradeModal = ({
   onOpenChange,
   onUpdateTrade,
 }: EditTradeModalProps) => {
+  // --- Data Fetching ---
+  const { strategies: availableStrategies, isLoading: loadingStrategies } = useStrategies();
+
+  // --- State ---
   const [activeTab, setActiveTab] = useState("basic");
-  const [status, setStatus] = useState<"open" | "closed">("closed");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Form Fields
+  const [status, setStatus] = useState<string>("CLOSED");
   const [symbol, setSymbol] = useState("");
-  const [type, setType] = useState<Trade["type"]>("Stock");
-  const [side, setSide] = useState<"LONG" | "SHORT">("LONG");
-  const [entryDate, setEntryDate] = useState("");
+  const [type, setType] = useState<string>("STOCK");
+  const [side, setSide] = useState<string>("LONG");
+  
+  // Date State (Date Objects)
+  const [entryDate, setEntryDate] = useState<Date | undefined>(undefined);
+  const [exitDate, setExitDate] = useState<Date | undefined>(undefined);
+  
+  // Numeric Fields
   const [entryPrice, setEntryPrice] = useState("");
   const [quantity, setQuantity] = useState("");
-  const [exitDate, setExitDate] = useState("");
   const [exitPrice, setExitPrice] = useState("");
   const [fees, setFees] = useState("0");
   const [stopLoss, setStopLoss] = useState("");
   const [target, setTarget] = useState("");
-  const [strategy, setStrategy] = useState(strategies[0]);
+  
+  // Metadata
+  const [strategyId, setStrategyId] = useState("none");
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
   const [notes, setNotes] = useState("");
 
+  // Screenshots
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // --- Populate Form on Open ---
   useEffect(() => {
-    if (trade) {
-      setStatus(trade.status);
-      setSymbol(trade.symbol);
-      setType(trade.type);
-      setSide(trade.side);
-      setEntryDate(format(trade.date, "yyyy-MM-dd'T'HH:mm"));
-      setEntryPrice(trade.entryPrice.toString());
-      setQuantity(trade.quantity.toString());
-      setExitDate(format(trade.date, "yyyy-MM-dd'T'HH:mm"));
-      setExitPrice(trade.exitPrice.toString());
-      setFees(trade.fees.toString());
-      setStopLoss(trade.stopLoss.toString());
-      setTarget(trade.target.toString());
-      setStrategy(trade.strategy);
-      setSelectedTags(trade.tags);
-      setNotes(trade.notes);
+    if (trade && open) {
+      setStatus(trade.status || "CLOSED");
+      setSymbol(trade.symbol || "");
+      setType(trade.type || "STOCK");
+      setSide(trade.side || "LONG");
+      
+      setEntryDate(trade.date ? new Date(trade.date) : undefined);
+      // Fallback: If no exit date in UITrade but is closed, default to entry date for editing safety
+      setExitDate(trade.status === "CLOSED" ? (trade.date ? new Date(trade.date) : undefined) : undefined); 
+      
+      setEntryPrice(trade.entryPrice?.toString() || "");
+      setQuantity(trade.quantity?.toString() || "");
+      setExitPrice(trade.exitPrice?.toString() || "");
+      setFees(trade.fees?.toString() || "0");
+      setStopLoss(trade.stopLoss?.toString() || "");
+      setTarget(trade.target?.toString() || "");
+      
+      // Auto-select strategy by name mapping or default to "none"
+      const found = availableStrategies.find(s => s.name === trade.strategy);
+      setStrategyId(found ? found.id : "none");
+
+      setSelectedTags(trade.tags || []);
+      setNotes((trade as any).notes || ""); 
     }
-  }, [trade]);
+  }, [trade, open, availableStrategies]);
+
+
+  // --- Handlers ---
 
   const handleAddTag = () => {
-    if (tagInput && !selectedTags.includes(tagInput)) {
-      setSelectedTags([...selectedTags, tagInput]);
+    const val = tagInput.trim();
+    if (val && !selectedTags.includes(val)) {
+      setSelectedTags([...selectedTags, val]);
       setTagInput("");
     }
   };
@@ -87,55 +232,62 @@ const EditTradeModal = ({
 
   const calculateHoldTime = () => {
     if (!entryDate || !exitDate) return "0m";
-    const entry = new Date(entryDate);
-    const exit = new Date(exitDate);
-    const diffMs = exit.getTime() - entry.getTime();
+    const diffMs = exitDate.getTime() - entryDate.getTime();
     if (diffMs < 0) return "0m";
     const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
     const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
     return diffHours > 0 ? `${diffHours}h ${diffMins}m` : `${diffMins}m`;
   };
 
-  // Validation errors
+  // --- Validation ---
   const validationErrors = useMemo(() => {
     const errors: string[] = [];
     const entry = parseFloat(entryPrice) || 0;
     const sl = parseFloat(stopLoss) || 0;
     const tgt = parseFloat(target) || 0;
 
-    // Exit date validation
-    if (entryDate && exitDate && status === "closed") {
-      const entryDateTime = new Date(entryDate);
-      const exitDateTime = new Date(exitDate);
-      if (exitDateTime < entryDateTime) {
+    if (entryDate && exitDate && status === "CLOSED") {
+      if (exitDate < entryDate) {
         errors.push("Exit date cannot be before entry date");
       }
     }
 
-    // Stop loss validation
     if (sl > 0 && entry > 0) {
-      if (side === "LONG" && sl >= entry) {
-        errors.push("Stop loss must be below entry price for long positions");
-      }
-      if (side === "SHORT" && sl <= entry) {
-        errors.push("Stop loss must be above entry price for short positions");
-      }
+      if (side === "LONG" && sl >= entry) errors.push("Stop loss must be below entry for LONG");
+      if (side === "SHORT" && sl <= entry) errors.push("Stop loss must be above entry for SHORT");
     }
 
-    // Target validation
     if (tgt > 0 && entry > 0) {
-      if (side === "LONG" && tgt <= entry) {
-        errors.push("Target must be above entry price for long positions");
-      }
-      if (side === "SHORT" && tgt >= entry) {
-        errors.push("Target must be below entry price for short positions");
-      }
+      if (side === "LONG" && tgt <= entry) errors.push("Target must be above entry for LONG");
+      if (side === "SHORT" && tgt >= entry) errors.push("Target must be below entry for SHORT");
     }
 
     return errors;
   }, [entryDate, exitDate, entryPrice, stopLoss, target, side, status]);
 
-  const handleSubmit = () => {
+
+  // --- Upload Logic (Immediate Upload for Edit Mode) ---
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files?.length || !trade) return;
+    
+    setIsUploading(true);
+    const files = Array.from(e.target.files);
+    
+    try {
+      await tradesApi.uploadScreenshots(files, trade.id);
+      toast.success("Screenshots uploaded");
+    } catch (error) {
+      console.error(error);
+      toast.error("Failed to upload screenshots");
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+
+  // --- Submit Logic ---
+  const handleSubmit = async () => {
     if (!trade) return;
 
     if (validationErrors.length > 0) {
@@ -143,50 +295,57 @@ const EditTradeModal = ({
       return;
     }
 
-    const entry = parseFloat(entryPrice) || 0;
-    const exit = parseFloat(exitPrice) || entry;
-    const sl = parseFloat(stopLoss) || 0;
-    const tgt = parseFloat(target) || 0;
-    const qty = parseFloat(quantity) || 0;
-    const fee = parseFloat(fees) || 0;
+    if (!symbol || !entryPrice || !quantity || !entryDate) {
+      toast.error("Required fields missing");
+      return;
+    }
 
-    const pnl =
-      status === "open"
-        ? 0
-        : side === "LONG"
-        ? (exit - entry) * qty - fee
-        : (entry - exit) * qty - fee;
+    const numericEntryPrice = parseFloat(entryPrice);
+    const numericQuantity = parseFloat(quantity);
 
-    const risk = Math.abs(entry - sl) * qty;
-    const rMultiple = risk > 0 ? pnl / risk : 0;
+    if (isNaN(numericEntryPrice) || numericEntryPrice <= 0) {
+        toast.error("Invalid Entry Price");
+        return;
+    }
 
-    const updatedTrade: Trade = {
-      ...trade,
-      date: entryDate ? new Date(entryDate) : trade.date,
-      symbol: symbol.toUpperCase(),
-      type,
-      side,
-      entryPrice: entry,
-      exitPrice: status === "open" ? entry : exit,
-      stopLoss: sl,
-      target: tgt,
-      quantity: qty,
-      fees: fee,
-      pnl,
-      rMultiple,
-      strategy,
-      tags: selectedTags,
-      notes,
-      status,
-      holdTime: status === "open" ? "-" : calculateHoldTime(),
-      risk,
-    };
+    setIsSubmitting(true);
 
-    onUpdateTrade(updatedTrade);
-    onOpenChange(false);
+    try {
+      const payload = {
+        symbol: symbol.toUpperCase(),
+        instrument_type: type.toUpperCase(),
+        direction: side.toUpperCase(),
+        status: status.toUpperCase(),
+        
+        entry_time: entryDate.toISOString(),
+        exit_time: status === "CLOSED" && exitDate ? exitDate.toISOString() : null,
+        
+        entry_price: numericEntryPrice,
+        exit_price: status === "CLOSED" ? (parseFloat(exitPrice) || numericEntryPrice) : null,
+        
+        quantity: numericQuantity,
+        fees: parseFloat(fees) || 0,
+        stop_loss: parseFloat(stopLoss) || null,
+        target: parseFloat(target) || null,
+        
+        // ✅ Handle "No Strategy" logic
+        strategy_id: strategyId === "none" ? null : strategyId,
+        tags: selectedTags,
+        notes: notes,
+      };
+
+      await onUpdateTrade(payload);
+      onOpenChange(false);
+
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   if (!trade) return null;
+
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -200,76 +359,58 @@ const EditTradeModal = ({
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-4">
           <TabsList className="w-full bg-secondary/50">
-            <TabsTrigger value="basic" className="flex-1">
-              Basic
-            </TabsTrigger>
-            <TabsTrigger value="levels" className="flex-1">
-              Levels
-            </TabsTrigger>
-            <TabsTrigger value="details" className="flex-1">
-              Details
-            </TabsTrigger>
+            <TabsTrigger value="basic" className="flex-1">Basic</TabsTrigger>
+            <TabsTrigger value="levels" className="flex-1">Levels</TabsTrigger>
+            <TabsTrigger value="details" className="flex-1">Details</TabsTrigger>
           </TabsList>
 
+          {/* === BASIC TAB === */}
           <TabsContent value="basic" className="space-y-6 mt-6">
-            {/* Trade Status */}
+            {/* Status */}
             <div>
               <Label className="text-sm font-medium mb-3 block">Trade Status</Label>
               <div className="grid grid-cols-2 gap-2">
                 <Button
                   type="button"
-                  variant={status === "open" ? "default" : "outline"}
-                  className={`${
-                    status === "open"
-                      ? "bg-secondary text-foreground border-border"
-                      : "bg-transparent border-border text-muted-foreground"
-                  }`}
-                  onClick={() => setStatus("open")}
+                  variant={status === "OPEN" ? "default" : "outline"}
+                  className={status === "OPEN" ? "bg-secondary text-foreground border-border" : "bg-transparent border-border text-muted-foreground"}
+                  onClick={() => setStatus("OPEN")}
                 >
                   Open
                 </Button>
                 <Button
                   type="button"
-                  variant={status === "closed" ? "default" : "outline"}
-                  className={`${
-                    status === "closed"
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-transparent border-border text-muted-foreground"
-                  }`}
-                  onClick={() => setStatus("closed")}
+                  variant={status === "CLOSED" ? "default" : "outline"}
+                  className={status === "CLOSED" ? "bg-primary text-primary-foreground" : "bg-transparent border-border text-muted-foreground"}
+                  onClick={() => setStatus("CLOSED")}
                 >
                   Closed
                 </Button>
               </div>
             </div>
 
-            {/* Symbol, Type, Direction */}
+            {/* Symbol / Type / Side */}
             <div className="grid grid-cols-3 gap-4">
               <div>
                 <Label className="text-sm font-medium mb-2 block">Symbol</Label>
                 <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
-                    $
-                  </span>
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
                   <Input
-                    placeholder="AAPL"
                     value={symbol}
-                    onChange={(e) => setSymbol(e.target.value)}
-                    className="pl-7 bg-secondary/50 border-border/50"
+                    onChange={(e) => setSymbol(e.target.value.toUpperCase())}
+                    className="pl-7 bg-secondary/50 border-border/50 uppercase"
                   />
                 </div>
               </div>
               <div>
                 <Label className="text-sm font-medium mb-2 block">Type</Label>
-                <Select value={type} onValueChange={(v) => setType(v as Trade["type"])}>
+                <Select value={type} onValueChange={setType}>
                   <SelectTrigger className="bg-secondary/50 border-border/50">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {tradeTypes.map((t) => (
-                      <SelectItem key={t} value={t}>
-                        {t}
-                      </SelectItem>
+                    {(tradeTypes || ["STOCK", "CRYPTO", "FOREX"]).map((t) => (
+                      <SelectItem key={t} value={t}>{t}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -281,11 +422,7 @@ const EditTradeModal = ({
                     type="button"
                     size="sm"
                     variant={side === "LONG" ? "default" : "outline"}
-                    className={`${
-                      side === "LONG"
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-transparent border-border text-muted-foreground"
-                    }`}
+                    className={side === "LONG" ? "bg-primary text-primary-foreground" : "bg-transparent border-border text-muted-foreground"}
                     onClick={() => setSide("LONG")}
                   >
                     Long
@@ -294,11 +431,7 @@ const EditTradeModal = ({
                     type="button"
                     size="sm"
                     variant={side === "SHORT" ? "default" : "outline"}
-                    className={`${
-                      side === "SHORT"
-                        ? "bg-secondary text-foreground border-border"
-                        : "bg-transparent border-border text-muted-foreground"
-                    }`}
+                    className={side === "SHORT" ? "bg-secondary text-foreground border-border" : "bg-transparent border-border text-muted-foreground"}
                     onClick={() => setSide("SHORT")}
                   >
                     Short
@@ -307,168 +440,139 @@ const EditTradeModal = ({
               </div>
             </div>
 
-            {/* Entry */}
+            {/* Entry Data */}
             <div>
               <Label className="text-sm font-medium mb-3 block">Entry</Label>
               <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <Label className="text-xs text-muted-foreground mb-1.5 block">
-                    Date & Time
-                  </Label>
-                  <Input
-                    type="datetime-local"
-                    value={entryDate}
-                    onChange={(e) => setEntryDate(e.target.value)}
-                    className="bg-secondary/50 border-border/50"
-                  />
+                <div className="col-span-1">
+                   <Label className="text-xs text-muted-foreground mb-1.5 block">Date & Time</Label>
+                   <DateTimePicker 
+                     date={entryDate}
+                     setDate={setEntryDate}
+                     maxDate={new Date()}
+                   />
                 </div>
                 <div>
-                  <Label className="text-xs text-muted-foreground mb-1.5 block">
-                    Avg Price (USD)
-                  </Label>
-                  <Input
+                   <Label className="text-xs text-muted-foreground mb-1.5 block">Price</Label>
+                   <Input
                     type="number"
                     step="0.01"
-                    placeholder="0.00"
                     value={entryPrice}
                     onChange={(e) => setEntryPrice(e.target.value)}
                     className="bg-secondary/50 border-border/50"
-                  />
+                   />
                 </div>
                 <div>
-                  <Label className="text-xs text-muted-foreground mb-1.5 block">
-                    Qty / Lots
-                  </Label>
-                  <Input
+                   <Label className="text-xs text-muted-foreground mb-1.5 block">Qty</Label>
+                   <Input
                     type="number"
-                    step="0.01"
-                    placeholder="0"
                     value={quantity}
                     onChange={(e) => setQuantity(e.target.value)}
                     className="bg-secondary/50 border-border/50"
-                  />
+                   />
                 </div>
               </div>
             </div>
 
-            {/* Exit - Only show when status is closed */}
-            {status === "closed" && (
+            {/* Exit Data */}
+            {status === "CLOSED" && (
               <div>
                 <Label className="text-sm font-medium mb-3 block">Exit</Label>
                 <div className="grid grid-cols-3 gap-4">
                   <div>
-                    <Label className="text-xs text-muted-foreground mb-1.5 block">
-                      Date & Time
-                    </Label>
-                    <Input
-                      type="datetime-local"
-                      value={exitDate}
-                      onChange={(e) => setExitDate(e.target.value)}
-                      min={entryDate}
-                      className="bg-secondary/50 border-border/50"
+                    <Label className="text-xs text-muted-foreground mb-1.5 block">Date & Time</Label>
+                    <DateTimePicker 
+                      date={exitDate}
+                      setDate={setExitDate}
+                      minDate={entryDate}
+                      maxDate={new Date()}
+                      disabled={!entryDate}
                     />
                   </div>
                   <div>
-                    <Label className="text-xs text-muted-foreground mb-1.5 block">
-                      Exit Price (USD)
-                    </Label>
+                    <Label className="text-xs text-muted-foreground mb-1.5 block">Price</Label>
                     <Input
                       type="number"
                       step="0.01"
-                      placeholder="0.00"
                       value={exitPrice}
                       onChange={(e) => setExitPrice(e.target.value)}
                       className="bg-secondary/50 border-border/50"
                     />
                   </div>
                   <div>
-                    <Label className="text-xs text-muted-foreground mb-1.5 block">
-                      Fees (USD)
-                    </Label>
+                    <Label className="text-xs text-muted-foreground mb-1.5 block">Fees</Label>
                     <Input
                       type="number"
-                      step="0.01"
-                      placeholder="0"
                       value={fees}
                       onChange={(e) => setFees(e.target.value)}
                       className="bg-secondary/50 border-border/50"
                     />
                   </div>
                 </div>
-              </div>
-            )}
-
-            {/* Hold Time - Only show when status is closed */}
-            {status === "closed" && (
-              <div className="text-sm text-muted-foreground">
-                Hold Time: <span className="text-foreground">{calculateHoldTime()}</span>
+                <div className="text-sm text-muted-foreground mt-2 text-right">
+                    Hold Time: <span className="text-foreground font-medium">{calculateHoldTime()}</span>
+                </div>
               </div>
             )}
           </TabsContent>
 
+
+          {/* === LEVELS TAB === */}
           <TabsContent value="levels" className="space-y-6 mt-6">
-            {/* Stop Loss & Target */}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label className="text-sm font-medium mb-2 block">Stop Loss</Label>
                 <Input
                   type="number"
                   step="0.01"
-                  placeholder="0.00"
                   value={stopLoss}
                   onChange={(e) => setStopLoss(e.target.value)}
                   className="bg-secondary/50 border-border/50"
                 />
-                {stopLoss && entryPrice && (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {side === "LONG" ? "Must be below" : "Must be above"} entry price
-                  </p>
-                )}
               </div>
               <div>
                 <Label className="text-sm font-medium mb-2 block">Target</Label>
                 <Input
                   type="number"
                   step="0.01"
-                  placeholder="0.00"
                   value={target}
                   onChange={(e) => setTarget(e.target.value)}
                   className="bg-secondary/50 border-border/50"
                 />
-                {target && entryPrice && (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {side === "LONG" ? "Must be above" : "Must be below"} entry price
-                  </p>
-                )}
               </div>
             </div>
 
-            {/* Strategy */}
             <div>
               <Label className="text-sm font-medium mb-2 block">Strategy</Label>
-              <Select value={strategy} onValueChange={setStrategy}>
+              <Select value={strategyId} onValueChange={setStrategyId}>
                 <SelectTrigger className="bg-secondary/50 border-border/50">
-                  <SelectValue />
+                  <SelectValue placeholder="Select Strategy" />
                 </SelectTrigger>
                 <SelectContent>
-                  {strategies.map((s) => (
-                    <SelectItem key={s} value={s}>
-                      {s}
-                    </SelectItem>
-                  ))}
+                  {/* ✅ "No Strategy" Option Added */}
+                  <SelectItem value="none" className="text-muted-foreground italic">
+                    No Strategy
+                  </SelectItem>
+                  {loadingStrategies ? (
+                    <div className="flex items-center justify-center p-2 text-muted-foreground">
+                        <Spinner className="animate-spin w-4 h-4 mr-2" /> Loading...
+                    </div>
+                  ) : (
+                    availableStrategies.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        <span className="flex items-center gap-2">
+                            <span>{s.emoji}</span> {s.name}
+                        </span>
+                      </SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
             </div>
-
-            {/* Info Box */}
-            <div className="glass-card p-4 rounded-xl">
-              <p className="text-sm text-muted-foreground">
-                Risk/Reward and R-Multiple will be recalculated automatically based on your
-                updated entry, exit, stop loss, and target levels.
-              </p>
-            </div>
           </TabsContent>
 
+
+          {/* === DETAILS TAB === */}
           <TabsContent value="details" className="space-y-6 mt-6">
             {/* Tags */}
             <div>
@@ -481,83 +585,71 @@ const EditTradeModal = ({
                   onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), handleAddTag())}
                   className="bg-secondary/50 border-border/50"
                 />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  onClick={handleAddTag}
-                  className="border-border/50"
-                >
-                  <Plus weight="regular" className="w-4 h-4" />
+                <Button type="button" variant="outline" size="icon" onClick={handleAddTag}>
+                  <Plus className="w-4 h-4" />
                 </Button>
               </div>
-              {selectedTags.length > 0 && (
-                <div className="flex flex-wrap gap-2 mt-3">
-                  {selectedTags.map((tag) => (
-                    <Badge
-                      key={tag}
-                      variant="outline"
-                      className="border-border/50 bg-secondary/50 cursor-pointer hover:bg-rose-500/10 hover:border-rose-500/50"
-                      onClick={() => handleRemoveTag(tag)}
-                    >
-                      {tag} ×
-                    </Badge>
-                  ))}
-                </div>
-              )}
               <div className="flex flex-wrap gap-2 mt-3">
-                {defaultTags
-                  .filter((t) => !selectedTags.includes(t))
-                  .slice(0, 5)
-                  .map((tag) => (
-                    <Badge
-                      key={tag}
-                      variant="outline"
-                      className="border-border/30 bg-transparent text-muted-foreground cursor-pointer hover:bg-secondary/50"
-                      onClick={() => setSelectedTags([...selectedTags, tag])}
-                    >
-                      + {tag}
-                    </Badge>
-                  ))}
+                {selectedTags.map((tag) => (
+                  <Badge
+                    key={tag}
+                    variant="outline"
+                    className="border-border/50 bg-secondary/50 cursor-pointer hover:bg-rose-500/10 hover:border-rose-500/50"
+                    onClick={() => handleRemoveTag(tag)}
+                  >
+                    {tag} <X className="ml-1 w-3 h-3" />
+                  </Badge>
+                ))}
+                {(defaultTags || []).filter(t => !selectedTags.includes(t)).slice(0, 3).map(tag => (
+                   <Badge key={tag} variant="outline" className="opacity-50 cursor-pointer" onClick={() => setSelectedTags([...selectedTags, tag])}>+ {tag}</Badge>
+                ))}
               </div>
             </div>
 
-            {/* Trade Notes */}
+            {/* Notes */}
             <div>
-              <Label className="text-sm font-medium mb-2 block">Trade Notes</Label>
+              <Label className="text-sm font-medium mb-2 block">Notes</Label>
               <Textarea
-                placeholder="Write your trade analysis, reasoning, lessons learned..."
+                placeholder="Trade analysis..."
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 className="min-h-[120px] bg-secondary/50 border-border/50"
               />
             </div>
 
-            {/* Screenshots */}
+            {/* Screenshot Upload */}
             <div>
-              <Label className="text-sm font-medium mb-2 block">Screenshots</Label>
-              <div className="border-2 border-dashed border-border/50 rounded-xl p-8 text-center">
-                <p className="text-sm text-muted-foreground mb-3">
-                  Drag & drop images here or click to upload
-                </p>
-                <Button type="button" variant="outline" className="border-border/50">
-                  Browse Files
-                </Button>
+              <Label className="text-sm font-medium mb-2 block">Upload Screenshots</Label>
+              <div 
+                className="border-2 border-dashed border-border/50 rounded-xl p-8 text-center cursor-pointer hover:bg-secondary/20 transition-colors"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <input 
+                  type="file" 
+                  multiple 
+                  accept="image/*" 
+                  className="hidden" 
+                  ref={fileInputRef}
+                  onChange={handleFileUpload}
+                />
+                
+                {isUploading ? (
+                    <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                        <Spinner className="animate-spin w-6 h-6" />
+                        <span className="text-sm">Uploading...</span>
+                    </div>
+                ) : (
+                    <>
+                        <UploadSimple className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+                        <p className="text-sm text-muted-foreground">
+                        Click to upload new screenshots
+                        </p>
+                    </>
+                )}
               </div>
             </div>
           </TabsContent>
         </Tabs>
-
-        {/* Validation Errors */}
-        {validationErrors.length > 0 && (
-          <div className="mt-4 p-3 rounded-lg bg-rose-500/10 border border-rose-500/30">
-            {validationErrors.map((error, index) => (
-              <p key={index} className="text-sm text-rose-400">
-                {error}
-              </p>
-            ))}
-          </div>
-        )}
 
         {/* Footer */}
         <div className="flex items-center justify-end gap-3 mt-6 pt-4 border-t border-border/50">
@@ -573,8 +665,9 @@ const EditTradeModal = ({
             type="button"
             onClick={handleSubmit}
             className="glow-button text-white"
-            disabled={validationErrors.length > 0}
+            disabled={isSubmitting || validationErrors.length > 0}
           >
+            {isSubmitting ? <Spinner className="animate-spin w-4 h-4 mr-2" /> : null}
             Save Changes
           </Button>
         </div>

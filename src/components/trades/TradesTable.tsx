@@ -10,7 +10,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-// ✅ Fix: Import from the new hook file
 import { useCurrency } from "@/hooks/use-currency";
 
 interface TradesTableProps {
@@ -28,7 +27,7 @@ const TradesTable = ({
   sortDirection,
   onSort,
 }: TradesTableProps) => {
-  // ✅ Fix: Use Currency Hook
+  // Use Global Currency Hook for formatting
   const { format: formatCurrency, symbol } = useCurrency();
 
   const SortIcon = ({ field }: { field: string }) => {
@@ -112,8 +111,8 @@ const TradesTable = ({
                       </Badge>
                     </TableCell>
                     <TableCell className={`font-bold tabular-nums text-sm ${!isLoss ? "text-emerald-500" : "text-rose-500"}`}>
-                      {/* ✅ Fix: Dynamic Currency Formatting */}
-                      {!isLoss ? "+" : "-"}{symbol}{formatCurrency(Math.abs(trade.pnl || 0))}
+                      {/* Dynamic Currency Formatting */}
+                      {!isLoss ? "+" : ""}{symbol}{formatCurrency(Math.abs(trade.pnl || 0))}
                     </TableCell>
                     <TableCell className={`font-medium tabular-nums text-sm ${!isRLoss ? "text-emerald-500" : "text-rose-500"}`}>
                       {!isRLoss ? "+" : "-"}{Math.abs(trade.rMultiple).toFixed(2)}R
@@ -122,7 +121,7 @@ const TradesTable = ({
                       {trade.strategy}
                     </TableCell>
                     
-                    {/* ✅ Updated Tag Logic: Pill Stack Design */}
+                    {/* Tag Logic: Pill Stack Design */}
                     <TableCell>
                       <div className="flex items-center gap-1.5">
                         {trade.tags.slice(0, 2).map((tag, index) => (
@@ -137,7 +136,6 @@ const TradesTable = ({
                         {trade.tags.length > 2 && (
                           <Badge
                             variant="outline"
-                            // Matches the style of the tags exactly, but with slightly different opacity to indicate it's a counter
                             className="border-primary/20 bg-primary/10 text-primary text-[10px] h-5 px-1.5 font-bold"
                           >
                             +{trade.tags.length - 2}
@@ -175,8 +173,8 @@ const TradesTable = ({
                   </Badge>
                 </div>
                 <span className={`text-lg font-bold tabular-nums ${!isLoss ? "text-emerald-500" : "text-rose-500"}`}>
-                  {/* ✅ Fix: Dynamic Currency Formatting Mobile */}
-                  {!isLoss ? "+" : "-"}{symbol}{formatCurrency(Math.abs(trade.pnl || 0))}
+                  {/* Dynamic Currency Formatting Mobile */}
+                  {!isLoss ? "+" : ""}{symbol}{formatCurrency(Math.abs(trade.pnl || 0))}
                 </span>
               </div>
               <div className="flex items-center justify-between text-xs text-muted-foreground">

@@ -30,18 +30,10 @@ export default function Auth() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // 1. Check for existing session on mount
-  useEffect(() => {
-    const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        navigate("/dashboard");
-      }
-    };
-    checkSession();
-  }, [navigate]);
+  // ✅ FIX: Removed the manual session check useEffect here.
+  // The AuthRedirect component in App.tsx now handles protection.
 
-  // 2. Sync mode with URL query param
+  // 1. Sync mode with URL query param
   useEffect(() => {
     const queryMode = searchParams.get("mode");
     if (queryMode === "signup") {
@@ -65,13 +57,12 @@ export default function Auth() {
           password,
           options: {
             data: {
-              full_name: fullName, // Saves name to user_metadata
+              full_name: fullName,
             },
           },
         });
         if (signUpError) throw signUpError;
         
-        // If email confirmation is disabled/auto-confirm is on, we might have a session immediately
         if (data.session) {
           navigate("/dashboard");
         } else {
@@ -88,8 +79,7 @@ export default function Auth() {
         });
         if (signInError) throw signInError;
         
-        // Navigation happens automatically via onAuthStateChange in AuthContext,
-        // but explicit navigation here makes it feel snappier.
+        // Explicit navigation helps UI responsiveness
         navigate("/dashboard");
       }
     } catch (err: any) {
@@ -143,7 +133,7 @@ export default function Auth() {
         </Button>
 
         <motion.div
-          layout // Smoothly animate height changes
+          layout
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
@@ -160,7 +150,6 @@ export default function Auth() {
             </p>
           </div>
 
-          {/* Social Login (Google Only) */}
           <div className="mb-6">
             <Button 
               variant="outline" 
@@ -183,7 +172,6 @@ export default function Auth() {
             </div>
           </div>
 
-          {/* Error Alert */}
           <AnimatePresence>
             {error && (
               <motion.div
@@ -200,10 +188,7 @@ export default function Auth() {
             )}
           </AnimatePresence>
 
-          {/* Form */}
           <form onSubmit={handleAuth} className="space-y-4">
-            
-            {/* Full Name Input (Only visible in Sign Up mode) */}
             <AnimatePresence initial={false}>
               {mode === "signup" && (
                 <motion.div
@@ -282,7 +267,6 @@ export default function Auth() {
             </Button>
           </form>
 
-          {/* Toggle Mode */}
           <div className="mt-8 text-center text-sm text-muted-foreground">
             {mode === "signin" ? (
               <>

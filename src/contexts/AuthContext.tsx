@@ -1,14 +1,10 @@
 import React, { useEffect, useState, ReactNode, useCallback } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '../integrations/supabase/client';
-import { fetchBackendProfile, UserProfile } from '../services/api/core';
+import { fetchBackendProfile } from '../services/api/core';
+import { UserProfile, PlanTier } from '../services/api/types';
 import { AuthContext } from '../hooks/use-Auth';
 
-/**
- * AuthProvider Component
- * Manages the Supabase session and synchronizes it with the Python backend.
- * This file now ONLY exports the component to satisfy Vite/SWC Fast Refresh.
- */
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
@@ -18,10 +14,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  /**
-   * syncBackendProfile
-   * Handshakes with the Python backend to fetch credits, plans, and usage.
-   */
   const syncBackendProfile = useCallback(async (currentSession: Session | null) => {
     if (!currentSession?.access_token) {
       setProfile(null);
@@ -30,10 +22,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
 
     setIsSyncing(true);
+    setError(null);
+
     try {
       const backendData = await fetchBackendProfile();
-      setProfile(backendData);
-      setError(null);
+      if (backendData) {
+        setProfile({
+            ...backendData,
+            // ✅ FIX: Force Uppercase to match strict TypeScript Enum & Sidebar Logic
+            plan_tier: (backendData.plan_tier || "FREE").toUpperCase() as PlanTier
+        });
+      }
     } catch (err: any) {
       console.error("Handshake Error (Backend):", err);
       setError(err.message || "Engine synchronization failed");
@@ -52,18 +51,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         if (sessionError) throw sessionError;
 
         if (mounted) {
-          setSession(initialSession);
-          setUser(initialSession?.user ?? null);
-          
-          // CRITICAL: Stop the main loading spinner immediately to allow navigation
-          setLoading(false);
-        }
-
-        if (initialSession) {
-          syncBackendProfile(initialSession);
+          if (initialSession) {
+            setSession(initialSession);
+            setUser(initialSession.user);
+            // Trigger sync in background, don't await to block UI
+            syncBackendProfile(initialSession);
+          }
+          // ✅ FIX: Set loading false ONLY after we have determined the session state
+          setLoading(false); 
         }
       } catch (e) {
-        console.error("Auth Handshake Failed (Supabase):", e);
+        console.error("Init Error:", e);
         if (mounted) setLoading(false);
       }
     };
@@ -85,6 +83,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           setProfile(null);
           setSession(null);
           setUser(null);
+          setError(null);
         }
         
         setLoading(false);
