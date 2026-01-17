@@ -32,6 +32,13 @@ const Terms = lazy(() => import("./pages/Terms"));
 const Documentation = lazy(() => import("./pages/Documentation"));
 const DocArticle = lazy(() => import("./pages/DocArticle"));
 
+// Admin Pages
+const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
+const AdminUsers = lazy(() => import("./pages/admin/AdminUsers"));
+const AdminSystem = lazy(() => import("./pages/admin/AdminSystem"));
+const AdminAuditLogs = lazy(() => import("./pages/admin/AdminAuditLogs"));
+const AdminAICosts = lazy(() => import("./pages/admin/AdminAICosts"));
+
 // App Pages
 const Auth = lazy(() => import("./pages/Auth"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
@@ -102,6 +109,13 @@ const App = () => (
 
                         {/* Auth Route (Redirects if already logged in) */}
                         <Route path="/auth" element={<AuthRedirect />} />
+
+                        {/* Admin Routes */}
+                        <Route path="/admin" element={<AdminDashboard />} />
+                        <Route path="/admin/users" element={<AdminUsers />} />
+                        <Route path="/admin/system" element={<AdminSystem />} />
+                        <Route path="/admin/audit-logs" element={<AdminAuditLogs />} />
+                        <Route path="/admin/ai-costs" element={<AdminAICosts />} />
 
                         {/* Protected Routes Wrapper */}
                         <Route element={<ProtectedRoute />}>
