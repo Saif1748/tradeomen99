@@ -1,13 +1,18 @@
 import { useState } from "react";
-import { Wallet } from "@phosphor-icons/react";
+import { Wallet, ChartBar } from "@phosphor-icons/react";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
-import DashboardHeader from "@/components/dashboard/DashboardHeader";
+import PageTitle from "@/components/dashboard/PageTitle";
 import MetricCard from "@/components/dashboard/MetricCard";
 import GaugeMetric from "@/components/dashboard/GaugeMetric";
 import ChartCard from "@/components/dashboard/ChartCard";
 import RecentTrades from "@/components/dashboard/RecentTrades";
 import MiniCalendar from "@/components/dashboard/MiniCalendar";
+import AddTradeModal from "@/components/trades/AddTradeModal";
+import CreateStrategyModal from "@/components/strategies/CreateStrategyModal";
 import { useSettings } from "@/contexts/SettingsContext";
+import { Trade } from "@/lib/tradesData";
+import { Strategy } from "@/lib/strategiesData";
+import { toast } from "sonner";
 
 // Sample data
 const areaChartData = [
@@ -38,23 +43,39 @@ const radarChartData = [
 ];
 
 const Dashboard = () => {
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { formatCurrency, getCurrencySymbol } = useSettings();
+  const [addTradeOpen, setAddTradeOpen] = useState(false);
+  const [addStrategyOpen, setAddStrategyOpen] = useState(false);
 
   // Sample data - would come from API
   const netPnL = 2486.50;
   const isPositive = netPnL >= 0;
 
+  const handleAddTrade = (newTrade: Omit<Trade, "id">) => {
+    toast.success("Trade logged successfully!");
+  };
+
+  const handleCreateStrategy = (newStrategy: Omit<Strategy, 'id' | 'createdAt' | 'totalTrades' | 'winRate' | 'netPnl' | 'profitFactor' | 'expectancy' | 'avgWin' | 'avgLoss'>) => {
+    toast.success("Strategy created successfully!");
+  };
+
+  const handleAddNote = () => {
+    toast.info("Note feature coming soon!");
+  };
+
   return (
-    <DashboardLayout>
-      <DashboardHeader onMobileMenuOpen={() => setMobileMenuOpen(true)} />
+    <DashboardLayout
+      onAddTrade={() => setAddTradeOpen(true)}
+      onAddStrategy={() => setAddStrategyOpen(true)}
+      onAddNote={handleAddNote}
+    >
+      <PageTitle 
+        title="Dashboard" 
+        subtitle="Welcome back! Here's your trading overview."
+        icon={<ChartBar weight="duotone" className="w-6 h-6 text-primary" />}
+      />
 
-      {/* Subtitle */}
-      <div className="px-4 sm:px-6 lg:px-8 pb-2">
-        <p className="text-sm text-muted-foreground">Welcome back! Here's your trading overview.</p>
-      </div>
-
-      <div className="px-4 sm:px-6 lg:px-8 pb-6 pt-4 space-y-4 sm:space-y-6">
+      <div className="px-4 sm:px-6 lg:px-8 pb-6 pt-2 space-y-4 sm:space-y-6">
         {/* Metrics Row - All same height */}
         <div className="grid grid-cols-2 xl:grid-cols-5 gap-2 sm:gap-3 lg:gap-4">
           <div className="h-[120px] sm:h-[130px]">
@@ -123,6 +144,18 @@ const Dashboard = () => {
           <MiniCalendar />
         </div>
       </div>
+
+      {/* Modals */}
+      <AddTradeModal
+        open={addTradeOpen}
+        onOpenChange={setAddTradeOpen}
+        onAddTrade={handleAddTrade}
+      />
+      <CreateStrategyModal
+        open={addStrategyOpen}
+        onOpenChange={setAddStrategyOpen}
+        onCreateStrategy={handleCreateStrategy}
+      />
     </DashboardLayout>
   );
 };

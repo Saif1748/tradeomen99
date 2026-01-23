@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { ChartLine, Funnel, Export, CalendarBlank } from "@phosphor-icons/react";
 import { DateRange } from "react-day-picker";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
-import PageHeader from "@/components/dashboard/PageHeader";
+import PageTitle from "@/components/dashboard/PageTitle";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import OverviewTab from "@/components/reports/OverviewTab";
@@ -10,6 +10,9 @@ import TradeAnalysisTab from "@/components/reports/TradeAnalysisTab";
 import StrategyAnalysisTab from "@/components/reports/StrategyAnalysisTab";
 import TimeAnalysisTab from "@/components/reports/TimeAnalysisTab";
 import { generateMockTrades, Trade, strategies as tradeStrategies } from "@/lib/tradesData";
+import AddTradeModal from "@/components/trades/AddTradeModal";
+import CreateStrategyModal from "@/components/strategies/CreateStrategyModal";
+import { Strategy } from "@/lib/strategiesData";
 import { toast } from "sonner";
 import { useSettings } from "@/contexts/SettingsContext";
 import {
@@ -74,8 +77,9 @@ const Reports = () => {
   });
   const [instrumentFilter, setInstrumentFilter] = useState("all");
   const [strategyFilter, setStrategyFilter] = useState("all");
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
+  const [addTradeOpen, setAddTradeOpen] = useState(false);
+  const [addStrategyOpen, setAddStrategyOpen] = useState(false);
   const { getCurrencySymbol } = useSettings();
 
   // Filter trades based on selected filters
@@ -121,6 +125,18 @@ const Reports = () => {
     setFilterSheetOpen(false);
   };
 
+  const handleAddTrade = (newTrade: Omit<Trade, "id">) => {
+    toast.success("Trade logged successfully!");
+  };
+
+  const handleCreateStrategy = (newStrategy: Omit<Strategy, 'id' | 'createdAt' | 'totalTrades' | 'winRate' | 'netPnl' | 'profitFactor' | 'expectancy' | 'avgWin' | 'avgLoss'>) => {
+    toast.success("Strategy created successfully!");
+  };
+
+  const handleAddNote = () => {
+    toast.info("Note feature coming soon!");
+  };
+
   const clearFilters = () => {
     setInstrumentFilter("all");
     setStrategyFilter("all");
@@ -135,14 +151,17 @@ const Reports = () => {
     : "Select dates";
 
   return (
-    <DashboardLayout>
-      <PageHeader
+    <DashboardLayout
+      onAddTrade={() => setAddTradeOpen(true)}
+      onAddStrategy={() => setAddStrategyOpen(true)}
+      onAddNote={handleAddNote}
+    >
+      <PageTitle
         title="Reports"
         icon={<ChartLine weight="duotone" className="w-6 h-6 text-primary" />}
-        onMobileMenuOpen={() => setMobileMenuOpen(true)}
       />
 
-      <div className="px-4 sm:px-6 lg:px-8 pb-6 pt-4 space-y-4 sm:space-y-6">
+      <div className="px-4 sm:px-6 lg:px-8 pb-6 pt-2 space-y-4 sm:space-y-6">
         {/* Filters - Desktop */}
         <div className="hidden sm:flex flex-wrap items-center gap-3">
           {/* Date Range */}
@@ -400,6 +419,18 @@ const Reports = () => {
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* Modals */}
+      <AddTradeModal
+        open={addTradeOpen}
+        onOpenChange={setAddTradeOpen}
+        onAddTrade={handleAddTrade}
+      />
+      <CreateStrategyModal
+        open={addStrategyOpen}
+        onOpenChange={setAddStrategyOpen}
+        onCreateStrategy={handleCreateStrategy}
+      />
     </DashboardLayout>
   );
 };
