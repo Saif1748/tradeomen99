@@ -34,6 +34,14 @@
     --input: 240 10% 88%;
     --ring: 270 70% 55%;
 
+    /* Semantic metric colors */
+    --metric-positive: 152 70% 42%;
+    --metric-positive-muted: 152 60% 95%;
+    --metric-negative: 0 72% 55%;
+    --metric-negative-muted: 0 60% 95%;
+    --metric-neutral: 220 14% 50%;
+    --metric-neutral-muted: 220 14% 94%;
+
     --radius: 0.75rem;
 
     --glow-primary: 270 70% 55%;
@@ -79,6 +87,14 @@
     --border: 240 10% 18%;
     --input: 240 10% 18%;
     --ring: 270 70% 60%;
+
+    /* Semantic metric colors - dark mode */
+    --metric-positive: 152 65% 50%;
+    --metric-positive-muted: 152 40% 15%;
+    --metric-negative: 0 65% 55%;
+    --metric-negative-muted: 0 40% 15%;
+    --metric-neutral: 220 14% 60%;
+    --metric-neutral-muted: 220 14% 15%;
 
     --glow-primary: 270 70% 60%;
     --glow-secondary: 200 80% 55%;

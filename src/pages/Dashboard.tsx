@@ -41,6 +41,10 @@ const Dashboard = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { formatCurrency, getCurrencySymbol } = useSettings();
 
+  // Sample data - would come from API
+  const netPnL = 2486.50;
+  const isPositive = netPnL >= 0;
+
   return (
     <DashboardLayout>
       <DashboardHeader onMobileMenuOpen={() => setMobileMenuOpen(true)} />
@@ -52,32 +56,35 @@ const Dashboard = () => {
 
       <div className="px-4 sm:px-6 lg:px-8 pb-6 pt-4 space-y-4 sm:space-y-6">
         {/* Metrics Row - All same height */}
-        <div className="grid grid-cols-2 sm:grid-cols-2 xl:grid-cols-5 gap-2 sm:gap-3 lg:gap-4">
-          <div className="h-[120px]">
+        <div className="grid grid-cols-2 xl:grid-cols-5 gap-2 sm:gap-3 lg:gap-4">
+          <div className="h-[120px] sm:h-[130px]">
             <MetricCard
               title="Net P&L"
-              value={`${getCurrencySymbol()}2,486.50`}
-              subtitle="12 trades"
-              icon={<Wallet weight="regular" className="w-5 h-5" />}
+              value={`${isPositive ? '+' : ''}${getCurrencySymbol()}${Math.abs(netPnL).toLocaleString()}`}
+              subtitle="12 trades this month"
+              icon={<Wallet weight="fill" className="w-4 h-4 sm:w-5 sm:h-5" />}
               trend="up"
               trendValue="12.4%"
+              variant={isPositive ? "positive" : "negative"}
             />
           </div>
-          <div className="h-[120px]">
+          <div className="h-[120px] sm:h-[130px]">
             <MetricCard
               title="Trade Expectancy"
               value={`${getCurrencySymbol()}248.78`}
+              subtitle="Per trade average"
               trend="up"
               trendValue="8.2%"
+              variant="positive"
             />
           </div>
-          <div className="hidden xl:block h-[120px]">
+          <div className="hidden xl:block h-[120px] sm:h-[130px]">
             <GaugeMetric title="Profit Factor" value={1.82} type="arc" />
           </div>
-          <div className="hidden xl:block h-[120px]">
+          <div className="hidden xl:block h-[120px] sm:h-[130px]">
             <GaugeMetric title="Win Rate" value={68.5} type="donut" />
           </div>
-          <div className="hidden xl:block h-[120px]">
+          <div className="hidden xl:block h-[120px] sm:h-[130px]">
             <GaugeMetric title="Avg Win/Loss" value={1.83} type="bar" />
           </div>
         </div>
