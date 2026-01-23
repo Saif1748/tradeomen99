@@ -14,16 +14,158 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      audit_logs: {
+        Row: {
+          action: string
+          admin_email: string | null
+          admin_id: string | null
+          created_at: string | null
+          details: Json | null
+          id: string
+          ip_address: string | null
+          target_id: string | null
+          target_type: string
+        }
+        Insert: {
+          action: string
+          admin_email?: string | null
+          admin_id?: string | null
+          created_at?: string | null
+          details?: Json | null
+          id?: string
+          ip_address?: string | null
+          target_id?: string | null
+          target_type: string
+        }
+        Update: {
+          action?: string
+          admin_email?: string | null
+          admin_id?: string | null
+          created_at?: string | null
+          details?: Json | null
+          id?: string
+          ip_address?: string | null
+          target_id?: string | null
+          target_type?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string | null
+          daily_chat_count: number | null
+          email: string | null
+          full_name: string | null
+          id: string
+          last_login_at: string | null
+          monthly_ai_tokens_used: number | null
+          monthly_import_count: number | null
+          plan_tier: string | null
+          preferences: Json | null
+          status: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string | null
+          daily_chat_count?: number | null
+          email?: string | null
+          full_name?: string | null
+          id?: string
+          last_login_at?: string | null
+          monthly_ai_tokens_used?: number | null
+          monthly_import_count?: number | null
+          plan_tier?: string | null
+          preferences?: Json | null
+          status?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string | null
+          daily_chat_count?: number | null
+          email?: string | null
+          full_name?: string | null
+          id?: string
+          last_login_at?: string | null
+          monthly_ai_tokens_used?: number | null
+          monthly_import_count?: number | null
+          plan_tier?: string | null
+          preferences?: Json | null
+          status?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      system_metrics: {
+        Row: {
+          id: string
+          metadata: Json | null
+          metric_type: string
+          recorded_at: string | null
+          value: number
+        }
+        Insert: {
+          id?: string
+          metadata?: Json | null
+          metric_type: string
+          recorded_at?: string | null
+          value: number
+        }
+        Update: {
+          id?: string
+          metadata?: Json | null
+          metric_type?: string
+          recorded_at?: string | null
+          value?: number
+        }
+        Relationships: []
+      }
+      user_roles: {
+        Row: {
+          created_at: string | null
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_admin_stats: { Args: never; Returns: Json }
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
+      is_admin: { Args: never; Returns: boolean }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "moderator" | "user"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +292,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "moderator", "user"],
+    },
   },
 } as const
