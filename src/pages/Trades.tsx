@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
-import { Plus, Export, DotsThreeVertical, Funnel, X, CalendarBlank, ChartLineUp } from "@phosphor-icons/react";
+import { Plus, Export, DotsThreeVertical, Funnel, CalendarBlank, ChartLineUp } from "@phosphor-icons/react";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
-import PageHeader from "@/components/dashboard/PageHeader";
+import PageTitle from "@/components/dashboard/PageTitle";
 import { Button } from "@/components/ui/button";
 import { Trade, generateMockTrades } from "@/lib/tradesData";
 import TradesStatsCards from "@/components/trades/TradesStatsCards";
@@ -10,6 +10,8 @@ import TradesTable from "@/components/trades/TradesTable";
 import TradeDetailSheet from "@/components/trades/TradeDetailSheet";
 import AddTradeModal from "@/components/trades/AddTradeModal";
 import EditTradeModal from "@/components/trades/EditTradeModal";
+import CreateStrategyModal from "@/components/strategies/CreateStrategyModal";
+import { Strategy } from "@/lib/strategiesData";
 import { toast } from "sonner";
 import {
   DropdownMenu,
@@ -38,7 +40,6 @@ const Trades = () => {
   const [typeFilter, setTypeFilter] = useState("all");
   const [sortField, setSortField] = useState("date");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const [selectedTrade, setSelectedTrade] = useState<Trade | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -46,6 +47,7 @@ const Trades = () => {
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [tradeToEdit, setTradeToEdit] = useState<Trade | null>(null);
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
+  const [addStrategyOpen, setAddStrategyOpen] = useState(false);
 
   // Filter and sort trades
   const filteredTrades = useMemo(() => {
@@ -146,6 +148,14 @@ const Trades = () => {
     toast.success("Trade deleted successfully!");
   };
 
+  const handleCreateStrategy = (newStrategy: Omit<Strategy, 'id' | 'createdAt' | 'totalTrades' | 'winRate' | 'netPnl' | 'profitFactor' | 'expectancy' | 'avgWin' | 'avgLoss'>) => {
+    toast.success("Strategy created successfully!");
+  };
+
+  const handleAddNote = () => {
+    toast.info("Note feature coming soon!");
+  };
+
   const clearFilters = () => {
     setSideFilter("all");
     setTypeFilter("all");
@@ -154,11 +164,14 @@ const Trades = () => {
   const hasActiveFilters = sideFilter !== "all" || typeFilter !== "all";
 
   return (
-    <DashboardLayout>
-      <PageHeader
+    <DashboardLayout
+      onAddTrade={() => setAddModalOpen(true)}
+      onAddStrategy={() => setAddStrategyOpen(true)}
+      onAddNote={handleAddNote}
+    >
+      <PageTitle
         title="Trades"
         icon={<ChartLineUp weight="duotone" className="w-6 h-6 text-primary" />}
-        onMobileMenuOpen={() => setMobileMenuOpen(true)}
       >
         {/* Desktop: Export + Add Trade */}
         <Button
@@ -195,9 +208,9 @@ const Trades = () => {
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-      </PageHeader>
+      </PageTitle>
 
-      <div className="px-4 sm:px-6 lg:px-8 pb-6 pt-4 space-y-4 sm:space-y-6">
+      <div className="px-4 sm:px-6 lg:px-8 pb-6 pt-2 space-y-4 sm:space-y-6">
         {/* Stats Cards */}
         <TradesStatsCards trades={trades} />
 
@@ -349,6 +362,13 @@ const Trades = () => {
         open={editModalOpen}
         onOpenChange={setEditModalOpen}
         onUpdateTrade={handleUpdateTrade}
+      />
+
+      {/* Create Strategy Modal */}
+      <CreateStrategyModal
+        open={addStrategyOpen}
+        onOpenChange={setAddStrategyOpen}
+        onCreateStrategy={handleCreateStrategy}
       />
     </DashboardLayout>
   );

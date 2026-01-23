@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { Plus, MagnifyingGlass, Funnel, Sword } from "@phosphor-icons/react";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
-import PageHeader from "@/components/dashboard/PageHeader";
+import PageTitle from "@/components/dashboard/PageTitle";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -26,7 +26,9 @@ import StrategyCard from "@/components/strategies/StrategyCard";
 import CreateStrategyModal from "@/components/strategies/CreateStrategyModal";
 import EditStrategyModal from "@/components/strategies/EditStrategyModal";
 import StrategyDetail from "@/components/strategies/StrategyDetail";
+import AddTradeModal from "@/components/trades/AddTradeModal";
 import { Strategy, generateMockStrategies, calculateStrategyStats, strategyStyles } from "@/lib/strategiesData";
+import { Trade } from "@/lib/tradesData";
 import { toast } from "sonner";
 
 const Strategies = () => {
@@ -37,7 +39,7 @@ const Strategies = () => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [styleFilter, setStyleFilter] = useState("all");
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [addTradeOpen, setAddTradeOpen] = useState(false);
 
   const stats = useMemo(() => calculateStrategyStats(strategies), [strategies]);
 
@@ -83,16 +85,27 @@ const Strategies = () => {
     toast.success("Strategy deleted");
   };
 
+  const handleAddTrade = (newTrade: Omit<Trade, "id">) => {
+    toast.success("Trade logged successfully!");
+  };
+
+  const handleAddNote = () => {
+    toast.info("Note feature coming soon!");
+  };
+
   // Show detail view if a strategy is selected
   if (selectedStrategy) {
     return (
-      <DashboardLayout>
-        <PageHeader
+      <DashboardLayout
+        onAddTrade={() => setAddTradeOpen(true)}
+        onAddStrategy={() => setCreateModalOpen(true)}
+        onAddNote={handleAddNote}
+      >
+        <PageTitle
           title="Strategy Detail"
           icon={<Sword weight="duotone" className="w-6 h-6 text-primary" />}
-          onMobileMenuOpen={() => setMobileMenuOpen(true)}
         />
-        <div className="px-4 sm:px-6 lg:px-8 pb-6 pt-4">
+        <div className="px-4 sm:px-6 lg:px-8 pb-6 pt-2">
           <StrategyDetail
             strategy={selectedStrategy}
             onBack={() => setSelectedStrategy(null)}
@@ -127,25 +140,34 @@ const Strategies = () => {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        <AddTradeModal
+          open={addTradeOpen}
+          onOpenChange={setAddTradeOpen}
+          onAddTrade={handleAddTrade}
+        />
       </DashboardLayout>
     );
   }
 
   return (
-    <DashboardLayout>
-      <PageHeader
+    <DashboardLayout
+      onAddTrade={() => setAddTradeOpen(true)}
+      onAddStrategy={() => setCreateModalOpen(true)}
+      onAddNote={handleAddNote}
+    >
+      <PageTitle
         title="Strategies"
         icon={<Sword weight="duotone" className="w-6 h-6 text-primary" />}
-        onMobileMenuOpen={() => setMobileMenuOpen(true)}
       >
         <Button onClick={() => setCreateModalOpen(true)} className="glow-button gap-2 text-white">
           <Plus weight="bold" className="w-4 h-4" />
           <span className="hidden sm:inline">New Strategy</span>
           <span className="sm:hidden">New</span>
         </Button>
-      </PageHeader>
+      </PageTitle>
 
-      <div className="px-4 sm:px-6 lg:px-8 pb-6 pt-4 space-y-4 sm:space-y-6">
+      <div className="px-4 sm:px-6 lg:px-8 pb-6 pt-2 space-y-4 sm:space-y-6">
         {/* Stats Cards */}
         <StrategyStatsCards
           totalStrategies={stats.totalStrategies}
@@ -205,6 +227,12 @@ const Strategies = () => {
         open={createModalOpen}
         onOpenChange={setCreateModalOpen}
         onCreateStrategy={handleCreateStrategy}
+      />
+
+      <AddTradeModal
+        open={addTradeOpen}
+        onOpenChange={setAddTradeOpen}
+        onAddTrade={handleAddTrade}
       />
     </DashboardLayout>
   );
