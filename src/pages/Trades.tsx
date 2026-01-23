@@ -1,19 +1,16 @@
 import { useState, useMemo } from "react";
-import { Plus, Export, DotsThreeVertical, Funnel, CalendarBlank, ChartLineUp, Spinner, CaretLeft, CaretRight } from "@phosphor-icons/react";
-import { DateRange } from "react-day-picker";
-import { format } from "date-fns";
-import { toast } from "sonner";
-
+import { Plus, Export, DotsThreeVertical, Funnel, X, CalendarBlank, ChartLineUp } from "@phosphor-icons/react";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import PageHeader from "@/components/dashboard/PageHeader";
 import { Button } from "@/components/ui/button";
+import { Trade, generateMockTrades } from "@/lib/tradesData";
 import TradesStatsCards from "@/components/trades/TradesStatsCards";
 import TradesFilters from "@/components/trades/TradesFilters";
 import TradesTable from "@/components/trades/TradesTable";
 import TradeDetailSheet from "@/components/trades/TradeDetailSheet";
 import AddTradeModal from "@/components/trades/AddTradeModal";
 import EditTradeModal from "@/components/trades/EditTradeModal";
-
+import { toast } from "sonner";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,91 +30,49 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
-
-// ✅ Hooks & API
-import { useTrades, UITrade } from "@/hooks/use-trades";
-import { tradesApi } from "@/services/api/modules/trades";
-// ✅ Fix: Import from the new hook file
-import { useCurrency } from "@/hooks/use-currency";
 
 const Trades = () => {
-  // --- 1. Pagination & Data ---
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(25); // ✅ Defaulting to 25 per your request
-
-  const { 
-    trades, 
-    totalTrades, 
-    totalPages, 
-    isLoading, 
-    isError, 
-    isPlaceholderData,
-    createTrade, 
-    updateTrade, 
-    deleteTrade 
-  } = useTrades({ page, limit: pageSize });
-
-  // ✅ Fix: Ensure Currency Hook is initialized on the page
-  const { symbol, format: formatCurrency } = useCurrency();
-
-  // --- 2. Local UI State ---
+  const [trades, setTrades] = useState<Trade[]>(generateMockTrades());
   const [searchQuery, setSearchQuery] = useState("");
   const [sideFilter, setSideFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
-  const [dateRange, setDateRange] = useState<DateRange | undefined>({
-    from: new Date(2025, 0, 1),
-    to: new Date(),
-  });
   const [sortField, setSortField] = useState("date");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-
-
-  // --- 3. Modals & Selection ---
-  const [selectedTrade, setSelectedTrade] = useState<UITrade | null>(null);
+  const [selectedTrade, setSelectedTrade] = useState<Trade | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
-  const [tradeToEdit, setTradeToEdit] = useState<UITrade | null>(null);
+  const [tradeToEdit, setTradeToEdit] = useState<Trade | null>(null);
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
 
-
-
-  // --- 4. Filtering & Sorting ---
+  // Filter and sort trades
   const filteredTrades = useMemo(() => {
     let result = [...trades];
 
-    if (dateRange?.from) {
-      result = result.filter(t => t.date >= dateRange.from!);
-    }
-    if (dateRange?.to) {
-       result = result.filter(t => t.date <= dateRange.to!);
-    }
-
+    // Search filter
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       result = result.filter(
         (t) =>
           t.symbol.toLowerCase().includes(query) ||
-          (t.tags && t.tags.some((tag) => tag.toLowerCase().includes(query)))
+          t.notes.toLowerCase().includes(query) ||
+          t.tags.some((tag) => tag.toLowerCase().includes(query))
       );
     }
 
+    // Side filter
     if (sideFilter !== "all") {
       result = result.filter((t) => t.side === sideFilter);
     }
 
+    // Type filter
     if (typeFilter !== "all") {
       result = result.filter((t) => t.type === typeFilter);
     }
 
+    // Sort
     result.sort((a, b) => {
       let comparison = 0;
       switch (sortField) {
@@ -127,12 +82,20 @@ const Trades = () => {
         case "symbol":
           comparison = a.symbol.localeCompare(b.symbol);
           break;
+        case "type":
+          comparison = a.type.localeCompare(b.type);
+          break;
+        case "side":
+          comparison = a.side.localeCompare(b.side);
+          break;
         case "pnl":
-          comparison = (a.pnl || 0) - (b.pnl || 0);
+          comparison = a.pnl - b.pnl;
           break;
         case "rMultiple":
-          // Check if property exists to be safe
-          comparison = (a.rMultiple || 0) - (b.rMultiple || 0);
+          comparison = a.rMultiple - b.rMultiple;
+          break;
+        case "strategy":
+          comparison = a.strategy.localeCompare(b.strategy);
           break;
         default:
           comparison = 0;
@@ -141,15 +104,7 @@ const Trades = () => {
     });
 
     return result;
-  }, [trades, searchQuery, sideFilter, typeFilter, dateRange, sortField, sortDirection]);
-
-
-
-  // --- 5. Event Handlers ---
-  const handlePageSizeChange = (val: string) => {
-    setPageSize(Number(val));
-    setPage(1); // ✅ Reset to page 1 when limit changes to avoid out-of-bounds
-  };
+  }, [trades, searchQuery, sideFilter, typeFilter, sortField, sortDirection]);
 
   const handleSort = (field: string) => {
     if (sortField === field) {
@@ -160,72 +115,43 @@ const Trades = () => {
     }
   };
 
-  const handleTradeClick = (trade: UITrade) => {
+  const handleTradeClick = (trade: Trade) => {
     setSelectedTrade(trade);
     setDetailOpen(true);
   };
 
-  const handleAddTrade = (newTrade: any) => {
-    createTrade(newTrade, {
-        onSuccess: () => setAddModalOpen(false)
-    });
+  const handleAddTrade = (newTrade: Omit<Trade, "id">) => {
+    const trade: Trade = {
+      ...newTrade,
+      id: Date.now().toString(),
+    };
+    setTrades([trade, ...trades]);
+    toast.success("Trade logged successfully!");
   };
 
-  const handleEditTrade = (trade: UITrade) => {
+  const handleEditTrade = (trade: Trade) => {
     setTradeToEdit(trade);
     setDetailOpen(false);
     setEditModalOpen(true);
   };
 
-  const handleUpdateTrade = (updatedTrade: any) => {
-    if (!tradeToEdit) return;
-    updateTrade({ id: tradeToEdit.id, data: updatedTrade }, {
-        onSuccess: () => {
-            setEditModalOpen(false);
-            setDetailOpen(false);
-        }
-    });
+  const handleUpdateTrade = (updatedTrade: Trade) => {
+    setTrades(trades.map((t) => (t.id === updatedTrade.id ? updatedTrade : t)));
+    toast.success("Trade updated successfully!");
   };
 
-  const handleDeleteTrade = (trade: UITrade) => {
-    if (window.confirm("Are you sure you want to delete this trade?")) {
-        deleteTrade(trade.id, {
-            onSuccess: () => setDetailOpen(false)
-        });
-    }
-  };
-
-  const handleExport = async () => {
-    try {
-        toast.info("Preparing export...");
-        const blob = await tradesApi.export();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `trades_export_${format(new Date(), 'yyyyMMdd')}.csv`;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        toast.success("Export downloaded");
-    } catch (e: any) {
-        toast.error(e.message || "Export failed");
-    }
+  const handleDeleteTrade = (trade: Trade) => {
+    setTrades(trades.filter((t) => t.id !== trade.id));
+    setDetailOpen(false);
+    toast.success("Trade deleted successfully!");
   };
 
   const clearFilters = () => {
     setSideFilter("all");
     setTypeFilter("all");
-    setDateRange(undefined);
   };
 
-  const hasActiveFilters = sideFilter !== "all" || typeFilter !== "all" || dateRange !== undefined;
-  const dateRangeLabel = dateRange?.from 
-    ? dateRange.to 
-      ? `${format(dateRange.from, "MMM d")} - ${format(dateRange.to, "MMM d")}`
-      : format(dateRange.from, "MMM d, yyyy")
-    : "Select dates";
-
-
+  const hasActiveFilters = sideFilter !== "all" || typeFilter !== "all";
 
   return (
     <DashboardLayout>
@@ -234,24 +160,24 @@ const Trades = () => {
         icon={<ChartLineUp weight="duotone" className="w-6 h-6 text-primary" />}
         onMobileMenuOpen={() => setMobileMenuOpen(true)}
       >
-        <div className="hidden sm:flex items-center gap-3">
-            <Button
-                variant="outline"
-                className="gap-2 bg-secondary/50 border-border/50 hover:bg-secondary"
-                onClick={handleExport}
-            >
-                <Export weight="regular" className="w-4 h-4" />
-                Export
-            </Button>
-            <Button
-                onClick={() => setAddModalOpen(true)}
-                className="gap-2 glow-button text-white"
-            >
-                <Plus weight="bold" className="w-4 h-4" />
-                Add Trade
-            </Button>
-        </div>
-
+        {/* Desktop: Export + Add Trade */}
+        <Button
+          variant="outline"
+          className="hidden sm:flex gap-2 bg-secondary/50 border-border/50 hover:bg-secondary"
+          onClick={() => toast.success("Exporting...")}
+        >
+          <Export weight="regular" className="w-4 h-4" />
+          Export
+        </Button>
+        <Button
+          onClick={() => setAddModalOpen(true)}
+          className="gap-2 glow-button text-white"
+        >
+          <Plus weight="bold" className="w-4 h-4" />
+          <span className="hidden sm:inline">Add Trade</span>
+          <span className="sm:hidden">Add</span>
+        </Button>
+        {/* Mobile: Overflow menu for Export */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="icon" className="sm:hidden bg-secondary/50 border-border/50">
@@ -259,138 +185,74 @@ const Trades = () => {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="bg-card border-border">
-            <DropdownMenuItem onClick={handleExport}>
+            <DropdownMenuItem onClick={() => toast.success("Exporting CSV...")}>
               <Export weight="regular" className="w-4 h-4 mr-2" />
               Export CSV
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => toast.success("Exporting PDF...")}>
+              <Export weight="regular" className="w-4 h-4 mr-2" />
+              Export PDF
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </PageHeader>
 
-
-
       <div className="px-4 sm:px-6 lg:px-8 pb-6 pt-4 space-y-4 sm:space-y-6">
-        
-        {isLoading && !isPlaceholderData && (
-            <div className="flex h-64 items-center justify-center">
-                <Spinner className="h-8 w-8 animate-spin text-primary" />
+        {/* Stats Cards */}
+        <TradesStatsCards trades={trades} />
+
+        {/* Filters - Desktop */}
+        <div className="hidden sm:block">
+          <TradesFilters
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+            sideFilter={sideFilter}
+            setSideFilter={setSideFilter}
+            typeFilter={typeFilter}
+            setTypeFilter={setTypeFilter}
+          />
+        </div>
+
+        {/* Filters - Mobile: Compact search + filter button */}
+        <div className="sm:hidden glass-card p-3 rounded-xl">
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <input
+                type="text"
+                placeholder="Search..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full h-9 pl-3 pr-3 text-sm bg-secondary/50 border border-border/50 rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+              />
             </div>
-        )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setFilterSheetOpen(true)}
+              className={`gap-1.5 bg-secondary/50 border-border/50 ${hasActiveFilters ? 'text-primary border-primary/50' : ''}`}
+            >
+              <Funnel weight={hasActiveFilters ? "fill" : "regular"} className="w-4 h-4" />
+              Filters
+              {hasActiveFilters && (
+                <span className="ml-1 w-4 h-4 rounded-full bg-primary text-white text-[10px] flex items-center justify-center">
+                  {(sideFilter !== "all" ? 1 : 0) + (typeFilter !== "all" ? 1 : 0)}
+                </span>
+              )}
+            </Button>
+          </div>
+        </div>
 
-        {isError && (
-            <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-4 text-center text-red-400">
-                Failed to load trades. Please check your connection.
-            </div>
-        )}
-
-        {(!isLoading || isPlaceholderData) && !isError && (
-            <>
-                <TradesStatsCards trades={filteredTrades as any[]} />
-
-                {/* Filters - Desktop */}
-                <div className="hidden sm:block">
-                <TradesFilters
-                    searchQuery={searchQuery}
-                    setSearchQuery={setSearchQuery}
-                    sideFilter={sideFilter}
-                    setSideFilter={setSideFilter}
-                    typeFilter={typeFilter}
-                    setTypeFilter={setTypeFilter}
-                    dateRange={dateRange}
-                    setDateRange={setDateRange}
-                />
-                </div>
-
-                {/* Filters - Mobile */}
-                <div className="sm:hidden glass-card p-3 rounded-xl">
-                  <div className="flex gap-2">
-                      <div className="relative flex-1">
-                      <input
-                          type="text"
-                          placeholder="Search..."
-                          value={searchQuery}
-                          onChange={(e) => setSearchQuery(e.target.value)}
-                          className="w-full h-9 pl-3 pr-3 text-sm bg-secondary/50 border border-border/50 rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
-                      />
-                      </div>
-                      <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setFilterSheetOpen(true)}
-                      className={`gap-1.5 bg-secondary/50 border-border/50 ${hasActiveFilters ? 'text-primary border-primary/50' : ''}`}
-                      >
-                      <Funnel weight={hasActiveFilters ? "fill" : "regular"} className="w-4 h-4" />
-                      Filters
-                      </Button>
-                  </div>
-                </div>
-
-                <TradesTable
-                    trades={filteredTrades as any[]}
-                    onTradeClick={handleTradeClick}
-                    sortField={sortField}
-                    sortDirection={sortDirection}
-                    onSort={handleSort}
-                />
-
-                {/* ✅ Professional Pagination Controls */}
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-border/50 pt-4">
-                  <div className="flex items-center gap-4 order-2 sm:order-1">
-                    <div className="text-sm text-muted-foreground">
-                      Showing {filteredTrades.length} of {totalTrades} trades
-                    </div>
-                    
-                    {/* ✅ Rows per page selector */}
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm text-muted-foreground hidden sm:inline">Rows:</span>
-                      <Select value={pageSize.toString()} onValueChange={handlePageSizeChange}>
-                        <SelectTrigger className="h-8 w-[70px] bg-secondary/50 border-border/50">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="25">25</SelectItem>
-                          <SelectItem value="50">50</SelectItem>
-                          <SelectItem value="100">100</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 order-1 sm:order-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setPage((p) => Math.max(1, p - 1))}
-                      disabled={page === 1 || isPlaceholderData}
-                      className="h-8 gap-1 pl-2.5"
-                    >
-                      <CaretLeft className="h-4 w-4" />
-                      Prev
-                    </Button>
-                    
-                    <div className="flex items-center justify-center px-3 h-8 rounded-md bg-secondary/30 border border-border/50">
-                      <span className="text-sm font-medium tabular-nums">
-                        {page} <span className="text-muted-foreground mx-1">/</span> {totalPages}
-                      </span>
-                    </div>
-
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setPage((p) => (p < totalPages ? p + 1 : p))}
-                      disabled={page >= totalPages || isPlaceholderData}
-                      className="h-8 gap-1 pr-2.5"
-                    >
-                      Next
-                      <CaretRight className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-            </>
-        )}
+        {/* Table */}
+        <TradesTable
+          trades={filteredTrades}
+          onTradeClick={handleTradeClick}
+          sortField={sortField}
+          sortDirection={sortDirection}
+          onSort={handleSort}
+        />
       </div>
 
-      {/* Mobile FAB */}
+      {/* Mobile FAB for Add Trade */}
       <button
         onClick={() => setAddModalOpen(true)}
         className="fixed bottom-6 right-6 sm:hidden w-14 h-14 rounded-full glow-button text-white shadow-lg flex items-center justify-center z-40"
@@ -398,7 +260,7 @@ const Trades = () => {
         <Plus weight="bold" className="w-6 h-6" />
       </button>
 
-      {/* Filter Sheet, Detail Sheet & Modals remain identical ... */}
+      {/* Mobile Filter Sheet */}
       <Sheet open={filterSheetOpen} onOpenChange={setFilterSheetOpen}>
         <SheetContent side="bottom" className="bg-card border-border rounded-t-2xl">
           <SheetHeader className="pb-4">
@@ -412,28 +274,16 @@ const Trades = () => {
             </div>
           </SheetHeader>
           <div className="space-y-4 pb-6">
+            {/* Date Range Placeholder */}
             <div className="space-y-2">
               <label className="text-sm text-muted-foreground">Date Range</label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" className="w-full justify-start gap-2 bg-secondary/50 border-border/50">
-                    <CalendarBlank weight="regular" className="w-4 h-4" />
-                    {dateRangeLabel}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0 bg-card border-border" align="start">
-                  <Calendar
-                    initialFocus
-                    mode="range"
-                    defaultMonth={dateRange?.from}
-                    selected={dateRange}
-                    onSelect={setDateRange}
-                    numberOfMonths={1}
-                  />
-                </PopoverContent>
-              </Popover>
+              <Button variant="outline" className="w-full justify-start gap-2 bg-secondary/50 border-border/50">
+                <CalendarBlank weight="regular" className="w-4 h-4" />
+                This Month
+              </Button>
             </div>
             
+            {/* Side Filter */}
             <div className="space-y-2">
               <label className="text-sm text-muted-foreground">Side</label>
               <Select value={sideFilter} onValueChange={setSideFilter}>
@@ -448,6 +298,7 @@ const Trades = () => {
               </Select>
             </div>
 
+            {/* Type Filter */}
             <div className="space-y-2">
               <label className="text-sm text-muted-foreground">Type</label>
               <Select value={typeFilter} onValueChange={setTypeFilter}>
@@ -456,10 +307,11 @@ const Trades = () => {
                 </SelectTrigger>
                 <SelectContent className="bg-card border-border">
                   <SelectItem value="all">All Types</SelectItem>
-                  <SelectItem value="STOCK">Stock</SelectItem>
-                  <SelectItem value="CRYPTO">Crypto</SelectItem>
-                  <SelectItem value="FOREX">Forex</SelectItem>
-                  <SelectItem value="FUTURES">Futures</SelectItem>
+                  <SelectItem value="Crypto">Crypto</SelectItem>
+                  <SelectItem value="Stock">Stock</SelectItem>
+                  <SelectItem value="Forex">Forex</SelectItem>
+                  <SelectItem value="Futures">Futures</SelectItem>
+                  <SelectItem value="Options">Options</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -474,23 +326,26 @@ const Trades = () => {
         </SheetContent>
       </Sheet>
 
+      {/* Trade Detail Sheet/Modal */}
       <TradeDetailSheet
-        trade={selectedTrade as any}
+        trade={selectedTrade}
         open={detailOpen}
         onOpenChange={setDetailOpen}
         onEdit={handleEditTrade}
         onDelete={handleDeleteTrade}
-        allTrades={trades as any[]}
+        allTrades={trades}
       />
 
+      {/* Add Trade Modal */}
       <AddTradeModal
         open={addModalOpen}
         onOpenChange={setAddModalOpen}
         onAddTrade={handleAddTrade}
       />
 
+      {/* Edit Trade Modal */}
       <EditTradeModal
-        trade={tradeToEdit as any}
+        trade={tradeToEdit}
         open={editModalOpen}
         onOpenChange={setEditModalOpen}
         onUpdateTrade={handleUpdateTrade}

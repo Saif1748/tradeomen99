@@ -12,14 +12,11 @@ import {
   CaretLeft,
   Lightning,
   Gear,
-  Crown,
-  Coffee,
 } from "@phosphor-icons/react";
 import logo from "@/assets/tradeomen-logo.png";
 import icon from "@/assets/tradeomen-icon.png";
 import SettingsModal from "@/components/settings/SettingsModal";
-import { useAuth } from "@/hooks/use-Auth";
-import { useProfile } from "@/hooks/use-profile"; // ✅ Import the new cached hook
+import { useSettings } from "@/contexts/SettingsContext";
 
 const navItems = [
   { title: "Dashboard", path: "/dashboard", icon: House },
@@ -39,63 +36,11 @@ interface AppSidebarProps {
 const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
   const location = useLocation();
   const [settingsOpen, setSettingsOpen] = useState(false);
-  
-  // ✅ 1. Get static auth state (User ID, Email) from Supabase wrapper
-  const { user } = useAuth();
-  
-  // ✅ 2. Get dynamic profile data (Plan, Credits) from TanStack Query
-  // This reads from the cache, so it doesn't reload on page navigation.
-  const { data: profile, isLoading } = useProfile();
-  
-  // Normalize plan to Uppercase to handle database inconsistencies
-  const plan = (profile?.plan_tier || "FREE").toUpperCase();
-
-  // Helper to get display name safely
-  const displayName = profile?.full_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || "Trader";
+  const { profile } = useSettings();
 
   const getInitials = () => {
-    const nameToUse = profile?.full_name || user?.user_metadata?.full_name;
-    if (nameToUse) {
-      const names = nameToUse.split(' ');
-      if (names.length >= 2) {
-        return `${names[0][0]}${names[1][0]}`.toUpperCase();
-      }
-      return names[0].substring(0, 2).toUpperCase();
-    }
-    return (user?.email?.substring(0, 2) || "TR").toUpperCase();
+    return `${profile.firstName.charAt(0)}${profile.lastName.charAt(0)}`;
   };
-
-  // --- Dynamic Badge Styling ---
-  const getPlanBadgeStyles = () => {
-    switch (plan) {
-      case "PREMIUM":
-        return {
-          container: "bg-amber-500/10 border-amber-500/20 text-amber-500",
-          label: "Premium Plan",
-          Icon: Crown,
-        };
-      case "PRO":
-        return {
-          container: "bg-primary/20 border-primary/30 text-primary",
-          label: "Pro Plan",
-          Icon: Lightning,
-        };
-      case "FREE":
-      default:
-        return {
-          container: "bg-secondary border-border text-muted-foreground",
-          label: "Free Plan",
-          Icon: Coffee,
-        };
-    }
-  };
-
-  const badgeStyle = getPlanBadgeStyles();
-  const BadgeIcon = badgeStyle.Icon;
-
-  // Determine if we should show skeleton state
-  // Show skeleton only if loading AND we have no cached profile yet
-  const showSkeleton = isLoading && !profile;
 
   return (
     <>
@@ -130,7 +75,7 @@ const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.8 }}
                 transition={{ duration: 0.2, ease: "easeOut" }}
-                className="h-10 w-auto"
+                className="h-12 w-auto"
               />
             ) : (
               <motion.img
@@ -141,13 +86,13 @@ const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.9 }}
                 transition={{ duration: 0.2, ease: "easeOut" }}
-                className="h-8 w-auto"
+                className="h-10 w-auto"
               />
             )}
           </AnimatePresence>
         </div>
 
-        {/* Top Plan Badge (Dynamic with Skeleton) */}
+        {/* Plan Badge */}
         <AnimatePresence>
           {!collapsed && (
             <motion.div
@@ -157,14 +102,10 @@ const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
               transition={{ duration: 0.2 }}
               className="flex justify-center px-4 mb-6"
             >
-              {showSkeleton ? (
-                 <div className="h-6 w-28 bg-secondary/50 rounded-full animate-pulse" />
-              ) : (
-                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-normal ${badgeStyle.container}`}>
-                  <BadgeIcon weight="fill" className="w-3 h-3" />
-                  {badgeStyle.label}
-                </span>
-              )}
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/20 border border-primary/30 text-xs font-normal text-primary">
+                <Lightning weight="fill" className="w-3 h-3" />
+                Pro Plan
+              </span>
             </motion.div>
           )}
         </AnimatePresence>
@@ -244,17 +185,11 @@ const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
                   className="flex-1 min-w-0 overflow-hidden text-left relative z-10"
                 >
                   <p className="text-sm font-normal text-foreground truncate">
-                    {displayName}
+                    {profile.firstName} {profile.lastName}
                   </p>
-                  
-                  {/* Bottom Mini Badge with Skeleton */}
-                  {showSkeleton ? (
-                    <div className="h-3 w-16 bg-secondary/50 rounded animate-pulse mt-1" />
-                  ) : (
-                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-normal mt-0.5 border ${badgeStyle.container}`}>
-                      {plan === "FREE" ? "Free" : plan === "PRO" ? "Pro" : "Premium"}
-                    </span>
-                  )}
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-normal bg-primary/20 text-primary mt-0.5">
+                    Pro
+                  </span>
                 </motion.div>
               )}
             </AnimatePresence>

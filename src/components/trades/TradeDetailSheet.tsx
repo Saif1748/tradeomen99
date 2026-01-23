@@ -13,10 +13,9 @@ import {
   Note,
   Image,
   ArrowRight,
-  Spinner,
 } from "@phosphor-icons/react";
-import { format, formatDistance } from "date-fns";
-import { useQuery } from "@tanstack/react-query";
+import { format } from "date-fns";
+import { Trade } from "@/lib/tradesData";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,27 +26,14 @@ import {
 } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { UITrade } from "@/hooks/use-trades";
-import { tradesApi } from "@/services/api/modules/trades";
-import { useCurrency } from "@/hooks/use-currency";
-
-// Define the extended shape expected from the API for details
-// This extends the base type or defines the specific response fields we need
-interface TradeDetailResponse {
-  id: string;
-  notes?: string;
-  screenshots_signed?: Array<{ path: string; url: string }>;
-  strategies?: { name: string; emoji?: string };
-  // ... other fields present in TradeResponse
-}
 
 interface TradeDetailSheetProps {
-  trade: UITrade | null;
+  trade: Trade | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onEdit: (trade: UITrade) => void;
-  onDelete: (trade: UITrade) => void;
-  allTrades?: UITrade[];
+  onEdit: (trade: Trade) => void;
+  onDelete: (trade: Trade) => void;
+  allTrades?: Trade[];
 }
 
 const TradeDetailSheet = ({
@@ -58,46 +44,16 @@ const TradeDetailSheet = ({
   onDelete,
   allTrades = [],
 }: TradeDetailSheetProps) => {
-  const { format: formatCurrency, symbol } = useCurrency();
-
-  // --- 1. Fetch Full Details (Notes & Signed Screenshots) ---
-  const { data: fullDetails, isLoading } = useQuery({
-    queryKey: ["trade", trade?.id],
-    queryFn: async () => {
-      if (!trade?.id) return null;
-      // We cast the response to our specific Detail interface to avoid 'any'
-      const res = await tradesApi.getOne(trade.id);
-      return res as unknown as TradeDetailResponse;
-    },
-    enabled: !!trade && open,
-    staleTime: 1000 * 60 * 5, // 5 minutes
-  });
-
   if (!trade) return null;
 
-  // --- Dynamic Calculations ---
-  const entryPrice = trade.entryPrice;
-  const stopLoss = trade.stopLoss || 0;
-  const target = trade.target || 0;
-  const quantity = trade.quantity;
+  const rrRatio = trade.stopLoss
+    ? Math.abs((trade.target - trade.entryPrice) / (trade.entryPrice - trade.stopLoss))
+    : 0;
 
-  const riskPerShare = stopLoss ? Math.abs(entryPrice - stopLoss) : 0;
-  const rewardPerShare = target ? Math.abs(target - entryPrice) : 0;
-  
-  const rrRatio = riskPerShare > 0 ? (rewardPerShare / riskPerShare) : 0;
-  const totalRisk = riskPerShare * quantity;
-
-  // Safe date handling
-  const tradeDate = trade.date instanceof Date ? trade.date : new Date(trade.date);
-  const timeLabel = formatDistance(tradeDate, new Date(), { addSuffix: true });
-
+  // Find related trades (same symbol, different trade)
   const relatedTrades = allTrades
     .filter((t) => t.symbol === trade.symbol && t.id !== trade.id)
     .slice(0, 3);
-
-  // --- Resolve Data for Display ---
-  const displayNotes = fullDetails?.notes || (trade as any).notes || "";
-  const signedScreenshots = fullDetails?.screenshots_signed || [];
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -128,7 +84,7 @@ const TradeDetailSheet = ({
                   </Badge>
                 </div>
                 <p className="text-muted-foreground mt-1">
-                  {format(tradeDate, "EEEE, MMMM d, yyyy")}
+                  {format(trade.date, "EEEE, MMMM d, yyyy")}
                 </p>
               </div>
               <div className="flex items-center gap-1">
@@ -163,15 +119,19 @@ const TradeDetailSheet = ({
             <div className="text-right">
               <p
                 className={`text-3xl font-medium tracking-tight ${
-                  (trade.pnl || 0) >= 0 ? "text-emerald-400" : "text-rose-400"
+                  trade.pnl >= 0 ? "text-emerald-400" : "text-rose-400"
                 }`}
               >
-                {(trade.pnl || 0) >= 0 ? "+" : ""}{symbol}{formatCurrency(Math.abs(trade.pnl || 0))}
+                {trade.pnl >= 0 ? "+" : ""}$
+                {Math.abs(trade.pnl).toLocaleString("en-US", {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}
               </p>
             </div>
 
             {/* Price Levels Card */}
-            <div className="glass-card p-4 rounded-xl space-y-0 border border-border/40 bg-card/50">
+            <div className="glass-card p-4 rounded-xl space-y-0">
               <div className="flex items-center justify-between py-3">
                 <div className="flex items-center gap-3">
                   <div className="p-2 rounded-lg bg-emerald-500/10">
@@ -180,7 +140,7 @@ const TradeDetailSheet = ({
                   <span className="text-muted-foreground">Entry</span>
                 </div>
                 <span className="font-medium text-foreground">
-                  {symbol}{formatCurrency(trade.entryPrice)}
+                  ${trade.entryPrice.toLocaleString()}
                 </span>
               </div>
 
@@ -194,7 +154,7 @@ const TradeDetailSheet = ({
                   <span className="text-muted-foreground">Exit</span>
                 </div>
                 <span className="font-medium text-foreground">
-                  {trade.exitPrice ? `${symbol}${formatCurrency(trade.exitPrice)}` : "-"}
+                  ${trade.exitPrice.toLocaleString()}
                 </span>
               </div>
 
@@ -208,7 +168,7 @@ const TradeDetailSheet = ({
                   <span className="text-muted-foreground">Stop Loss</span>
                 </div>
                 <span className="font-medium text-foreground">
-                  {trade.stopLoss ? `${symbol}${formatCurrency(trade.stopLoss)}` : "-"}
+                  ${trade.stopLoss.toLocaleString()}
                 </span>
               </div>
 
@@ -222,13 +182,13 @@ const TradeDetailSheet = ({
                   <span className="text-muted-foreground">Target</span>
                 </div>
                 <span className="font-medium text-foreground">
-                  {trade.target ? `${symbol}${formatCurrency(trade.target)}` : "-"}
+                  ${trade.target.toLocaleString()}
                 </span>
               </div>
             </div>
 
             {/* Stats Card */}
-            <div className="glass-card p-4 rounded-xl space-y-0 border border-border/40 bg-card/50">
+            <div className="glass-card p-4 rounded-xl space-y-0">
               <div className="flex items-center justify-between py-3">
                 <div className="flex items-center gap-3">
                   <div className="p-2 rounded-lg bg-primary/10">
@@ -246,10 +206,10 @@ const TradeDetailSheet = ({
                   <div className="p-2 rounded-lg bg-primary/10">
                     <CurrencyDollar weight="regular" className="w-4 h-4 text-primary" />
                   </div>
-                  <span className="text-muted-foreground">Total Risk</span>
+                  <span className="text-muted-foreground">Risk</span>
                 </div>
                 <span className="font-medium text-foreground">
-                  {symbol}{formatCurrency(totalRisk)}
+                  ${trade.risk.toLocaleString("en-US", { minimumFractionDigits: 2 })}
                 </span>
               </div>
 
@@ -272,9 +232,9 @@ const TradeDetailSheet = ({
                   <div className="p-2 rounded-lg bg-primary/10">
                     <Clock weight="regular" className="w-4 h-4 text-primary" />
                   </div>
-                  <span className="text-muted-foreground">Entry Time</span>
+                  <span className="text-muted-foreground">Hold Time</span>
                 </div>
-                <span className="font-medium text-foreground">{timeLabel}</span>
+                <span className="font-medium text-foreground">{trade.holdTime}</span>
               </div>
 
               <Separator className="bg-border/50" />
@@ -287,64 +247,33 @@ const TradeDetailSheet = ({
                   <span className="text-muted-foreground">Fees</span>
                 </div>
                 <span className="font-medium text-foreground">
-                  {symbol}{formatCurrency(trade.fees)}
+                  ${trade.fees.toLocaleString("en-US", { minimumFractionDigits: 2 })}
                 </span>
               </div>
             </div>
 
             {/* Trade Notes */}
-            <div className="glass-card p-4 rounded-xl border border-border/40 bg-card/50">
+            <div className="glass-card p-4 rounded-xl">
               <div className="flex items-center gap-2 mb-3">
                 <Note weight="regular" className="w-4 h-4 text-muted-foreground" />
                 <h4 className="text-sm font-medium text-foreground">Trade Notes</h4>
               </div>
-              {isLoading ? (
-                <div className="flex items-center gap-2 text-muted-foreground text-sm">
-                  <Spinner className="animate-spin" /> Loading notes...
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground whitespace-pre-line leading-relaxed">
-                  {displayNotes || "No notes added."}
-                </p>
-              )}
+              <p className="text-sm text-muted-foreground">
+                {trade.notes || "No notes added."}
+              </p>
             </div>
 
             {/* Screenshots */}
-            <div className="glass-card p-4 rounded-xl border border-border/40 bg-card/50">
+            <div className="glass-card p-4 rounded-xl">
               <div className="flex items-center gap-2 mb-3">
                 <Image weight="regular" className="w-4 h-4 text-muted-foreground" />
                 <h4 className="text-sm font-medium text-foreground">Screenshots</h4>
               </div>
-              
-              {isLoading ? (
-                <div className="flex items-center gap-2 text-muted-foreground text-sm py-4">
-                  <Spinner className="animate-spin" /> Loading screenshots...
-                </div>
-              ) : signedScreenshots.length > 0 ? (
-                 <div className="grid grid-cols-2 gap-2">
-                    {signedScreenshots.map((file, idx) => (
-                        <a 
-                          key={idx} 
-                          href={file.url} 
-                          target="_blank" 
-                          rel="noopener noreferrer" 
-                          className="block relative aspect-video rounded-lg overflow-hidden border border-border/50 hover:border-primary/50 transition-colors group"
-                        >
-                            <img 
-                              src={file.url} 
-                              alt={`Screenshot ${idx + 1}`} 
-                              className="object-cover w-full h-full transition-transform duration-300 group-hover:scale-105" 
-                            />
-                        </a>
-                    ))}
-                 </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">No screenshots attached.</p>
-              )}
+              <p className="text-sm text-muted-foreground">No screenshots attached.</p>
             </div>
 
             {/* Strategy & Tags */}
-            <div className="glass-card p-4 rounded-xl border border-border/40 bg-card/50">
+            <div className="glass-card p-4 rounded-xl">
               <div className="flex items-center gap-2 mb-3">
                 <Tag weight="regular" className="w-4 h-4 text-muted-foreground" />
                 <h4 className="text-sm font-medium text-foreground">Strategy & Tags</h4>
@@ -354,7 +283,7 @@ const TradeDetailSheet = ({
                   variant="outline"
                   className="border-border/50 bg-secondary/50 text-foreground"
                 >
-                  {trade.strategy || "No Strategy"}
+                  {trade.strategy}
                 </Badge>
                 {trade.tags.map((tag, index) => (
                   <Badge
@@ -370,7 +299,7 @@ const TradeDetailSheet = ({
 
             {/* Related Trades */}
             {relatedTrades.length > 0 && (
-              <div className="glass-card p-4 rounded-xl border border-border/40 bg-card/50">
+              <div className="glass-card p-4 rounded-xl">
                 <div className="flex items-center justify-between mb-3">
                   <h4 className="text-sm font-medium text-foreground">
                     Related Trades ({trade.symbol})
@@ -383,7 +312,7 @@ const TradeDetailSheet = ({
                   {relatedTrades.map((relatedTrade) => (
                     <div
                       key={relatedTrade.id}
-                      className="flex items-center justify-between py-2 border-t border-border/30 first:border-0"
+                      className="flex items-center justify-between py-2"
                     >
                       <div className="flex items-center gap-2">
                         <Badge
@@ -402,10 +331,13 @@ const TradeDetailSheet = ({
                       </div>
                       <span
                         className={`text-sm font-medium ${
-                          (relatedTrade.pnl || 0) >= 0 ? "text-emerald-400" : "text-rose-400"
+                          relatedTrade.pnl >= 0 ? "text-emerald-400" : "text-rose-400"
                         }`}
                       >
-                        {(relatedTrade.pnl || 0) >= 0 ? "+" : ""}{symbol}{formatCurrency(Math.abs(relatedTrade.pnl || 0))}
+                        {relatedTrade.pnl >= 0 ? "+" : ""}$
+                        {Math.abs(relatedTrade.pnl).toLocaleString("en-US", {
+                          minimumFractionDigits: 2,
+                        })}
                       </span>
                     </div>
                   ))}

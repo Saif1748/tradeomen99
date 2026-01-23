@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { X, Plus, Trash, Spinner } from "@phosphor-icons/react";
+import { X, Plus, Trash } from "@phosphor-icons/react";
 import {
   Dialog,
   DialogContent,
@@ -16,26 +16,16 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { strategyIcons } from "@/lib/strategiesData";
-import { useStrategies } from "@/hooks/use-strategies";
-
-// Define internal shape for the UI state
-interface RuleGroup {
-  id: string;
-  name: string;
-  rules: string[];
-}
+import { Strategy, RuleGroup, strategyIcons } from "@/lib/strategiesData";
 
 interface EditStrategyModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  strategy: any; // Using any to be flexible with the API response shape
-  onUpdateStrategy?: (strategy: any) => void; // Optional legacy prop
+  strategy: Strategy | null;
+  onUpdateStrategy: (strategy: Strategy) => void;
 }
 
-const EditStrategyModal = ({ open, onOpenChange, strategy }: EditStrategyModalProps) => {
-  const { updateStrategy, isUpdating } = useStrategies();
-
+const EditStrategyModal = ({ open, onOpenChange, strategy, onUpdateStrategy }: EditStrategyModalProps) => {
   const [name, setName] = useState("");
   const [icon, setIcon] = useState("📈");
   const [description, setDescription] = useState("");
@@ -45,30 +35,16 @@ const EditStrategyModal = ({ open, onOpenChange, strategy }: EditStrategyModalPr
   const [newRuleInputs, setNewRuleInputs] = useState<{ [key: string]: string }>({});
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
 
-  // Initialize state when strategy data loads
   useEffect(() => {
-    if (strategy && open) {
-      setName(strategy.name || "");
-      setIcon(strategy.emoji || "📈"); // Backend field is 'emoji'
-      setDescription(strategy.description || "");
-      setStyle(strategy.style || "");
-      
-      // ✅ FIX: Safe access for array join
-      setInstruments((strategy.instrument_types || []).join(", "));
-
-      // ✅ FIX: Transform Backend Object (Record<string, string[]>) -> UI Array (RuleGroup[])
-      if (strategy.rules) {
-        const groups = Object.entries(strategy.rules).map(([groupName, rules], index) => ({
-          id: `group-${index}`,
-          name: groupName,
-          rules: Array.isArray(rules) ? (rules as string[]) : []
-        }));
-        setRuleGroups(groups);
-      } else {
-        setRuleGroups([]);
-      }
+    if (strategy) {
+      setName(strategy.name);
+      setIcon(strategy.icon);
+      setDescription(strategy.description);
+      setStyle(strategy.style);
+      setInstruments(strategy.instruments.join(", "));
+      setRuleGroups(strategy.ruleGroups.map(g => ({ ...g })));
     }
-  }, [strategy, open]);
+  }, [strategy]);
 
   const handleAddRule = (groupId: string) => {
     const ruleText = newRuleInputs[groupId]?.trim();
@@ -101,7 +77,7 @@ const EditStrategyModal = ({ open, onOpenChange, strategy }: EditStrategyModalPr
   const handleAddGroup = () => {
     const newGroup: RuleGroup = {
       id: `custom-${Date.now()}`,
-      name: "New Rules",
+      name: "New Group",
       rules: []
     };
     setRuleGroups(prev => [...prev, newGroup]);
@@ -118,31 +94,17 @@ const EditStrategyModal = ({ open, onOpenChange, strategy }: EditStrategyModalPr
   const handleSubmit = () => {
     if (!name.trim() || !strategy) return;
 
-    // ✅ Transform UI Array -> Backend Object
-    const rulesPayload: Record<string, string[]> = {};
-    ruleGroups.forEach(group => {
-      if (group.name.trim()) {
-        rulesPayload[group.name] = group.rules;
-      }
-    });
-
-    const payload = {
+    onUpdateStrategy({
+      ...strategy,
       name: name.trim(),
-      emoji: icon,
+      icon,
       description: description.trim(),
       style: style.trim(),
-      instrumentTypes: instruments.split(",").map(i => i.trim().toUpperCase()).filter(Boolean),
-      rules: rulesPayload,
-      // Preserve existing fields
-      color: strategy.color_hex,
-      trackMissed: strategy.track_missed_trades
-    };
-
-    updateStrategy({ id: strategy.id, data: payload }, {
-      onSuccess: () => {
-        onOpenChange(false);
-      }
+      instruments: instruments.split(",").map(i => i.trim().toUpperCase()).filter(Boolean),
+      ruleGroups: ruleGroups.filter(g => g.rules.length > 0 || g.name !== "New Group")
     });
+
+    onOpenChange(false);
   };
 
   if (!strategy) return null;
@@ -253,13 +215,13 @@ const EditStrategyModal = ({ open, onOpenChange, strategy }: EditStrategyModalPr
                       <Input
                         value={group.name}
                         onChange={(e) => handleGroupNameChange(group.id, e.target.value)}
-                        className="text-sm font-medium bg-transparent border-none p-0 h-auto focus-visible:ring-0 text-foreground w-full mr-2"
+                        className="text-sm font-medium bg-transparent border-none p-0 h-auto focus-visible:ring-0 text-foreground"
                       />
                       <Button
                         variant="ghost"
                         size="icon"
                         onClick={() => handleDeleteGroup(group.id)}
-                        className="h-6 w-6 text-muted-foreground hover:text-rose-400 flex-shrink-0"
+                        className="h-6 w-6 text-muted-foreground hover:text-rose-400"
                       >
                         <Trash weight="regular" className="w-4 h-4" />
                       </Button>
@@ -308,10 +270,9 @@ const EditStrategyModal = ({ open, onOpenChange, strategy }: EditStrategyModalPr
           </Button>
           <Button 
             onClick={handleSubmit}
-            disabled={!name.trim() || isUpdating}
-            className="glow-button text-white"
+            disabled={!name.trim()}
+            className="glow-button"
           >
-            {isUpdating ? <Spinner className="w-4 h-4 animate-spin mr-2" /> : null}
             Save Changes
           </Button>
         </div>

@@ -1,6 +1,5 @@
 import { useState, useMemo } from "react";
-import { format, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay } from "date-fns";
-import { CalendarDayStats } from "@/hooks/use-calendar";
+import { DayData } from "@/lib/calendarData";
 import CalendarDayCell from "./CalendarDayCell";
 import DayDetailModal from "./DayDetailModal";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -8,46 +7,69 @@ import { useIsMobile } from "@/hooks/use-mobile";
 interface CalendarGridProps {
   year: number;
   month: number;
-  // ✅ FIX: Expect a plain object, not a Map. This matches the serialized data from the hook.
-  monthData: Record<string, CalendarDayStats> | undefined;
+  monthData: Map<string, DayData>;
   colorMode: 'pnl' | 'winrate';
+  onSaveNote?: (date: Date, note: string) => void;
 }
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const WEEKDAYS_SHORT = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
-const CalendarGrid = ({ year, month, monthData, colorMode }: CalendarGridProps) => {
-  const [selectedDay, setSelectedDay] = useState<CalendarDayStats | null>(null);
+const CalendarGrid = ({ year, month, monthData, colorMode, onSaveNote }: CalendarGridProps) => {
+  const [selectedDay, setSelectedDay] = useState<DayData | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const isMobile = useIsMobile();
-  const today = new Date();
 
-  // ✅ INDUSTRY GRADE: Robust 42-day grid generation using date-fns
-  // This replaces the manual loops which can be buggy with month rollovers.
   const calendarDays = useMemo(() => {
-    // 1. Find the first day of the month
-    const monthStart = new Date(year, month, 1);
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const daysInMonth = lastDay.getDate();
+    const startingDay = firstDay.getDay();
     
-    // 2. Find the Sunday before (or on) the first day
-    const startDate = startOfWeek(monthStart);
+    const days: Array<{ day: number | null; date: Date | null; isCurrentMonth: boolean }> = [];
     
-    // 3. Generate exactly 42 days (6 weeks) to keep the grid height stable
-    // (start date + 41 days)
-    const endDate = endOfWeek(new Date(startDate.getTime() + 41 * 24 * 60 * 60 * 1000));
-
-    return eachDayOfInterval({ start: startDate, end: endDate });
+    // Previous month's trailing days
+    const prevMonthLastDay = new Date(year, month, 0).getDate();
+    for (let i = startingDay - 1; i >= 0; i--) {
+      const day = prevMonthLastDay - i;
+      days.push({ 
+        day, 
+        date: new Date(year, month - 1, day), 
+        isCurrentMonth: false 
+      });
+    }
+    
+    // Current month's days
+    for (let day = 1; day <= daysInMonth; day++) {
+      days.push({ 
+        day, 
+        date: new Date(year, month, day), 
+        isCurrentMonth: true 
+      });
+    }
+    
+    // Next month's leading days
+    const remainingDays = 42 - days.length; // 6 rows * 7 days
+    for (let day = 1; day <= remainingDays; day++) {
+      days.push({ 
+        day, 
+        date: new Date(year, month + 1, day), 
+        isCurrentMonth: false 
+      });
+    }
+    
+    return days;
   }, [year, month]);
 
-  // Helper to ensure keys match SQL format (YYYY-MM-DD)
-  const getDateKey = (date: Date) => format(date, 'yyyy-MM-dd');
+  const today = new Date();
+  const isToday = (date: Date | null) => {
+    if (!date) return false;
+    return date.toDateString() === today.toDateString();
+  };
 
-  const handleDayClick = (date: Date, isCurrentMonth: boolean) => {
-    if (!isCurrentMonth || !monthData) return;
-    
-    const dateKey = getDateKey(date);
-    // ✅ FIX: Access property directly (O(1) lookup) instead of .get()
-    const dayData = monthData[dateKey];
-
+  const handleDayClick = (date: Date | null, isCurrentMonth: boolean) => {
+    if (!date || !isCurrentMonth) return;
+    const dayData = monthData.get(date.toDateString());
     if (dayData) {
       setSelectedDay(dayData);
       setIsModalOpen(true);
@@ -61,7 +83,7 @@ const CalendarGrid = ({ year, month, monthData, colorMode }: CalendarGridProps) 
         {(isMobile ? WEEKDAYS_SHORT : WEEKDAYS).map((day, index) => (
           <div
             key={index}
-            className="text-center text-[10px] sm:text-sm font-medium text-muted-foreground py-1 sm:py-2 select-none"
+            className="text-center text-[10px] sm:text-sm font-medium text-muted-foreground py-1 sm:py-2"
           >
             {day}
           </div>
@@ -70,36 +92,26 @@ const CalendarGrid = ({ year, month, monthData, colorMode }: CalendarGridProps) 
 
       {/* Calendar Grid */}
       <div className="grid grid-cols-7 gap-1 sm:gap-2">
-        {calendarDays.map((date) => {
-          const isCurrentMonth = isSameMonth(date, new Date(year, month, 1));
-          const dateKey = getDateKey(date);
-          
-          // ✅ FIX: Safe Object Access
-          // We only look up data if it's the current month
-          const data = (isCurrentMonth && monthData) 
-            ? monthData[dateKey] || null 
-            : null;
-
-          return (
-            <CalendarDayCell
-              key={dateKey} // Using date string as key is better for React diffing
-              day={date.getDate()}
-              date={date}
-              dayData={data}
-              isCurrentMonth={isCurrentMonth}
-              isToday={isSameDay(date, today)}
-              colorMode={colorMode}
-              onClick={() => handleDayClick(date, isCurrentMonth)}
-            />
-          );
-        })}
+        {calendarDays.map((dayInfo, index) => (
+          <CalendarDayCell
+            key={index}
+            day={dayInfo.day}
+            date={dayInfo.date}
+            dayData={dayInfo.date && dayInfo.isCurrentMonth ? monthData.get(dayInfo.date.toDateString()) || null : null}
+            isCurrentMonth={dayInfo.isCurrentMonth}
+            isToday={isToday(dayInfo.date)}
+            colorMode={colorMode}
+            onClick={() => handleDayClick(dayInfo.date, dayInfo.isCurrentMonth)}
+          />
+        ))}
       </div>
 
-      {/* Day Detail Modal */}
+      {/* Day Detail Modal/Sheet */}
       <DayDetailModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         dayData={selectedDay}
+        onSaveNote={onSaveNote}
       />
     </>
   );

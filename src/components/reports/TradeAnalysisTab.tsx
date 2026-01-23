@@ -1,13 +1,3 @@
-import { useMemo } from "react";
-import { 
-  CurrencyDollar, 
-  Scales, 
-  ChartBar, 
-  Pulse, 
-  Coins, 
-  TrendUp, 
-  TrendDown,
-} from "@phosphor-icons/react";
 import {
   ScatterChart,
   Scatter,
@@ -21,211 +11,212 @@ import {
   Cell,
   PieChart,
   Pie,
-  ReferenceLine,
-  Legend
 } from "recharts";
+import { Trade } from "@/lib/tradesData";
+import {
+  generateScatterData,
+  generatePnLDistribution,
+  generateHoldingTimeData,
+  getBestWorstTrades,
+  generateAIInsights,
+} from "@/lib/reportsData";
+import AIInsightBanner from "./AIInsightBanner";
 import { format } from "date-fns";
-// ✅ Fix: Import from the new hook file instead of SettingsContext
-import { useCurrency } from "@/hooks/use-currency";
-import { Skeleton } from "@/components/ui/skeleton";
+import { useSettings } from "@/contexts/SettingsContext";
 
 interface TradeAnalysisTabProps {
-  data: any;
-  isLoading: boolean;
-  isError: boolean;
+  trades: Trade[];
 }
 
-const COLORS = ["hsl(270 70% 55%)", "hsl(200 70% 50%)", "hsl(160 60% 45%)", "hsl(45 90% 55%)", "hsl(320 70% 50%)", "hsl(30 80% 55%)", "hsl(180 60% 45%)", "hsl(0 70% 50%)"];
-
-const TradeAnalysisTab = ({ data, isLoading, isError }: TradeAnalysisTabProps) => {
-  // ✅ Fix: Use Global Currency Hook
-  const { format, symbol } = useCurrency();
-
-  // Helper function to format currency with symbol
-  const formatCurrency = (val: number) => {
-    return `${symbol}${format(val)}`;
-  };
+// Generate tag performance data from trades
+const generateTagPerformance = (trades: Trade[]) => {
+  const tagMap = new Map<string, { count: number; pnl: number; wins: number }>();
   
-  if (isLoading) {
-    return (
-      <div className="space-y-6">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-24 rounded-xl bg-secondary/50" />)}
-        </div>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Skeleton className="h-[300px] rounded-2xl bg-secondary/50" />
-          <Skeleton className="h-[300px] rounded-2xl bg-secondary/50" />
-        </div>
-      </div>
-    );
-  }
+  trades.forEach(trade => {
+    trade.tags.forEach(tag => {
+      const existing = tagMap.get(tag) || { count: 0, pnl: 0, wins: 0 };
+      tagMap.set(tag, {
+        count: existing.count + 1,
+        pnl: existing.pnl + trade.pnl,
+        wins: existing.wins + (trade.pnl > 0 ? 1 : 0),
+      });
+    });
+  });
+  
+  return Array.from(tagMap.entries())
+    .map(([tag, data]) => ({
+      tag,
+      count: data.count,
+      pnl: data.pnl,
+      winRate: data.count > 0 ? (data.wins / data.count) * 100 : 0,
+    }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 8);
+};
 
-  if (isError || !data) {
-    return (
-      <div className="h-64 flex items-center justify-center glass-card rounded-2xl border-rose-500/20 text-rose-400">
-        Failed to load analysis data.
-      </div>
-    );
-  }
+const COLORS = [
+  "hsl(270 70% 55%)",
+  "hsl(200 70% 50%)",
+  "hsl(160 60% 45%)",
+  "hsl(45 90% 55%)",
+  "hsl(320 70% 50%)",
+  "hsl(30 80% 55%)",
+  "hsl(180 60% 45%)",
+  "hsl(0 70% 50%)",
+];
 
-  // ✅ Mapping to your SQL RPC keys with safe fallbacks
-  const kpis = data?.kpis || {};
-  const assetPerformance = data?.assetPerformance || [];
-  const riskData = data?.riskScatter || [];
-  const tagPerformance = data?.tagPerformance || [];
-  const best = data?.bestTrades || [];
-  const worst = data?.worstTrades || [];
-
-  // KPI Impact logic
-  const feesImpactPct = kpis.totalFees !== 0 ? (kpis.totalFees / Math.abs(kpis.totalVolume || 1)) * 100 : 0;
-
-  const kpiMetrics = [
-    { 
-      label: "Total Fees Paid", 
-      value: formatCurrency(kpis.totalFees || 0),
-      icon: Coins, 
-      subtext: `${feesImpactPct.toFixed(1)}% of Notional`,
-      color: "text-rose-400"
-    },
-    { 
-      label: "Avg Risk per Trade", 
-      value: formatCurrency(kpis.avgRisk || 0), 
-      icon: Scales,
-      subtext: "Position Sizing",
-      color: "text-blue-400"
-    },
-    { 
-      label: "Total Volume", 
-      value: `${symbol}${((kpis.totalVolume || 0) / 1000).toFixed(1)}k`, // Custom format for K volume
-      icon: Pulse,
-      subtext: "Notional Value",
-      color: "text-purple-400"
-    },
-    { 
-      label: "Avg Return", 
-      value: formatCurrency(kpis.avgReturn || 0), 
-      icon: ChartBar,
-      subtext: "Per Trade",
-      color: (kpis.avgReturn || 0) >= 0 ? "text-emerald-400" : "text-rose-400"
-    }
-  ];
+const TradeAnalysisTab = ({ trades }: TradeAnalysisTabProps) => {
+  const scatterData = generateScatterData(trades);
+  const pnlDistribution = generatePnLDistribution(trades);
+  const holdingTimeData = generateHoldingTimeData(trades);
+  const { best, worst } = getBestWorstTrades(trades, 5);
+  const insight = generateAIInsights(trades, "tradeAnalysis");
+  const tagPerformance = generateTagPerformance(trades);
+  const { formatCurrency } = useSettings();
 
   return (
     <div className="space-y-6">
-      
-      {/* 1. KPI Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
-        {kpiMetrics.map((kpi, i) => (
-          <div key={i} className="glass-card p-4 rounded-xl hover:border-primary/30 transition-colors border border-border/50">
-            <div className="flex items-start justify-between mb-2">
-              <span className="text-xs font-medium text-muted-foreground">{kpi.label}</span>
-              <div className="p-1.5 rounded-lg bg-secondary/50 text-foreground">
-                <kpi.icon weight="duotone" className="w-4 h-4" />
-              </div>
-            </div>
-            <div>
-              <h3 className={`text-xl font-semibold tracking-tight tabular-nums ${kpi.color}`}>
-                {kpi.value}
-              </h3>
-              <p className="text-xs text-muted-foreground mt-1">
-                {kpi.subtext}
-              </p>
-            </div>
-          </div>
-        ))}
-      </div>
+      {/* AI Insight */}
+      <AIInsightBanner insight={insight} />
 
-      {/* 2. Asset & Risk Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
-        
-        {/* Performance by Asset Type */}
-        <div className="glass-card p-5 rounded-2xl border border-border/50">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-base font-medium text-foreground">Performance by Asset</h3>
-            <span className="text-xs text-muted-foreground">PnL Breakdown</span>
-          </div>
-          <div className="h-[250px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={assetPerformance} layout="vertical" margin={{ left: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} opacity={0.3} />
-                <XAxis type="number" hide />
-                <YAxis 
-                  type="category" 
-                  dataKey="name" 
-                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12, fontWeight: 500 }} 
-                  width={60}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <Tooltip
-                  cursor={{ fill: 'hsl(var(--muted)/0.2)' }}
-                  contentStyle={{ backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))", borderRadius: "8px", fontSize: "12px" }}
-                  formatter={(value: number) => [formatCurrency(value), "Net P&L"]}
-                />
-                <Bar dataKey="pnl" radius={[0, 4, 4, 0]} barSize={32}>
-                  {assetPerformance.map((entry: any, index: number) => (
-                    <Cell key={`cell-${index}`} fill={entry.pnl >= 0 ? "hsl(var(--primary))" : "hsl(0 70% 50%)"} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+      {/* Scatter Plot */}
+      <div className="space-y-3">
+        <h3 className="text-sm font-light text-foreground">R-Multiple vs P&L</h3>
+        <div className="h-[280px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+              <XAxis
+                type="number"
+                dataKey="rMultiple"
+                name="R-Multiple"
+                tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }}
+                tickLine={false}
+                label={{ value: 'R-Multiple', position: 'bottom', fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
+              />
+              <YAxis
+                type="number"
+                dataKey="pnl"
+                name="P&L"
+                tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }}
+                tickLine={false}
+                tickFormatter={(value) => `$${value}`}
+                label={{ value: 'P&L', angle: -90, position: 'insideLeft', fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
+              />
+              <Tooltip
+                cursor={{ strokeDasharray: '3 3' }}
+                contentStyle={{
+                  backgroundColor: "hsl(var(--card))",
+                  border: "1px solid hsl(var(--border))",
+                  borderRadius: "12px",
+                  color: "hsl(var(--foreground))",
+                }}
+                formatter={(value: number, name: string) => [
+                  name === "P&L" ? `$${value.toFixed(2)}` : value.toFixed(2),
+                  name
+                ]}
+              />
+              <Scatter name="Wins" data={scatterData.filter(d => d.isWin)} fill="hsl(160 60% 45%)" />
+              <Scatter name="Losses" data={scatterData.filter(d => !d.isWin)} fill="hsl(0 70% 50%)" />
+            </ScatterChart>
+          </ResponsiveContainer>
         </div>
-
-        {/* Risk vs Reward Scatter */}
-        <div className="glass-card p-5 rounded-2xl border border-border/50">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-base font-medium text-foreground">Risk vs Reward Analysis</h3>
-            <div className="flex items-center gap-3 text-xs">
-              <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-500"></span> Win</div>
-              <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-rose-500"></span> Loss</div>
-            </div>
+        <div className="flex justify-center gap-6 text-xs">
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 rounded-full bg-emerald-500" />
+            <span className="text-muted-foreground">Winning trades</span>
           </div>
-          <div className="h-[250px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <ScatterChart margin={{ top: 10, right: 10, bottom: 10, left: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} />
-                <XAxis type="number" dataKey="risk" name="Risk" tick={{ fontSize: 10 }} label={{ value: `Risk (${symbol})`, position: 'bottom', offset: 0, fill: 'hsl(var(--muted-foreground))', fontSize: 10 }} />
-                <YAxis type="number" dataKey="pnl" name="PnL" tick={{ fontSize: 10 }} label={{ value: `PnL (${symbol})`, angle: -90, position: 'insideLeft', fill: 'hsl(var(--muted-foreground))', fontSize: 10 }} />
-                <Tooltip 
-                  cursor={{ strokeDasharray: '3 3' }}
-                  contentStyle={{ backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))", borderRadius: "8px", fontSize: "12px" }}
-                  formatter={(value: number, name: string) => [formatCurrency(value), name === 'Risk' ? 'Risk' : 'PnL']}
-                />
-                <ReferenceLine y={0} stroke="hsl(var(--muted-foreground))" />
-                <Scatter name="Wins" data={riskData.filter((d: any) => d.isWin)} fill="hsl(160 60% 45%)" shape="circle" />
-                <Scatter name="Losses" data={riskData.filter((d: any) => !d.isWin)} fill="hsl(0 70% 50%)" shape="circle" />
-              </ScatterChart>
-            </ResponsiveContainer>
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 rounded-full bg-rose-500" />
+            <span className="text-muted-foreground">Losing trades</span>
           </div>
         </div>
       </div>
 
-      {/* 3. Tag Intelligence */}
-      <div className="glass-card p-5 rounded-2xl border border-border/50">
-        <h3 className="text-base font-medium text-foreground mb-6">Tag Intelligence</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="h-[220px]">
+      {/* Tags Performance Chart */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Tags Distribution Pie Chart */}
+        <div className="space-y-3">
+          <h3 className="text-sm font-light text-foreground">Tags Distribution</h3>
+          <div className="h-[250px]">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
-                <Pie data={tagPerformance} dataKey="count" nameKey="tag" cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={2}>
-                  {tagPerformance.map((_: any, index: number) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
+                <Pie
+                  data={tagPerformance}
+                  dataKey="count"
+                  nameKey="tag"
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={80}
+                  innerRadius={40}
+                  paddingAngle={2}
+                  label={({ tag, count }) => `${tag} (${count})`}
+                  labelLine={{ stroke: "hsl(var(--muted-foreground))", strokeWidth: 1 }}
+                >
+                  {tagPerformance.map((_, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
                 </Pie>
-                <Tooltip contentStyle={{ backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))", borderRadius: "8px", fontSize: "12px" }} />
-                <Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{ fontSize: "11px" }} />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "hsl(var(--card))",
+                    border: "1px solid hsl(var(--border))",
+                    borderRadius: "12px",
+                    color: "hsl(var(--foreground))",
+                  }}
+                  formatter={(value: number, name: string, props) => {
+                    const tagData = props.payload;
+                    return [
+                      <div key="tooltip" className="space-y-1">
+                        <div>Trades: {tagData.count}</div>
+                        <div>P&L: {formatCurrency(tagData.pnl)}</div>
+                        <div>Win Rate: {tagData.winRate.toFixed(1)}%</div>
+                      </div>,
+                      tagData.tag
+                    ];
+                  }}
+                />
               </PieChart>
             </ResponsiveContainer>
           </div>
-          
-          <div className="h-[220px]">
+        </div>
+
+        {/* Tags P&L Bar Chart */}
+        <div className="space-y-3">
+          <h3 className="text-sm font-light text-foreground">P&L by Tag</h3>
+          <div className="h-[250px]">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={tagPerformance} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} opacity={0.3} />
-                <XAxis type="number" hide />
-                <YAxis dataKey="tag" type="category" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} width={70} axisLine={false} tickLine={false} />
-                <Tooltip contentStyle={{ backgroundColor: "hsl(var(--card))", borderRadius: "8px", fontSize: "12px" }} formatter={(value: number) => [formatCurrency(value), "Total PnL"]} />
-                <Bar dataKey="pnl" radius={[0, 4, 4, 0]} barSize={20}>
-                  {tagPerformance.map((entry: any, index: number) => <Cell key={index} fill={entry.pnl >= 0 ? "hsl(var(--primary))" : "hsl(0 70% 50%)"} />)}
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <XAxis
+                  type="number"
+                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }}
+                  tickLine={false}
+                  tickFormatter={(value) => `$${value}`}
+                />
+                <YAxis
+                  type="category"
+                  dataKey="tag"
+                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }}
+                  tickLine={false}
+                  width={80}
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "hsl(var(--card))",
+                    border: "1px solid hsl(var(--border))",
+                    borderRadius: "12px",
+                    color: "hsl(var(--foreground))",
+                  }}
+                  formatter={(value: number) => [formatCurrency(value), "P&L"]}
+                />
+                <Bar dataKey="pnl" radius={[0, 4, 4, 0]}>
+                  {tagPerformance.map((entry, index) => (
+                    <Cell 
+                      key={`cell-${index}`} 
+                      fill={entry.pnl >= 0 ? "hsl(160 60% 45%)" : "hsl(0 70% 50%)"} 
+                    />
+                  ))}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
@@ -233,38 +224,145 @@ const TradeAnalysisTab = ({ data, isLoading, isError }: TradeAnalysisTabProps) =
         </div>
       </div>
 
-      {/* 4. Best & Worst Trades List */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
-        {[
-          { title: "🏆 Best Performers", trades: best, color: "text-emerald-400" },
-          { title: "⚠️ Costliest Misses", trades: worst, color: "text-rose-400" }
-        ].map((list, idx) => (
-          <div key={idx} className="space-y-3">
-            <h3 className="text-sm font-medium text-foreground">{list.title}</h3>
-            <div className="glass-card rounded-xl overflow-hidden border border-border/50">
-              <table className="w-full text-sm">
-                <thead className="bg-secondary/30">
-                  <tr>
-                    <th className="text-left p-3 text-xs font-medium text-muted-foreground">Date</th>
-                    <th className="text-left p-3 text-xs font-medium text-muted-foreground">Symbol</th>
-                    <th className="text-right p-3 text-xs font-medium text-muted-foreground">PnL</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {list.trades.map((trade: any) => (
-                    <tr key={trade.id} className="border-b border-border/50 last:border-0 hover:bg-secondary/20 transition-colors">
-                      <td className="p-3 text-muted-foreground text-xs">{format(new Date(trade.date), "MMM d")}</td>
-                      <td className="p-3 font-medium text-foreground">{trade.symbol}</td>
-                      <td className={`p-3 text-right font-medium tabular-nums ${list.color}`}>
-                        {trade.pnl >= 0 ? "+" : ""}{formatCurrency(trade.pnl)}
-                      </td>
-                    </tr>
+      {/* PnL Distribution + Holding Time */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* PnL Distribution */}
+        <div className="space-y-3">
+          <h3 className="text-sm font-light text-foreground">P&L Distribution</h3>
+          <div className="h-[200px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={pnlDistribution}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <XAxis
+                  dataKey="range"
+                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 9 }}
+                  tickLine={false}
+                  angle={-45}
+                  textAnchor="end"
+                  height={60}
+                />
+                <YAxis
+                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }}
+                  tickLine={false}
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "hsl(var(--card))",
+                    border: "1px solid hsl(var(--border))",
+                    borderRadius: "12px",
+                    color: "hsl(var(--foreground))",
+                  }}
+                />
+                <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                  {pnlDistribution.map((entry, index) => (
+                    <Cell 
+                      key={`cell-${index}`} 
+                      fill={entry.range.includes("-") ? "hsl(0 70% 50%)" : "hsl(160 60% 45%)"} 
+                    />
                   ))}
-                </tbody>
-              </table>
-            </div>
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
           </div>
-        ))}
+        </div>
+
+        {/* Holding Time Distribution */}
+        <div className="space-y-3">
+          <h3 className="text-sm font-light text-foreground">Holding Time Distribution</h3>
+          <div className="h-[200px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={holdingTimeData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <XAxis
+                  dataKey="range"
+                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 9 }}
+                  tickLine={false}
+                  angle={-45}
+                  textAnchor="end"
+                  height={60}
+                />
+                <YAxis
+                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }}
+                  tickLine={false}
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "hsl(var(--card))",
+                    border: "1px solid hsl(var(--border))",
+                    borderRadius: "12px",
+                    color: "hsl(var(--foreground))",
+                  }}
+                  formatter={(value: number, name: string) => [
+                    name === "avgPnl" ? `$${value.toFixed(2)}` : value,
+                    name === "avgPnl" ? "Avg P&L" : "Count"
+                  ]}
+                />
+                <Bar dataKey="count" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+
+      {/* Best & Worst Trades Tables */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Best Trades */}
+        <div className="space-y-3">
+          <h3 className="text-sm font-light text-foreground">Best Trades</h3>
+          <div className="glass-card rounded-xl overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="text-left p-3 text-xs font-light text-muted-foreground">Date</th>
+                  <th className="text-left p-3 text-xs font-light text-muted-foreground">Symbol</th>
+                  <th className="text-left p-3 text-xs font-light text-muted-foreground">Strategy</th>
+                  <th className="text-right p-3 text-xs font-light text-muted-foreground">P&L</th>
+                </tr>
+              </thead>
+              <tbody>
+                {best.map((trade) => (
+                  <tr key={trade.id} className="border-b border-border/50 last:border-0">
+                    <td className="p-3 text-muted-foreground">{format(trade.date, "MMM d")}</td>
+                    <td className="p-3 text-foreground">{trade.symbol}</td>
+                    <td className="p-3 text-muted-foreground">{trade.strategy}</td>
+                    <td className="p-3 text-right text-emerald-400">
+                      +${trade.pnl.toFixed(2)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Worst Trades */}
+        <div className="space-y-3">
+          <h3 className="text-sm font-light text-foreground">Worst Trades</h3>
+          <div className="glass-card rounded-xl overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="text-left p-3 text-xs font-light text-muted-foreground">Date</th>
+                  <th className="text-left p-3 text-xs font-light text-muted-foreground">Symbol</th>
+                  <th className="text-left p-3 text-xs font-light text-muted-foreground">Strategy</th>
+                  <th className="text-right p-3 text-xs font-light text-muted-foreground">P&L</th>
+                </tr>
+              </thead>
+              <tbody>
+                {worst.map((trade) => (
+                  <tr key={trade.id} className="border-b border-border/50 last:border-0">
+                    <td className="p-3 text-muted-foreground">{format(trade.date, "MMM d")}</td>
+                    <td className="p-3 text-foreground">{trade.symbol}</td>
+                    <td className="p-3 text-muted-foreground">{trade.strategy}</td>
+                    <td className="p-3 text-right text-rose-400">
+                      ${trade.pnl.toFixed(2)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
   );

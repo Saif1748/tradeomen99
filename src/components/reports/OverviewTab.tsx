@@ -1,15 +1,5 @@
-import { useMemo } from "react";
-import { 
-  TrendUp, 
-  TrendDown, 
-  Target, 
-  Scales, 
-  CurrencyDollar, 
-  ChartBar, 
-  Pulse, 
-  ArrowUp, 
-  ArrowDown
-} from "@phosphor-icons/react";
+import { useState } from "react";
+import { Info, CaretDown, CaretUp } from "@phosphor-icons/react";
 import {
   AreaChart,
   Area,
@@ -23,276 +13,292 @@ import {
   PieChart,
   Pie,
   Cell,
-  ReferenceLine
 } from "recharts";
-// ✅ Fix: Import from the new hook file instead of SettingsContext
-import { useCurrency } from "@/hooks/use-currency";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Trade } from "@/lib/tradesData";
+import {
+  generateEquityCurve,
+  generateWinLossData,
+  generateLongShortData,
+  calculateOverviewStats,
+  generateAIInsights,
+} from "@/lib/reportsData";
+import AIInsightBanner from "./AIInsightBanner";
+import { Button } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 
 interface OverviewTabProps {
-  data: any;
-  isLoading: boolean;
-  isError: boolean;
+  trades: Trade[];
 }
 
-const OverviewTab = ({ data, isLoading, isError }: OverviewTabProps) => {
-  // ✅ Fix: Use Global Currency Hook
-  const { format, symbol } = useCurrency();
+const OverviewTab = ({ trades }: OverviewTabProps) => {
+  const stats = calculateOverviewStats(trades);
+  const equityCurve = generateEquityCurve(trades);
+  const winLossData = generateWinLossData(trades);
+  const longShortData = generateLongShortData(trades);
+  const insight = generateAIInsights(trades, "overview");
+  const [showAllMetrics, setShowAllMetrics] = useState(false);
 
-  // Helper function to format currency with symbol
-  const formatCurrency = (val: number) => {
-    return `${symbol}${format(val)}`;
-  };
-
-  if (isLoading) {
-    return (
-      <div className="space-y-6">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {[...Array(8)].map((_, i) => (
-            <Skeleton key={i} className="h-24 w-full rounded-xl bg-secondary/50" />
-          ))}
-        </div>
-        <Skeleton className="h-[300px] w-full rounded-2xl bg-secondary/50" />
-      </div>
-    );
-  }
-
-  if (isError || !data) {
-    return (
-      <div className="h-64 flex items-center justify-center glass-card rounded-2xl border border-rose-500/20 text-rose-400">
-        Failed to load report data. Please try again.
-      </div>
-    );
-  }
-
-  // ✅ Extract data from SQL JSON response
-  const stats = data?.stats || {};
-  const equityCurve = data?.equityCurve || [];
-  // const dailyPnLData = data?.dailyPnL || []; // Unused variable
-  const longShortData = data?.longShort || [];
-
-  // ✅ Advanced Metric Calculations with safe fallbacks
-  const totalTrades = stats.totalTrades || 0;
-  const wins = stats.wins || 0;
-  const losses = stats.losses || 0;
-  const winRate = (stats.winRate || 0) / 100;
-
-  // Expectancy = (Win% * AvgWin) - (Loss% * AvgLoss)
-  // We calculate AvgWin/AvgLoss from stats to be more precise than just P&L
-  const avgWin = wins > 0 ? (stats.totalPnl > 0 ? stats.totalPnl / wins : 50) : 0; // Fallback for mock/calc
-  const avgLoss = losses > 0 ? (Math.abs(stats.totalPnl) / losses) : 0;
-  const expectancy = (winRate * avgWin) - ((1 - winRate) * avgLoss);
-
-  const winLossData = [
-    { name: "Wins", value: wins, fill: "hsl(142, 71%, 45%)" },
-    { name: "Losses", value: losses, fill: "hsl(346, 84%, 61%)" }
-  ];
-
-  const metrics = [
+  // Primary metrics (always shown)
+  const primaryKpis = [
     { 
-      label: "Net P&L", 
-      value: formatCurrency(stats.totalPnl || 0),
-      icon: CurrencyDollar,
-      trend: (stats.totalPnl || 0) >= 0 ? "positive" : "negative",
-      subtext: "Total realized profit"
+      label: "Total P&L", 
+      value: `$${stats.totalPnl.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`,
+      color: stats.totalPnl >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
     },
     { 
       label: "Win Rate", 
-      value: `${(stats.winRate || 0).toFixed(1)}%`,
-      icon: Target,
-      trend: (stats.winRate || 0) >= 50 ? "positive" : "negative",
-      subtext: `${wins}W - ${losses}L`
+      value: `${stats.winRate.toFixed(0)}%`,
+      color: stats.winRate >= 50 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
     },
     { 
       label: "Profit Factor", 
-      value: (stats.profitFactor || 0).toFixed(2),
-      icon: ChartBar,
-      trend: (stats.profitFactor || 0) >= 1.5 ? "positive" : (stats.profitFactor || 0) >= 1 ? "neutral" : "negative",
-      subtext: "Profit / Loss Ratio"
+      value: stats.profitFactor.toFixed(2),
+      color: stats.profitFactor >= 1.5 ? "text-emerald-600 dark:text-emerald-400" : stats.profitFactor >= 1 ? "text-foreground" : "text-rose-600 dark:text-rose-400"
     },
     { 
-      label: "Expectancy", 
-      value: formatCurrency(expectancy),
-      icon: Pulse,
-      trend: expectancy > 0 ? "positive" : "negative",
-      subtext: "Avg return per trade"
+      label: "Max Drawdown", 
+      value: `${stats.maxDrawdown.toFixed(0)}%`,
+      color: stats.maxDrawdown > 20 ? "text-rose-600 dark:text-rose-400" : "text-foreground"
     },
+  ];
+
+  // Secondary metrics (shown in sheet on mobile)
+  const secondaryKpis = [
     { 
-      label: "Avg Win", 
-      value: formatCurrency(avgWin),
-      icon: ArrowUp,
-      trend: "positive",
-      subtext: "Winning trade average"
-    },
-    { 
-      label: "Avg Loss", 
-      value: formatCurrency(avgLoss),
-      icon: ArrowDown,
-      trend: "negative",
-      subtext: "Losing trade average"
-    },
-    { 
-      label: "Risk:Reward", 
-      value: `1:${(stats.avgRR || 0).toFixed(2)}`,
-      icon: Scales,
-      trend: (stats.avgRR || 0) >= 1.5 ? "positive" : "neutral",
-      subtext: "Realized R:R"
+      label: "Avg R:R", 
+      value: stats.avgRR.toFixed(2),
+      color: "text-foreground"
     },
     { 
       label: "Total Trades", 
-      value: totalTrades.toString(),
-      icon: TrendUp,
-      trend: "neutral",
-      subtext: "Sample size"
-    }
+      value: stats.totalTrades.toString(),
+      color: "text-foreground"
+    },
   ];
 
-  const getTrendColor = (trend: string) => {
-    switch (trend) {
-      case "positive": return "text-emerald-400";
-      case "negative": return "text-rose-400";
-      default: return "text-muted-foreground";
-    }
-  };
-
-  const getTrendBg = (trend: string) => {
-    switch (trend) {
-      case "positive": return "bg-emerald-500/10 text-emerald-500";
-      case "negative": return "bg-rose-500/10 text-rose-500";
-      default: return "bg-secondary/50 text-muted-foreground";
-    }
-  };
+  const allKpis = [...primaryKpis, ...secondaryKpis];
 
   return (
-    <div className="space-y-6">
-      
-      {/* 1. Metrics Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
-        {metrics.map((metric, i) => (
-          <div key={i} className="glass-card p-4 rounded-xl flex flex-col justify-between hover:border-primary/30 transition-colors border border-border/50">
-            <div className="flex items-start justify-between mb-2">
-              <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">{metric.label}</span>
-              <div className={`p-1.5 rounded-lg ${getTrendBg(metric.trend)}`}>
-                <metric.icon weight="duotone" className="w-4 h-4" />
-              </div>
-            </div>
-            <div>
-              <h3 className={`text-xl md:text-2xl font-bold tracking-tight tabular-nums ${getTrendColor(metric.trend)}`}>
-                {metric.value}
-              </h3>
-              <p className="text-[10px] md:text-xs text-muted-foreground mt-1">
-                {metric.subtext}
+    <div className="space-y-4 sm:space-y-6">
+      {/* KPI Cards - Mobile: 4 primary only */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3">
+        {/* Mobile: Show only primary KPIs */}
+        <div className="contents sm:hidden">
+          {primaryKpis.map((kpi) => (
+            <div key={kpi.label} className="glass-card p-3 rounded-xl">
+              <span className="text-[10px] text-muted-foreground block mb-0.5">{kpi.label}</span>
+              <p className={`text-lg font-semibold tracking-tight ${kpi.color}`}>
+                {kpi.value}
               </p>
             </div>
-          </div>
-        ))}
-      </div>
-
-
-      {/* 2. Equity Curve Chart */}
-      <div className="glass-card p-4 md:p-6 rounded-2xl border border-border/50">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h3 className="text-base font-semibold text-foreground">Equity Curve</h3>
-            <p className="text-xs text-muted-foreground">Cumulative performance tracking</p>
-          </div>
-          <div className="px-3 py-1 rounded-full bg-secondary/50 border border-border text-[10px] font-bold text-foreground">
-            {totalTrades} TOTAL TRADES
-          </div>
+          ))}
         </div>
-        <div className="h-[300px] w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={equityCurve} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-              <defs>
-                <linearGradient id="colorPnL" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} opacity={0.3} />
-              <XAxis dataKey="date" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }} axisLine={false} tickLine={false} minTickGap={40} />
-              <YAxis tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={(val) => `${symbol}${val}`} />
-              <Tooltip
-                contentStyle={{ backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))", borderRadius: "12px", fontSize: "12px" }}
-                formatter={(value: number) => [formatCurrency(value), "Equity"]}
-              />
-              <ReferenceLine y={0} stroke="hsl(var(--muted-foreground))" strokeDasharray="3 3" />
-              <Area type="monotone" dataKey="value" stroke="hsl(var(--primary))" strokeWidth={2} fill="url(#colorPnL)" />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-
-      {/* 3. Distribution & Volume Section */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
         
-        {/* Win/Loss Pie */}
-        <div className="glass-card p-5 rounded-2xl border border-border/50">
-          <h3 className="text-sm font-semibold text-foreground mb-6">Win vs Loss Distribution</h3>
-          <div className="flex items-center justify-around">
-            <div className="h-[200px] w-[200px] relative">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={winLossData} innerRadius={60} outerRadius={85} paddingAngle={5} dataKey="value" stroke="none">
-                    {winLossData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.fill} />)}
-                  </Pie>
-                  <Tooltip contentStyle={{ backgroundColor: "hsl(var(--card))", borderRadius: "8px", fontSize: "12px" }} />
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                <span className="text-2xl font-bold text-foreground">{(stats.winRate || 0).toFixed(0)}%</span>
-                <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-tighter">Win Rate</span>
+        {/* Desktop: Show all KPIs */}
+        <div className="hidden sm:contents">
+          {allKpis.map((kpi) => (
+            <div key={kpi.label} className="glass-card p-4 rounded-xl">
+              <div className="flex items-center gap-1.5 mb-2">
+                <span className="text-xs text-muted-foreground">{kpi.label}</span>
+                <Info weight="regular" className="w-3 h-3 text-muted-foreground/50" />
               </div>
+              <p className={`text-xl font-normal tracking-tight-premium ${kpi.color}`}>
+                {kpi.value}
+              </p>
             </div>
-            
-            <div className="space-y-4">
-              {winLossData.map((item) => (
-                <div key={item.name} className="flex flex-col">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: item.fill }} />
-                    <span className="text-xs text-muted-foreground">{item.name}</span>
-                  </div>
-                  <span className="text-lg font-bold ml-4 tabular-nums">{item.value}</span>
-                </div>
-              ))}
-            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Mobile: View all metrics button */}
+      <div className="sm:hidden">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setShowAllMetrics(true)}
+          className="w-full text-muted-foreground text-xs gap-1"
+        >
+          View all metrics
+          <CaretDown weight="bold" className="w-3 h-3" />
+        </Button>
+      </div>
+
+      {/* Equity Curve - Full Width with section header */}
+      <div className="space-y-2 sm:space-y-3">
+        <div className="flex items-center gap-2">
+          <h3 className="text-sm font-medium text-foreground">📈 Performance</h3>
+        </div>
+        <div className="glass-card p-3 sm:p-4 rounded-xl">
+          <h4 className="text-xs sm:text-sm font-light text-muted-foreground mb-3">Equity Curve</h4>
+          <div className="h-[200px] sm:h-[280px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={equityCurve}>
+                <defs>
+                  <linearGradient id="equityGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.4} />
+                    <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" className="hidden sm:block" />
+                <XAxis
+                  dataKey="date"
+                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }}
+                  tickLine={false}
+                  axisLine={false}
+                  interval="preserveStartEnd"
+                />
+                <YAxis
+                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }}
+                  tickLine={false}
+                  axisLine={false}
+                  tickFormatter={(value) => `$${value}`}
+                  width={45}
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "hsl(var(--card))",
+                    border: "1px solid hsl(var(--border))",
+                    borderRadius: "12px",
+                    color: "hsl(var(--foreground))",
+                  }}
+                  formatter={(value: number) => [`$${value.toFixed(2)}`, "P&L"]}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="value"
+                  stroke="hsl(var(--primary))"
+                  strokeWidth={2}
+                  fill="url(#equityGradient)"
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+
+      {/* AI Insight - After charts */}
+      <AIInsightBanner insight={insight} />
+
+      {/* Win/Loss + Long/Short Charts */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+        {/* Win/Loss Distribution */}
+        <div className="glass-card p-3 sm:p-4 rounded-xl space-y-3">
+          <h3 className="text-xs sm:text-sm font-light text-foreground">Win vs Loss Distribution</h3>
+          <div className="h-[160px] sm:h-[200px] flex items-center justify-center">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={winLossData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={40}
+                  outerRadius={65}
+                  paddingAngle={2}
+                  dataKey="value"
+                >
+                  {winLossData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.fill} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "hsl(var(--card))",
+                    border: "1px solid hsl(var(--border))",
+                    borderRadius: "12px",
+                    color: "hsl(var(--foreground))",
+                  }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="flex justify-center gap-4 sm:gap-6 text-xs">
+            {winLossData.map((item) => (
+              <div key={item.name} className="flex items-center gap-2">
+                <div 
+                  className="w-2 h-2 sm:w-3 sm:h-3 rounded-full" 
+                  style={{ backgroundColor: item.fill }}
+                />
+                <span className="text-muted-foreground">{item.name}: {item.value}</span>
+              </div>
+            ))}
           </div>
         </div>
 
         {/* Long vs Short Performance */}
-        <div className="glass-card p-5 rounded-2xl border border-border/50">
-          <h3 className="text-sm font-semibold text-foreground mb-6">Long vs Short Performance</h3>
-          <div className="h-[180px] w-full">
+        <div className="glass-card p-3 sm:p-4 rounded-xl space-y-3">
+          <h3 className="text-xs sm:text-sm font-light text-foreground">Long vs Short Performance</h3>
+          <div className="h-[160px] sm:h-[200px]">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={longShortData} layout="vertical" margin={{ left: -10 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} opacity={0.3} />
-                <XAxis type="number" hide />
-                <YAxis dataKey="side" type="category" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11, fontWeight: 600 }} width={60} axisLine={false} tickLine={false} />
-                <Tooltip
-                  cursor={{ fill: 'transparent' }}
-                  contentStyle={{ backgroundColor: "hsl(var(--card))", borderRadius: "8px", fontSize: "12px" }}
-                  formatter={(value: number) => [formatCurrency(value), "Net P&L"]}
+              <BarChart data={longShortData} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
+                <XAxis 
+                  type="number" 
+                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }}
+                  tickFormatter={(value) => `$${value}`}
                 />
-                <Bar dataKey="pnl" barSize={30} radius={[0, 4, 4, 0]}>
-                  {longShortData.map((entry: any, index: number) => (
-                    <Cell key={`cell-${index}`} fill={(entry.pnl || 0) >= 0 ? "hsl(var(--primary))" : "hsl(346, 84%, 61%)"} />
-                  ))}
-                </Bar>
+                <YAxis 
+                  type="category" 
+                  dataKey="side"
+                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
+                  width={40}
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "hsl(var(--card))",
+                    border: "1px solid hsl(var(--border))",
+                    borderRadius: "12px",
+                    color: "hsl(var(--foreground))",
+                  }}
+                  formatter={(value: number, name: string) => [
+                    name === "pnl" ? `$${value.toFixed(2)}` : `${value.toFixed(1)}%`,
+                    name === "pnl" ? "P&L" : "Win Rate"
+                  ]}
+                />
+                <Bar 
+                  dataKey="pnl" 
+                  fill="hsl(var(--primary))" 
+                  radius={[0, 4, 4, 0]}
+                />
               </BarChart>
             </ResponsiveContainer>
           </div>
-          <div className="grid grid-cols-2 gap-4 mt-2">
-            {longShortData.map((item: any) => (
-              <div key={item.side} className="p-2 rounded-lg bg-secondary/30 text-center border border-border/30">
-                <p className="text-[10px] text-muted-foreground font-bold uppercase">{item.side}</p>
-                <p className="text-sm font-bold text-foreground">{(item.winRate || 0).toFixed(1)}% WR</p>
-                <p className="text-[10px] text-muted-foreground">{item.trades} Trades</p>
+          <div className="flex justify-center gap-4 sm:gap-6 text-xs">
+            {longShortData.map((item) => (
+              <div key={item.side} className="text-center">
+                <span className="text-muted-foreground">{item.side}: </span>
+                <span className="text-foreground">{item.trades} trades, </span>
+                <span className={item.winRate >= 50 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}>
+                  {item.winRate.toFixed(0)}% WR
+                </span>
               </div>
             ))}
           </div>
         </div>
       </div>
+
+      {/* Mobile: All Metrics Sheet */}
+      <Sheet open={showAllMetrics} onOpenChange={setShowAllMetrics}>
+        <SheetContent side="bottom" className="bg-card border-border rounded-t-2xl">
+          <SheetHeader className="pb-4">
+            <SheetTitle className="text-foreground">All Metrics</SheetTitle>
+          </SheetHeader>
+          <div className="grid grid-cols-2 gap-3 pb-6">
+            {allKpis.map((kpi) => (
+              <div key={kpi.label} className="glass-card p-3 rounded-xl">
+                <span className="text-[10px] text-muted-foreground block mb-0.5">{kpi.label}</span>
+                <p className={`text-lg font-semibold tracking-tight ${kpi.color}`}>
+                  {kpi.value}
+                </p>
+              </div>
+            ))}
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 };

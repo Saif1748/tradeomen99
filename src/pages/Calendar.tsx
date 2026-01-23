@@ -1,88 +1,61 @@
 import { useState, useMemo } from "react";
 import { CalendarBlank, CaretLeft, CaretRight } from "@phosphor-icons/react";
-import { setMonth, setYear, getMonth, getYear } from "date-fns";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import PageHeader from "@/components/dashboard/PageHeader";
 import CalendarGrid from "@/components/calendar/CalendarGrid";
+import { generateMonthData, getMonthStats } from "@/lib/calendarData";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-
-// Hooks
-import { useCalendar } from "@/hooks/use-calendar";
-import { useCurrency } from "@/hooks/use-currency";
 
 const Calendar = () => {
   const today = new Date();
-  // Initialize to the first of the current month to ensure stable queries
   const [currentDate, setCurrentDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
   const [colorMode, setColorMode] = useState<'pnl' | 'winrate'>('pnl');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [notes, setNotes] = useState<Map<string, string>>(new Map());
 
-  // Fetch efficient SQL stats (Now returns a Record/Object, not a Map)
-  const { data: monthDataMap, isLoading } = useCalendar(currentDate);
-  
-  // Currency Settings
-  const { format: formatCurrency, symbol } = useCurrency();
+  const monthData = useMemo(() => {
+    const data = generateMonthData(currentDate.getFullYear(), currentDate.getMonth());
+    // Merge notes into dayData
+    data.forEach((dayData, key) => {
+      const note = notes.get(key);
+      if (note) {
+        dayData.note = note;
+      }
+    });
+    return data;
+  }, [currentDate, notes]);
 
-  // Generate years for the dropdown
-  const currentYearInt = new Date().getFullYear();
-  const years = Array.from({ length: currentYearInt - 2020 + 3 }, (_, i) => 2020 + i);
-  
-  const months = [
-    "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December"
-  ];
-
-  // ✅ FIX: Efficient Object Aggregation
-  // Replaced Map.values() with Object.values() to prevent TypeErrors
   const monthStats = useMemo(() => {
-    if (isLoading || !monthDataMap) {
-      return { monthlyPnL: 0, winRate: 0, totalTrades: 0, tradingDays: 0 };
-    }
+    return getMonthStats(monthData);
+  }, [monthData]);
 
-    let totalPnL = 0;
-    let totalTrades = 0;
-    let totalWins = 0;
-    let tradingDays = 0;
+  const handleSaveNote = (date: Date, note: string) => {
+    setNotes(prev => {
+      const newNotes = new Map(prev);
+      newNotes.set(date.toDateString(), note);
+      return newNotes;
+    });
+  };
 
-    // Iterate over the plain object values
-    const days = Object.values(monthDataMap);
-    
-    for (const dayStat of days) {
-      totalPnL += dayStat.daily_pnl;
-      totalTrades += dayStat.trade_count;
-      totalWins += dayStat.win_count;
-      if (dayStat.trade_count > 0) tradingDays++;
-    }
+  const monthName = currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  const shortMonthName = currentDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
 
-    const winRate = totalTrades > 0 ? Math.round((totalWins / totalTrades) * 100) : 0;
+  const goToPreviousMonth = () => {
+    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
+  };
 
-    return {
-      monthlyPnL: totalPnL,
-      winRate,
-      totalTrades,
-      tradingDays
-    };
-  }, [monthDataMap, isLoading]);
+  const goToNextMonth = () => {
+    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
+  };
 
-  // Navigation Handlers
-  const goToPreviousMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
-  const goToNextMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
-  const goToToday = () => setCurrentDate(new Date(today.getFullYear(), today.getMonth(), 1));
-  const handleMonthSelect = (m: string) => setCurrentDate(setMonth(currentDate, months.indexOf(m)));
-  const handleYearSelect = (y: string) => setCurrentDate(setYear(currentDate, parseInt(y)));
+  const goToToday = () => {
+    setCurrentDate(new Date(today.getFullYear(), today.getMonth(), 1));
+  };
 
   const formatPnL = (value: number) => {
     const sign = value >= 0 ? '+' : '';
-    // Format number using global currency settings
-    return `${sign}${symbol}${formatCurrency(Math.abs(value))}`;
+    return `${sign}$${Math.abs(value).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
   };
 
   return (
@@ -94,7 +67,7 @@ const Calendar = () => {
       />
 
       <div className="px-4 sm:px-6 lg:px-8 pb-6 pt-4 space-y-4 sm:space-y-6">
-        {/* Monthly Stats Cards */}
+        {/* Monthly Stats Cards - Compact on mobile */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4">
           <div className="glass-card p-3 sm:p-5 rounded-xl sm:rounded-2xl">
             <span className="text-[10px] sm:text-sm text-muted-foreground block mb-0.5 sm:mb-1">Monthly P&L</span>
@@ -127,62 +100,91 @@ const Calendar = () => {
 
         {/* Calendar Container */}
         <div className="glass-card p-3 sm:p-6 rounded-xl sm:rounded-2xl">
-          <div className="flex flex-col xl:flex-row items-center justify-between gap-4 mb-4 sm:mb-6">
-            
-            {/* Navigation & Selectors */}
-            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 w-full xl:w-auto">
-              <Button variant="outline" size="icon" onClick={goToPreviousMonth} className="h-9 w-9 rounded-lg border-border/50 hover:bg-secondary/50 shrink-0">
+          {/* Calendar Header - Compact on mobile */}
+          <div className="flex items-center justify-between gap-2 mb-4 sm:mb-6">
+            {/* Navigation - Compact */}
+            <div className="flex items-center gap-1 sm:gap-3">
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={goToPreviousMonth}
+                className="h-8 w-8 sm:h-9 sm:w-9 rounded-lg border-border/50 hover:bg-secondary/50"
+              >
                 <CaretLeft weight="bold" className="w-4 h-4" />
               </Button>
-
-              <div className="flex items-center gap-2">
-                <Select value={months[getMonth(currentDate)]} onValueChange={handleMonthSelect}>
-                  <SelectTrigger className="w-[120px] h-9 bg-secondary/50 border-border/50 font-medium text-sm">
-                    <SelectValue>{months[getMonth(currentDate)]}</SelectValue>
-                  </SelectTrigger>
-                  <SelectContent align="start" className="max-h-[300px]">
-                    {months.map((month) => <SelectItem key={month} value={month}>{month}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-
-                <Select value={getYear(currentDate).toString()} onValueChange={handleYearSelect}>
-                  <SelectTrigger className="w-[85px] h-9 bg-secondary/50 border-border/50 font-medium text-sm">
-                    <SelectValue>{getYear(currentDate)}</SelectValue>
-                  </SelectTrigger>
-                  <SelectContent align="start" className="max-h-[300px]">
-                    {years.map((year) => <SelectItem key={year} value={year.toString()}>{year}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <Button variant="outline" size="icon" onClick={goToNextMonth} className="h-9 w-9 rounded-lg border-border/50 hover:bg-secondary/50 shrink-0">
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={goToNextMonth}
+                className="h-8 w-8 sm:h-9 sm:w-9 rounded-lg border-border/50 hover:bg-secondary/50"
+              >
                 <CaretRight weight="bold" className="w-4 h-4" />
               </Button>
-              <Button variant="ghost" size="sm" onClick={goToToday} className="text-xs text-muted-foreground hover:text-foreground ml-1">Today</Button>
+              <h2 className="text-base sm:text-xl font-semibold text-foreground ml-1 sm:ml-2">
+                <span className="hidden sm:inline">{monthName}</span>
+                <span className="sm:hidden">{shortMonthName}</span>
+              </h2>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={goToToday}
+                className="hidden sm:inline-flex ml-2 text-xs text-muted-foreground hover:text-foreground"
+              >
+                Today
+              </Button>
             </div>
 
-            {/* Color Mode Toggle */}
-            <div className="flex items-center gap-1 bg-secondary/50 p-1 rounded-lg shrink-0">
-              <button onClick={() => setColorMode('pnl')} className={cn("px-3 py-1.5 text-xs sm:text-sm font-medium rounded-md transition-all", colorMode === 'pnl' ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>P&L</button>
-              <button onClick={() => setColorMode('winrate')} className={cn("px-3 py-1.5 text-xs sm:text-sm font-medium rounded-md transition-all", colorMode === 'winrate' ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
-                <span className="hidden sm:inline">Win Rate</span><span className="sm:hidden">WR</span>
+            {/* Color Mode - Segmented control style */}
+            <div className="flex items-center gap-1 bg-secondary/50 p-1 rounded-lg">
+              <button
+                onClick={() => setColorMode('pnl')}
+                className={cn(
+                  "px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm font-medium rounded-md transition-all",
+                  colorMode === 'pnl' 
+                    ? "bg-background text-foreground shadow-sm" 
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                P&L
+              </button>
+              <button
+                onClick={() => setColorMode('winrate')}
+                className={cn(
+                  "px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm font-medium rounded-md transition-all",
+                  colorMode === 'winrate' 
+                    ? "bg-background text-foreground shadow-sm" 
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <span className="hidden sm:inline">Win Rate</span>
+                <span className="sm:hidden">WR</span>
               </button>
             </div>
           </div>
 
-          {/* Legend */}
+          {/* Legend - Desktop only */}
           <div className="hidden sm:flex items-center gap-4 text-xs text-muted-foreground mb-4">
-            <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-sm bg-emerald-500/30" /><span>Profit</span></div>
-            <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-sm bg-rose-500/30" /><span>Loss</span></div>
-            <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-sm bg-muted/30" /><span>No Trades</span></div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-3 h-3 rounded-sm bg-emerald-500/30" />
+              <span>Profit</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-3 h-3 rounded-sm bg-rose-500/30" />
+              <span>Loss</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-3 h-3 rounded-sm bg-muted/30" />
+              <span>No Trades</span>
+            </div>
           </div>
 
-          {/* Grid - Passes the Record directly */}
+          {/* Calendar Grid */}
           <CalendarGrid
             year={currentDate.getFullYear()}
             month={currentDate.getMonth()}
-            monthData={monthDataMap}
+            monthData={monthData}
             colorMode={colorMode}
+            onSaveNote={handleSaveNote}
           />
         </div>
       </div>

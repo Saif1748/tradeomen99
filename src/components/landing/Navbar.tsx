@@ -1,27 +1,20 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { List, X, UserCircle, SignOut } from "@phosphor-icons/react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
-import { useAuth } from "@/hooks/use-Auth";
+import { List, X } from "@phosphor-icons/react";
+import { Link } from "react-router-dom";
 import logo from "@/assets/tradeomen-logo.png";
 
-
 const navLinks = [
-  { label: "Features", href: "/#features", type: "hash" },
-  { label: "Demo", href: "/#demo", type: "hash" },
-  { label: "Pricing", href: "/pricing", type: "route" },
-  { label: "About", href: "/about", type: "route" },
-  { label: "FAQ", href: "/pricing#faq", type: "route" },
+  { label: "Features", href: "#features" },
+  { label: "Demo", href: "#demo" },
+  { label: "Pricing", href: "#pricing" },
+  { label: "Testimonials", href: "#testimonials" },
+  { label: "FAQ", href: "#faq" },
 ];
-
 
 export function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const { session, signOut } = useAuth(); // Hook into auth state
-  const location = useLocation();
-  const navigate = useNavigate();
-
 
   useEffect(() => {
     const handleScroll = () => {
@@ -30,28 +23,6 @@ export function Navbar() {
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
-
-
-  const handleNavClick = (e: React.MouseEvent<HTMLAnchorElement>, href: string, type: string) => {
-    setIsMobileMenuOpen(false);
-    
-    if (type === 'hash') {
-      e.preventDefault();
-      const targetId = href.replace('/#', '');
-      
-      if (location.pathname !== '/') {
-        navigate('/');
-        setTimeout(() => {
-          const element = document.getElementById(targetId);
-          if (element) element.scrollIntoView({ behavior: 'smooth' });
-        }, 100);
-      } else {
-        const element = document.getElementById(targetId);
-        if (element) element.scrollIntoView({ behavior: 'smooth' });
-      }
-    }
-  };
-
 
   return (
     <>
@@ -74,73 +45,34 @@ export function Navbar() {
               />
             </Link>
 
-
             {/* Desktop Navigation */}
             <div className="hidden lg:flex items-center gap-8">
               {navLinks.map((link) => (
-                link.type === 'route' ? (
-                  <Link
-                    key={link.label}
-                    to={link.href}
-                    className={`text-sm font-medium transition-colors ${
-                      location.pathname === link.href 
-                        ? "text-primary font-semibold" 
-                        : "text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    {link.label}
-                  </Link>
-                ) : (
-                  <a
-                    key={link.label}
-                    href={link.href}
-                    onClick={(e) => handleNavClick(e, link.href, link.type)}
-                    className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-                  >
-                    {link.label}
-                  </a>
-                )
+                <a
+                  key={link.label}
+                  href={link.href}
+                  className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {link.label}
+                </a>
               ))}
             </div>
 
-
-            {/* Desktop CTAs - Conditional Rendering */}
+            {/* Desktop CTAs */}
             <div className="hidden lg:flex items-center gap-4">
-              {session ? (
-                <>
-                  <Link 
-                    to="/dashboard"
-                    className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors flex items-center gap-2"
-                  >
-                    <UserCircle size={20} />
-                    Dashboard
-                  </Link>
-                  <button 
-                    onClick={() => signOut()}
-                    className="text-sm font-medium text-red-400/80 hover:text-red-400 transition-colors flex items-center gap-2"
-                  >
-                    <SignOut size={18} />
-                    Logout
-                  </button>
-                </>
-              ) : (
-                <>
-                  <Link 
-                    to="/auth"
-                    className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    Login
-                  </Link>
-                  <Link 
-                    to="/auth?mode=signup"
-                    className="glow-button px-5 py-2.5 rounded-full text-sm font-medium text-primary-foreground"
-                  >
-                    Get Started
-                  </Link>
-                </>
-              )}
+              <Link 
+                to="/auth"
+                className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Login
+              </Link>
+              <Link 
+                to="/dashboard"
+                className="glow-button px-5 py-2.5 rounded-full text-sm font-medium text-primary-foreground"
+              >
+                Get Started
+              </Link>
             </div>
-
 
             {/* Mobile Menu Button */}
             <button
@@ -152,7 +84,6 @@ export function Navbar() {
           </div>
         </nav>
       </motion.header>
-
 
       {/* Mobile Menu */}
       <AnimatePresence>
@@ -184,69 +115,31 @@ export function Navbar() {
                 </div>
                 <div className="flex flex-col gap-2">
                   {navLinks.map((link) => (
-                    link.type === 'route' ? (
-                      <Link
-                        key={link.label}
-                        to={link.href}
-                        onClick={() => setIsMobileMenuOpen(false)}
-                        className={`px-4 py-3 rounded-xl text-lg font-medium transition-colors ${
-                          location.pathname === link.href
-                            ? "bg-primary/10 text-primary"
-                            : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
-                        }`}
-                      >
-                        {link.label}
-                      </Link>
-                    ) : (
-                      <a
-                        key={link.label}
-                        href={link.href}
-                        onClick={(e) => handleNavClick(e, link.href, link.type)}
-                        className="px-4 py-3 rounded-xl text-lg font-medium text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors"
-                      >
-                        {link.label}
-                      </a>
-                    )
+                    <a
+                      key={link.label}
+                      href={link.href}
+                      onClick={() => setIsMobileMenuOpen(false)}
+                      className="px-4 py-3 rounded-xl text-lg font-medium text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors"
+                    >
+                      {link.label}
+                    </a>
                   ))}
                 </div>
                 <div className="mt-auto flex flex-col gap-3">
-                  {session ? (
-                    <>
-                      <Link 
-                        to="/dashboard"
-                        onClick={() => setIsMobileMenuOpen(false)}
-                        className="w-full py-3 text-center font-medium text-foreground border border-border rounded-xl hover:bg-secondary transition-colors"
-                      >
-                        Go to Dashboard
-                      </Link>
-                      <button 
-                        onClick={() => {
-                          signOut();
-                          setIsMobileMenuOpen(false);
-                        }}
-                        className="w-full py-3 text-center font-medium text-red-400 bg-red-400/5 rounded-xl border border-red-400/20"
-                      >
-                        Logout
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <Link 
-                        to="/auth"
-                        onClick={() => setIsMobileMenuOpen(false)}
-                        className="w-full py-3 text-center font-medium text-foreground border border-border rounded-xl hover:bg-secondary transition-colors"
-                      >
-                        Login
-                      </Link>
-                      <Link 
-                        to="/auth?mode=signup"
-                        onClick={() => setIsMobileMenuOpen(false)}
-                        className="glow-button w-full py-3 text-center font-medium text-primary-foreground rounded-xl"
-                      >
-                        Get Started
-                      </Link>
-                    </>
-                  )}
+                  <Link 
+                    to="/auth"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="w-full py-3 text-center font-medium text-foreground border border-border rounded-xl hover:bg-secondary transition-colors"
+                  >
+                    Login
+                  </Link>
+                  <Link 
+                    to="/dashboard"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="glow-button w-full py-3 text-center font-medium text-primary-foreground rounded-xl"
+                  >
+                    Get Started
+                  </Link>
                 </div>
               </div>
             </motion.div>

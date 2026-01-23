@@ -1,26 +1,13 @@
-import { motion, AnimatePresence, useInView } from "framer-motion";
+import { motion } from "framer-motion";
+import { useInView } from "framer-motion";
 import { useRef, useState } from "react";
-import { 
-  ChartLine, 
-  ListBullets, 
-  Target, 
-  Strategy, 
-  CalendarBlank, 
-  Robot,
-  CheckCircle,
-  CaretRight
-} from "@phosphor-icons/react";
-import { BrowserFrame } from "./BrowserFrame";
-import { cn } from "@/lib/utils";
+import { ChartLine, ListBullets, Target, CalendarBlank } from "@phosphor-icons/react";
 
-// Screenshot mapping
 const screenshots = {
-  dashboard: "/images/dashboard.webp",
-  ai: "/images/ai-chat.webp",
-  trades: "/images/trades.webp",
-  strategies: "/images/strategies.webp",
-  reports: "/images/reports.webp",
-  calendar: "/images/calendar.webp",
+  dashboard: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/4394d482-3c53-43c7-8635-7ecca837324f/70bff591-e9bd-48fd-ae4f-9e897a0db18a.lovableproject.com-1767607040527.png",
+  trades: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/e6bee591-cc01-4c1b-9753-ab4d8346524a/70bff591-e9bd-48fd-ae4f-9e897a0db18a.lovableproject.com-1767607040847.png",
+  reports: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/3791b7a6-d058-400c-9a97-c335be963486/70bff591-e9bd-48fd-ae4f-9e897a0db18a.lovableproject.com-1767607042900.png",
+  strategies: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/b90b6cd7-53f5-4dcb-ba7a-5c701ef8663b/70bff591-e9bd-48fd-ae4f-9e897a0db18a.lovableproject.com-1767607043171.png",
 };
 
 const tabs = [
@@ -28,33 +15,17 @@ const tabs = [
     id: "dashboard",
     label: "Dashboard",
     icon: ChartLine,
-    title: "Real-Time Command Center",
+    title: "Real-Time Trading Dashboard",
     description: "Get a complete overview of your trading performance at a glance. Monitor your P&L, win rate, profit factor, and trading score with beautiful visualizations.",
     features: ["Net P&L tracking", "Trading Score radar", "Cumulative equity curve", "Mini calendar heatmap"],
   },
   {
-    id: "ai",
-    label: "AI Coach",
-    icon: Robot,
-    title: "Your Personal Trading Coach",
-    description: "Ask questions about your data in plain English. Get instant feedback on risk management, psychology, and strategy optimization.",
-    features: ["Natural language queries", "Risk analysis", "Psychology feedback", "24/7 availability"],
-  },
-  {
     id: "trades",
-    label: "Journal",
+    label: "Trade Journal",
     icon: ListBullets,
     title: "Comprehensive Trade Journal",
     description: "Log and organize every trade with detailed information. Filter by date, symbol, strategy, and tags to find exactly what you're looking for.",
     features: ["Multi-asset support", "Smart tagging system", "R-Multiple tracking", "Advanced filtering"],
-  },
-  {
-    id: "strategies",
-    label: "Strategies",
-    icon: Strategy,
-    title: "Strategy Performance Tracking",
-    description: "Create and manage multiple trading strategies. Compare performance metrics side-by-side to identify your most profitable approaches.",
-    features: ["Strategy templates", "Win rate tracking", "P&L per strategy", "Performance comparison"],
   },
   {
     id: "reports",
@@ -65,12 +36,12 @@ const tabs = [
     features: ["Equity curve analysis", "Win/Loss distribution", "Strategy comparison", "AI-powered insights"],
   },
   {
-    id: "calendar",
-    label: "Calendar",
+    id: "strategies",
+    label: "Strategies",
     icon: CalendarBlank,
-    title: "Visual Consistency Tracker",
-    description: "See your trading month in a clear heatmap. Spot consistency patterns, review daily notes, and identify your best trading days.",
-    features: ["Monthly P&L view", "Daily trade counts", "Streak tracking", "Quick day review"],
+    title: "Strategy Performance Tracking",
+    description: "Create and manage multiple trading strategies. Compare performance metrics side-by-side to identify your most profitable approaches.",
+    features: ["Strategy templates", "Win rate tracking", "P&L per strategy", "Performance comparison"],
   },
 ];
 
@@ -82,160 +53,92 @@ export function ProductShowcase() {
   const activeData = tabs.find(t => t.id === activeTab)!;
 
   return (
-    <section id="demo" ref={ref} className="py-24 lg:py-32 relative overflow-hidden bg-background">
-      {/* Background Decor */}
-      <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_50%,#000_70%,transparent_100%)] pointer-events-none" />
-
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-        
-        {/* Section Header */}
-        <motion.div 
+    <section id="demo" ref={ref} className="py-24 lg:py-36 bg-card/30">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <motion.div
           initial={{ opacity: 0, y: 30 }}
           animate={isInView ? { opacity: 1, y: 0 } : {}}
           transition={{ duration: 0.7 }}
-          className="text-center mb-16"
+          className="text-center mb-12 lg:mb-16"
         >
-          <span className="inline-block px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary text-[10px] uppercase tracking-widest font-medium mb-6">
+          <span className="inline-block px-4 py-1.5 rounded-full bg-primary/10 text-primary text-sm font-medium mb-6">
             Product Tour
           </span>
-          <h2 className="text-3xl lg:text-5xl font-light tracking-tight-premium leading-section mb-6">
+          <h2 className="text-3xl lg:text-5xl font-light tracking-tight-premium leading-section">
             See <span className="text-gradient-primary font-medium">TradeOmen</span> in Action
           </h2>
-          <p className="text-lg text-muted-foreground font-light max-w-2xl mx-auto">
-            Explore the powerful features that help professional traders maintain their edge.
+          <p className="mt-6 text-lg text-muted-foreground font-light max-w-2xl mx-auto">
+            Explore the powerful features that help thousands of traders improve their performance
           </p>
         </motion.div>
 
-        {/* --- NEW TABS DESIGN: Floating Glass Dock --- */}
-        <div className="flex justify-center mb-16 lg:mb-24">
-          <div className="flex items-center gap-1 p-1.5 rounded-full bg-black/20 border border-white/10 backdrop-blur-xl overflow-x-auto max-w-full no-scrollbar shadow-2xl shadow-black/20">
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={cn(
-                  "relative px-5 py-2.5 rounded-full text-sm font-medium transition-all duration-300 outline-none whitespace-nowrap",
-                  activeTab === tab.id ? "text-white" : "text-muted-foreground hover:text-foreground hover:bg-white/5"
-                )}
-              >
-                {activeTab === tab.id && (
-                  <motion.div
-                    layoutId="activeTabPill"
-                    className="absolute inset-0 bg-primary rounded-full shadow-lg shadow-primary/25"
-                    transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
-                  />
-                )}
-                <span className="relative z-10 flex items-center gap-2">
-                  <tab.icon size={18} weight={activeTab === tab.id ? "fill" : "regular"} />
-                  {tab.label}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
+        {/* Tabs */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={isInView ? { opacity: 1, y: 0 } : {}}
+          transition={{ duration: 0.5, delay: 0.2 }}
+          className="flex flex-wrap justify-center gap-3 mb-12"
+        >
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-medium transition-all ${
+                activeTab === tab.id
+                  ? "bg-primary text-primary-foreground shadow-lg shadow-primary/25"
+                  : "bg-secondary/50 text-muted-foreground hover:bg-secondary hover:text-foreground"
+              }`}
+            >
+              <tab.icon size={18} weight={activeTab === tab.id ? "fill" : "regular"} />
+              {tab.label}
+            </button>
+          ))}
+        </motion.div>
 
-        {/* Content Area */}
-        <div className="grid lg:grid-cols-12 gap-12 lg:gap-20 items-center">
-          
-          {/* Text Side */}
-          <div className="lg:col-span-5 order-2 lg:order-1">
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={activeTab}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 20 }}
-                transition={{ duration: 0.4 }}
-                className="space-y-8"
-              >
-                {/* Icon Box */}
-                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/20 flex items-center justify-center">
-                  <activeData.icon size={28} weight="duotone" className="text-primary" />
-                </div>
-                
-                <div className="space-y-4">
-                  <h3 className="text-3xl lg:text-4xl font-light tracking-tight text-foreground">
-                    {activeData.title}
-                  </h3>
-                  <p className="text-lg text-muted-foreground font-light leading-relaxed">
-                    {activeData.description}
-                  </p>
-                </div>
-                
-                {/* Feature List */}
-                <ul className="space-y-4 pt-2">
-                  {activeData.features.map((feature, i) => (
-                    <motion.li 
-                      key={feature}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.1 + (i * 0.1) }}
-                      className="flex items-start gap-3 group"
-                    >
-                      <CheckCircle weight="fill" className="w-5 h-5 text-emerald-500 mt-0.5 shrink-0 group-hover:scale-110 transition-transform" />
-                      <span className="text-foreground/80 font-light group-hover:text-foreground transition-colors">
-                        {feature}
-                      </span>
-                    </motion.li>
-                  ))}
-                </ul>
+        {/* Content */}
+        <div className="grid lg:grid-cols-5 gap-8 lg:gap-12 items-center">
+          {/* Info */}
+          <motion.div
+            key={activeTab + "-info"}
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.4 }}
+            className="lg:col-span-2 space-y-6"
+          >
+            <h3 className="text-2xl lg:text-3xl font-light tracking-tight-premium">
+              {activeData.title}
+            </h3>
+            <p className="text-muted-foreground font-light leading-relaxed">
+              {activeData.description}
+            </p>
+            <ul className="space-y-3">
+              {activeData.features.map((feature) => (
+                <li key={feature} className="flex items-center gap-3">
+                  <div className="w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center">
+                    <div className="w-2 h-2 rounded-full bg-primary" />
+                  </div>
+                  <span className="text-sm text-muted-foreground">{feature}</span>
+                </li>
+              ))}
+            </ul>
+          </motion.div>
 
-                <div className="pt-6">
-                  <button className="text-sm font-medium text-primary hover:text-primary/80 transition-colors inline-flex items-center gap-2 group border-b border-primary/20 pb-0.5 hover:border-primary">
-                    Learn more about {activeData.label} 
-                    <CaretRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-1" />
-                  </button>
-                </div>
-              </motion.div>
-            </AnimatePresence>
-          </div>
-
-          {/* Screenshot Side */}
-          <div className="lg:col-span-7 order-1 lg:order-2">
-            <div className="relative isolate">
-              {/* Dynamic Glow Background */}
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={activeTab + "-glow"}
-                  initial={{ opacity: 0, scale: 0.8 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 1.1 }}
-                  transition={{ duration: 0.8 }}
-                  className="absolute inset-0 bg-primary/20 blur-[100px] rounded-full -z-10"
-                />
-              </AnimatePresence>
-
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={activeTab}
-                  initial={{ opacity: 0, y: 20, scale: 0.98 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: -20, scale: 0.98 }}
-                  transition={{ duration: 0.5, ease: "easeOut" }}
-                >
-                  <BrowserFrame 
-                    interactive 
-                    className="shadow-2xl shadow-black/50 border-white/10 bg-[#0A0A0A]"
-                  >
-                    <div className="aspect-[16/10] w-full overflow-hidden bg-background/50 relative">
-                       {/* Placeholder icon while loading */}
-                       <div className="absolute inset-0 flex items-center justify-center text-muted-foreground/20">
-                          <activeData.icon size={48} weight="duotone" />
-                       </div>
-                       
-                       <img
-                        src={screenshots[activeTab as keyof typeof screenshots]}
-                        alt={activeData.title}
-                        className="w-full h-full object-contain object-top" 
-                        loading="lazy"
-                      />
-                    </div>
-                  </BrowserFrame>
-                </motion.div>
-              </AnimatePresence>
+          {/* Screenshot */}
+          <motion.div
+            key={activeTab + "-image"}
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.5 }}
+            className="lg:col-span-3"
+          >
+            <div className="glass-card p-2 overflow-hidden mockup-glow">
+              <img
+                src={screenshots[activeTab as keyof typeof screenshots]}
+                alt={activeData.title}
+                className="w-full h-auto rounded-lg"
+              />
             </div>
-          </div>
-
+          </motion.div>
         </div>
       </div>
     </section>

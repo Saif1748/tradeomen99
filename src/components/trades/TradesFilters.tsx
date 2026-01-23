@@ -8,14 +8,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
-import { DateRange } from "react-day-picker";
-import { format } from "date-fns";
 
 interface TradesFiltersProps {
   searchQuery: string;
@@ -24,8 +16,6 @@ interface TradesFiltersProps {
   setSideFilter: (side: string) => void;
   typeFilter: string;
   setTypeFilter: (type: string) => void;
-  dateRange: DateRange | undefined;
-  setDateRange: (range: DateRange | undefined) => void;
 }
 
 const TradesFilters = ({
@@ -35,15 +25,7 @@ const TradesFilters = ({
   setSideFilter,
   typeFilter,
   setTypeFilter,
-  dateRange,
-  setDateRange,
 }: TradesFiltersProps) => {
-  const dateRangeLabel = dateRange?.from 
-    ? dateRange.to 
-      ? `${format(dateRange.from, "MMM d")} - ${format(dateRange.to, "MMM d")}`
-      : format(dateRange.from, "MMM d, yyyy")
-    : "Select dates";
-
   return (
     <div className="glass-card p-4 rounded-2xl">
       <div className="flex flex-col lg:flex-row gap-3 lg:items-center">
@@ -63,28 +45,13 @@ const TradesFilters = ({
 
         {/* Filters */}
         <div className="flex flex-wrap gap-3 items-center">
-          {/* Date Range Filter */}
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button 
-                variant="outline" 
-                className="gap-2 bg-secondary/50 border-border/50 hover:bg-secondary"
-              >
-                <CalendarBlank weight="regular" className="w-4 h-4" />
-                {dateRangeLabel}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0 bg-card border-border" align="start">
-              <Calendar
-                initialFocus
-                mode="range"
-                defaultMonth={dateRange?.from}
-                selected={dateRange}
-                onSelect={setDateRange}
-                numberOfMonths={2}
-              />
-            </PopoverContent>
-          </Popover>
+          <Button
+            variant="outline"
+            className="gap-2 bg-secondary/50 border-border/50 hover:bg-secondary"
+          >
+            <CalendarBlank weight="regular" className="w-4 h-4" />
+            Date Range
+          </Button>
 
           <Select value={sideFilter} onValueChange={setSideFilter}>
             <SelectTrigger className="w-[120px] bg-secondary/50 border-border/50">

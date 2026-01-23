@@ -1,14 +1,8 @@
-// src/components/AIChat.tsx
-
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChatCircle, Lightning, List } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { toast } from "sonner";
-import { useQuery, useQueryClient } from "@tanstack/react-query"; // ✅ Added for Caching
-
-// Layout & Components
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import ChatMessage from "@/components/ai-chat/ChatMessage";
 import ChatInput from "@/components/ai-chat/ChatInput";
@@ -17,156 +11,123 @@ import ThinkingIndicator from "@/components/ai-chat/ThinkingIndicator";
 import EmptyState from "@/components/ai-chat/EmptyState";
 import MobileSidebar from "@/components/dashboard/MobileSidebar";
 
-// API
-import { aiApi } from "@/services/api/modules/ai";
-import type { ChatSession } from "@/services/api/types";
-
-// Local UI Message Interface
 interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
-  attachments?: File[];
-  isStreaming?: boolean;
 }
 
+interface ChatSession {
+  id: string;
+  title: string;
+  timestamp: string;
+  preview: string;
+  messages: Message[];
+}
+
+// Mock chat history
+const mockChatHistory: ChatSession[] = [
+  {
+    id: "1",
+    title: "AAPL Trade Analysis",
+    timestamp: "2 hours ago",
+    preview: "What was my win rate on AAPL trades last month?",
+    messages: [],
+  },
+  {
+    id: "2",
+    title: "Risk Management Review",
+    timestamp: "Yesterday",
+    preview: "Can you analyze my position sizing?",
+    messages: [],
+  },
+  {
+    id: "3",
+    title: "Strategy Performance",
+    timestamp: "3 days ago",
+    preview: "How is my momentum strategy performing?",
+    messages: [],
+  },
+];
+
 const AIChat = () => {
-  const queryClient = useQueryClient(); // ✅ Query Client for manual cache updates
-
-  // State
-  // We keep 'messages' as local state to preserve your Optimistic UI logic perfectly
   const [messages, setMessages] = useState<Message[]>([]);
-  
-  // ✅ REPLACED: Local 'sessions' state with Cached Query
-  const { data: sessions = [], refetch: refetchSessions } = useQuery({
-    queryKey: ["chat-sessions"],
-    queryFn: aiApi.getSessions,
-    staleTime: 1000 * 60 * 5, // Cache sessions for 5 minutes
-  });
-
   const [isLoading, setIsLoading] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [currentChatId, setCurrentChatId] = useState<string | undefined>();
+  const [chatHistory] = useState<ChatSession[]>(mockChatHistory);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-
   const scrollRef = useRef<HTMLDivElement>(null);
+
   const hasMessages = messages.length > 0;
 
-  // ✅ REPLACED: 'loadSessionMessages' function with a Query
-  const { data: historyData, isLoading: isHistoryLoading } = useQuery({
-    queryKey: ["chat-history", currentChatId],
-    queryFn: () => aiApi.getHistory(currentChatId!),
-    enabled: !!currentChatId, // Only fetch if we have an ID
-    staleTime: 1000 * 60 * 5, // Cache history for 5 minutes
-  });
-
-  // ✅ NEW: Sync Cached History to Local State
-  // This ensures that when you click a sidebar item, the messages load instantly from cache
-  useEffect(() => {
-    if (currentChatId && historyData) {
-      const uiMessages: Message[] = historyData.map((msg) => ({
-        id: msg.id || Date.now().toString(),
-        role: msg.role as "user" | "assistant",
-        content: msg.content,
-      }));
-      setMessages(uiMessages);
-    } else if (!currentChatId) {
-      // If we are in "New Chat" mode, clear messages
-      setMessages([]);
-    }
-  }, [currentChatId, historyData]);
-
-  // 2. Auto-scroll to bottom (Kept as is)
+  // Auto-scroll to bottom on new messages
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, isLoading, isHistoryLoading]);
+  }, [messages, isLoading]);
 
-  // --- Event Handlers ---
-
-  const handleSend = async (text: string, attachments?: File[]) => {
-    if (!text.trim() && (!attachments || attachments.length === 0)) return;
-
-    // 1. Optimistically add User Message (Kept exactly as your code)
-    const tempId = Date.now().toString();
-    const userMsg: Message = {
-      id: tempId,
-      role: "user",
-      content: text,
-      attachments: attachments,
-    };
-    setMessages((prev) => [...prev, userMsg]);
+  const simulateAIResponse = (userMessage: string) => {
     setIsLoading(true);
 
-    try {
-      let activeSessionId = currentChatId || "";
-      let uploadedContext = "";
-
-      // 2. Handle File Uploads
-      if (attachments && attachments.length > 0) {
-        try {
-          const uploadRes = await aiApi.uploadFile(attachments[0], activeSessionId || "new", text);
-          uploadedContext = `\n\n[System: User uploaded file '${uploadRes.filename}'. Analysis preview: ${uploadRes.message}]`;
-        } catch (err) {
-          toast.error("Failed to upload file");
-        }
-      }
-
-      // 3. Send Message to AI
-      const response = await aiApi.sendMessage(
-        activeSessionId, 
-        text + uploadedContext
-      );
-
-      // 4. Update Session State (New Chat Created?)
-      if (!currentChatId && response.session_id) {
-        setCurrentChatId(response.session_id);
-        
-        // ✅ NEW: Refresh cached sessions list since we added a new one
-        refetchSessions();
-        
-        // ✅ NEW: Seed the cache for the new ID so it doesn't flicker empty
-        // This prevents the UI from clearing when the ID switches from undefined -> new_id
-        queryClient.setQueryData(["chat-history", response.session_id], [
-           // Mock the API response structure to seed cache
-           { role: "user", content: text },
-           { role: "assistant", content: response.response }
-        ]);
-      }
-
-      // 5. Add AI Response (Optimistic append preserved)
-      const aiMsg: Message = {
-        id: Date.now().toString(),
-        role: "assistant",
-        content: response.response,
-      };
-      setMessages((prev) => [...prev, aiMsg]);
-      
-      // ✅ NEW: Invalidate history cache so next fetch gets the server's version
-      if (currentChatId) {
-        queryClient.invalidateQueries({ queryKey: ["chat-history", currentChatId] });
-      }
-
-    } catch (error) {
-      console.error(error);
-      toast.error("Failed to send message");
-    } finally {
+    // Simulate thinking delay
+    setTimeout(() => {
       setIsLoading(false);
-    }
+      setIsStreaming(true);
+
+      // Simulate streaming response
+      const response = `Based on your trading data, here's what I found regarding "${userMessage}":\n\n**Key Insights:**\n- Your recent trades show a positive trend in risk management\n- Win rate has improved by 12% over the last month\n- Average position size aligns well with your account balance\n\n**Recommendations:**\n1. Consider scaling into positions gradually\n2. Your stop-loss placement has been effective\n3. The current strategy shows consistency\n\nWould you like me to dive deeper into any specific aspect?`;
+
+      let currentIndex = 0;
+      const assistantMessageId = Date.now().toString();
+
+      // Add empty assistant message
+      setMessages((prev) => [
+        ...prev,
+        { id: assistantMessageId, role: "assistant", content: "" },
+      ]);
+
+      // Stream characters
+      const interval = setInterval(() => {
+        currentIndex += 3;
+        if (currentIndex >= response.length) {
+          currentIndex = response.length;
+          clearInterval(interval);
+          setIsStreaming(false);
+        }
+
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === assistantMessageId
+              ? { ...msg, content: response.slice(0, currentIndex) }
+              : msg
+          )
+        );
+      }, 15);
+    }, 1000);
+  };
+
+  const handleSend = (message: string) => {
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      role: "user",
+      content: message,
+    };
+    setMessages((prev) => [...prev, userMessage]);
+    simulateAIResponse(message);
   };
 
   const handleNewChat = () => {
     setMessages([]);
     setCurrentChatId(undefined);
-    setHistoryOpen(false);
   };
 
   const handleSelectChat = (id: string) => {
-    if (id === currentChatId) return;
     setCurrentChatId(id);
-    // Removed manual loadSessionMessages call; Query handles it automatically
-    setHistoryOpen(false); 
+    // In a real app, load messages for this chat
+    setMessages([]);
   };
 
   const handleClearChat = () => {
@@ -182,7 +143,7 @@ const AIChat = () => {
         onNewChat={handleNewChat}
         onSelectChat={handleSelectChat}
         currentChatId={currentChatId}
-        chats={sessions} // ✅ Uses cached sessions
+        chats={chatHistory}
       />
 
       {/* Mobile Sidebar */}
@@ -193,8 +154,8 @@ const AIChat = () => {
 
       <div className="h-screen flex flex-col">
         {/* Header */}
-        <header className="relative flex items-center justify-between px-4 sm:px-6 lg:px-8 h-14 sm:h-16 flex-shrink-0">
-          <div className="flex items-center gap-2 z-10">
+        <header className="flex items-center justify-between px-4 sm:px-6 lg:px-8 h-14 sm:h-16 flex-shrink-0 border-b border-border/50">
+          <div className="flex items-center gap-2">
             {/* Mobile menu button */}
             <button
               onClick={() => setMobileMenuOpen(true)}
@@ -212,12 +173,12 @@ const AIChat = () => {
             </Button>
           </div>
 
-          {/* Centered Title */}
-          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-2">
+          <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2">
             <Lightning weight="fill" className="w-4 h-4 text-primary" />
             <span className="text-sm font-medium text-foreground">TradeOmen AI</span>
           </div>
 
+          {/* Empty div for spacing */}
           <div className="w-10" />
         </header>
 
@@ -225,7 +186,7 @@ const AIChat = () => {
         <div className="flex-1 flex flex-col min-h-0">
           <AnimatePresence mode="wait">
             {!hasMessages ? (
-              /* Empty State */
+              /* Empty State - Centered Layout */
               <motion.div
                 key="empty"
                 initial={{ opacity: 0 }}
@@ -252,12 +213,16 @@ const AIChat = () => {
                 {/* Scrollable Messages Area */}
                 <ScrollArea className="flex-1" ref={scrollRef}>
                   <div className="max-w-3xl mx-auto px-4 py-4 sm:py-6 space-y-4 sm:space-y-6">
-                    {messages.map((message) => (
+                    {messages.map((message, index) => (
                       <ChatMessage
                         key={message.id}
                         role={message.role}
                         content={message.content}
-                        isStreaming={false} 
+                        isStreaming={
+                          isStreaming &&
+                          index === messages.length - 1 &&
+                          message.role === "assistant"
+                        }
                       />
                     ))}
 
@@ -272,7 +237,7 @@ const AIChat = () => {
                 <div className="flex-shrink-0 pb-4 pt-2 bg-gradient-to-t from-background via-background to-transparent">
                   <ChatInput
                     onSend={handleSend}
-                    isLoading={isLoading}
+                    isLoading={isLoading || isStreaming}
                     onClearChat={handleClearChat}
                   />
                 </div>
