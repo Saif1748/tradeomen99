@@ -1,5 +1,4 @@
-import { Trade, generateMockTrades } from "./tradesData";
-import { Strategy, generateMockStrategies } from "./strategiesData";
+import { Trade, generateMockTrades, computeTradeData, ComputedTradeData } from "./tradesData";
 
 // Types for Reports data
 export interface EquityCurvePoint {
@@ -70,19 +69,28 @@ export interface AIInsight {
   message: string;
 }
 
+// Helper to get computed data for a trade
+const getTradeWithComputed = (trade: Trade) => ({
+  trade,
+  computed: computeTradeData(trade),
+});
+
 // Generate equity curve data
 export const generateEquityCurve = (trades: Trade[]): EquityCurvePoint[] => {
-  const sortedTrades = [...trades].sort((a, b) => a.date.getTime() - b.date.getTime());
+  const tradesWithComputed = trades.map(getTradeWithComputed);
+  const sortedTrades = [...tradesWithComputed].sort(
+    (a, b) => a.computed.firstExecutionDate.getTime() - b.computed.firstExecutionDate.getTime()
+  );
   let cumulative = 0;
   let peak = 0;
   
-  return sortedTrades.map(trade => {
-    cumulative += trade.pnl;
+  return sortedTrades.map(({ trade, computed }) => {
+    cumulative += computed.pnl;
     peak = Math.max(peak, cumulative);
     const drawdown = peak > 0 ? ((peak - cumulative) / peak) * 100 : 0;
     
     return {
-      date: trade.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      date: computed.firstExecutionDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
       value: cumulative,
       drawdown: -drawdown
     };
@@ -91,9 +99,10 @@ export const generateEquityCurve = (trades: Trade[]): EquityCurvePoint[] => {
 
 // Generate win/loss distribution
 export const generateWinLossData = (trades: Trade[]): WinLossData[] => {
-  const wins = trades.filter(t => t.pnl > 0).length;
-  const losses = trades.filter(t => t.pnl < 0).length;
-  const breakeven = trades.filter(t => t.pnl === 0).length;
+  const tradesWithComputed = trades.map(getTradeWithComputed);
+  const wins = tradesWithComputed.filter(t => t.computed.pnl > 0).length;
+  const losses = tradesWithComputed.filter(t => t.computed.pnl < 0).length;
+  const breakeven = tradesWithComputed.filter(t => t.computed.pnl === 0).length;
   
   return [
     { name: "Wins", value: wins, fill: "hsl(160 60% 45%)" },
@@ -104,16 +113,17 @@ export const generateWinLossData = (trades: Trade[]): WinLossData[] => {
 
 // Generate long vs short performance
 export const generateLongShortData = (trades: Trade[]) => {
-  const longTrades = trades.filter(t => t.side === "LONG");
-  const shortTrades = trades.filter(t => t.side === "SHORT");
+  const tradesWithComputed = trades.map(getTradeWithComputed);
+  const longTrades = tradesWithComputed.filter(t => t.computed.direction === "LONG");
+  const shortTrades = tradesWithComputed.filter(t => t.computed.direction === "SHORT");
   
-  const longPnl = longTrades.reduce((sum, t) => sum + t.pnl, 0);
-  const shortPnl = shortTrades.reduce((sum, t) => sum + t.pnl, 0);
+  const longPnl = longTrades.reduce((sum, t) => sum + t.computed.pnl, 0);
+  const shortPnl = shortTrades.reduce((sum, t) => sum + t.computed.pnl, 0);
   const longWinRate = longTrades.length > 0 
-    ? (longTrades.filter(t => t.pnl > 0).length / longTrades.length) * 100 
+    ? (longTrades.filter(t => t.computed.pnl > 0).length / longTrades.length) * 100 
     : 0;
   const shortWinRate = shortTrades.length > 0 
-    ? (shortTrades.filter(t => t.pnl > 0).length / shortTrades.length) * 100 
+    ? (shortTrades.filter(t => t.computed.pnl > 0).length / shortTrades.length) * 100 
     : 0;
   
   return [
@@ -124,6 +134,7 @@ export const generateLongShortData = (trades: Trade[]) => {
 
 // Generate PnL distribution histogram
 export const generatePnLDistribution = (trades: Trade[]): PnLDistribution[] => {
+  const tradesWithComputed = trades.map(getTradeWithComputed);
   const ranges = [
     { min: -Infinity, max: -500, label: "< -$500" },
     { min: -500, max: -200, label: "-$500 to -$200" },
@@ -136,16 +147,21 @@ export const generatePnLDistribution = (trades: Trade[]): PnLDistribution[] => {
   
   return ranges.map(range => ({
     range: range.label,
-    count: trades.filter(t => t.pnl > range.min && t.pnl <= range.max).length
+    count: tradesWithComputed.filter(t => t.computed.pnl > range.min && t.computed.pnl <= range.max).length
   }));
 };
 
 // Generate holding time distribution
 export const generateHoldingTimeData = (trades: Trade[]): HoldingTimeData[] => {
+  const tradesWithComputed = trades.map(getTradeWithComputed);
+  
   const parseHoldTime = (holdTime: string): number => {
+    const days = holdTime.match(/(\d+)d/);
     const hours = holdTime.match(/(\d+)h/);
     const minutes = holdTime.match(/(\d+)m/);
-    return (hours ? parseInt(hours[1]) * 60 : 0) + (minutes ? parseInt(minutes[1]) : 0);
+    return (days ? parseInt(days[1]) * 24 * 60 : 0) + 
+           (hours ? parseInt(hours[1]) * 60 : 0) + 
+           (minutes ? parseInt(minutes[1]) : 0);
   };
   
   const ranges = [
@@ -157,13 +173,13 @@ export const generateHoldingTimeData = (trades: Trade[]): HoldingTimeData[] => {
   ];
   
   return ranges.map(range => {
-    const tradesInRange = trades.filter(t => {
-      const minutes = parseHoldTime(t.holdTime);
+    const tradesInRange = tradesWithComputed.filter(t => {
+      const minutes = parseHoldTime(t.computed.holdTime);
       return minutes >= range.min && minutes < range.max;
     });
     
     const avgPnl = tradesInRange.length > 0 
-      ? tradesInRange.reduce((sum, t) => sum + t.pnl, 0) / tradesInRange.length 
+      ? tradesInRange.reduce((sum, t) => sum + t.computed.pnl, 0) / tradesInRange.length 
       : 0;
     
     return {
@@ -176,35 +192,41 @@ export const generateHoldingTimeData = (trades: Trade[]): HoldingTimeData[] => {
 
 // Generate scatter plot data
 export const generateScatterData = (trades: Trade[]): ScatterPoint[] => {
+  const tradesWithComputed = trades.map(getTradeWithComputed);
+  
   const parseHoldTime = (holdTime: string): number => {
+    const days = holdTime.match(/(\d+)d/);
     const hours = holdTime.match(/(\d+)h/);
     const minutes = holdTime.match(/(\d+)m/);
-    return (hours ? parseInt(hours[1]) : 0) + (minutes ? parseInt(minutes[1]) / 60 : 0);
+    return (days ? parseInt(days[1]) * 24 : 0) + 
+           (hours ? parseInt(hours[1]) : 0) + 
+           (minutes ? parseInt(minutes[1]) / 60 : 0);
   };
   
-  return trades.map(t => ({
-    rMultiple: t.rMultiple,
-    pnl: t.pnl,
-    holdTime: parseHoldTime(t.holdTime),
-    symbol: t.symbol,
-    isWin: t.pnl > 0
+  return tradesWithComputed.map(({ trade, computed }) => ({
+    rMultiple: computed.rMultiple,
+    pnl: computed.pnl,
+    holdTime: parseHoldTime(computed.holdTime),
+    symbol: trade.symbol,
+    isWin: computed.pnl > 0
   }));
 };
 
 // Generate day of week performance
 export const generateDayPerformance = (trades: Trade[]): DayPerformance[] => {
+  const tradesWithComputed = trades.map(getTradeWithComputed);
   const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   
   return days.map(day => {
-    const dayTrades = trades.filter(t => {
-      const tradeDay = t.date.toLocaleDateString('en-US', { weekday: 'short' });
+    const dayTrades = tradesWithComputed.filter(t => {
+      const tradeDay = t.computed.firstExecutionDate.toLocaleDateString('en-US', { weekday: 'short' });
       return tradeDay === day;
     });
     
     const winRate = dayTrades.length > 0 
-      ? (dayTrades.filter(t => t.pnl > 0).length / dayTrades.length) * 100 
+      ? (dayTrades.filter(t => t.computed.pnl > 0).length / dayTrades.length) * 100 
       : 0;
-    const pnl = dayTrades.reduce((sum, t) => sum + t.pnl, 0);
+    const pnl = dayTrades.reduce((sum, t) => sum + t.computed.pnl, 0);
     
     return { day, trades: dayTrades.length, winRate, pnl };
   });
@@ -238,19 +260,20 @@ export const generateSessionPerformance = (trades: Trade[]): SessionPerformance[
 
 // Generate strategy performance data
 export const generateStrategyPerformance = (trades: Trade[]): StrategyPerformance[] => {
+  const tradesWithComputed = trades.map(getTradeWithComputed);
   const strategies = [...new Set(trades.map(t => t.strategy))];
   
   return strategies.map(strategy => {
-    const strategyTrades = trades.filter(t => t.strategy === strategy);
-    const wins = strategyTrades.filter(t => t.pnl > 0);
-    const losses = strategyTrades.filter(t => t.pnl < 0);
+    const strategyTrades = tradesWithComputed.filter(t => t.trade.strategy === strategy);
+    const wins = strategyTrades.filter(t => t.computed.pnl > 0);
+    const losses = strategyTrades.filter(t => t.computed.pnl < 0);
     
-    const totalPnl = strategyTrades.reduce((sum, t) => sum + t.pnl, 0);
+    const totalPnl = strategyTrades.reduce((sum, t) => sum + t.computed.pnl, 0);
     const avgPnl = strategyTrades.length > 0 ? totalPnl / strategyTrades.length : 0;
     const winRate = strategyTrades.length > 0 ? (wins.length / strategyTrades.length) * 100 : 0;
     
-    const grossProfit = wins.reduce((sum, t) => sum + t.pnl, 0);
-    const grossLoss = Math.abs(losses.reduce((sum, t) => sum + t.pnl, 0));
+    const grossProfit = wins.reduce((sum, t) => sum + t.computed.pnl, 0);
+    const grossLoss = Math.abs(losses.reduce((sum, t) => sum + t.computed.pnl, 0));
     const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : grossProfit > 0 ? Infinity : 0;
     
     // Mock max drawdown
@@ -270,15 +293,16 @@ export const generateStrategyPerformance = (trades: Trade[]): StrategyPerformanc
 
 // Calculate overview stats
 export const calculateOverviewStats = (trades: Trade[]) => {
-  const closedTrades = trades.filter(t => t.status === "closed");
-  const wins = closedTrades.filter(t => t.pnl > 0);
-  const losses = closedTrades.filter(t => t.pnl < 0);
+  const tradesWithComputed = trades.map(getTradeWithComputed);
+  const closedTrades = tradesWithComputed.filter(t => t.computed.status === "closed");
+  const wins = closedTrades.filter(t => t.computed.pnl > 0);
+  const losses = closedTrades.filter(t => t.computed.pnl < 0);
   
-  const totalPnl = closedTrades.reduce((sum, t) => sum + t.pnl, 0);
+  const totalPnl = closedTrades.reduce((sum, t) => sum + t.computed.pnl, 0);
   const winRate = closedTrades.length > 0 ? (wins.length / closedTrades.length) * 100 : 0;
   
-  const grossProfit = wins.reduce((sum, t) => sum + t.pnl, 0);
-  const grossLoss = Math.abs(losses.reduce((sum, t) => sum + t.pnl, 0));
+  const grossProfit = wins.reduce((sum, t) => sum + t.computed.pnl, 0);
+  const grossLoss = Math.abs(losses.reduce((sum, t) => sum + t.computed.pnl, 0));
   const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : grossProfit > 0 ? Infinity : 0;
   
   const avgWin = wins.length > 0 ? grossProfit / wins.length : 0;
@@ -290,9 +314,11 @@ export const calculateOverviewStats = (trades: Trade[]) => {
   let maxDrawdown = 0;
   let cumulative = 0;
   
-  const sortedTrades = [...closedTrades].sort((a, b) => a.date.getTime() - b.date.getTime());
-  sortedTrades.forEach(trade => {
-    cumulative += trade.pnl;
+  const sortedTrades = [...closedTrades].sort(
+    (a, b) => a.computed.firstExecutionDate.getTime() - b.computed.firstExecutionDate.getTime()
+  );
+  sortedTrades.forEach(({ computed }) => {
+    cumulative += computed.pnl;
     peak = Math.max(peak, cumulative);
     const drawdown = peak > 0 ? ((peak - cumulative) / peak) * 100 : 0;
     maxDrawdown = Math.max(maxDrawdown, drawdown);
@@ -341,9 +367,10 @@ export const generateAIInsights = (trades: Trade[], tab: string): AIInsight => {
 
 // Get best and worst trades
 export const getBestWorstTrades = (trades: Trade[], count: number = 5) => {
-  const sorted = [...trades].sort((a, b) => b.pnl - a.pnl);
+  const tradesWithComputed = trades.map(getTradeWithComputed);
+  const sorted = [...tradesWithComputed].sort((a, b) => b.computed.pnl - a.computed.pnl);
   return {
-    best: sorted.slice(0, count),
-    worst: sorted.slice(-count).reverse()
+    best: sorted.slice(0, count).map(t => t.trade),
+    worst: sorted.slice(-count).reverse().map(t => t.trade)
   };
 };

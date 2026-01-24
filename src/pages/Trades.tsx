@@ -3,7 +3,7 @@ import { Plus, Export, DotsThreeVertical, Funnel, X, CalendarBlank, ChartLineUp 
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import PageHeader from "@/components/dashboard/PageHeader";
 import { Button } from "@/components/ui/button";
-import { Trade, generateMockTrades } from "@/lib/tradesData";
+import { Trade, generateMockTrades, computeTradeData } from "@/lib/tradesData";
 import TradesStatsCards from "@/components/trades/TradesStatsCards";
 import TradesFilters from "@/components/trades/TradesFilters";
 import TradesTable from "@/components/trades/TradesTable";
@@ -64,35 +64,40 @@ const Trades = () => {
 
     // Side filter
     if (sideFilter !== "all") {
-      result = result.filter((t) => t.side === sideFilter);
+      result = result.filter((t) => {
+        const computed = computeTradeData(t);
+        return computed.direction === sideFilter;
+      });
     }
 
     // Type filter
     if (typeFilter !== "all") {
-      result = result.filter((t) => t.type === typeFilter);
+      result = result.filter((t) => t.instrumentType === typeFilter);
     }
 
     // Sort
     result.sort((a, b) => {
+      const computedA = computeTradeData(a);
+      const computedB = computeTradeData(b);
       let comparison = 0;
       switch (sortField) {
         case "date":
-          comparison = a.date.getTime() - b.date.getTime();
+          comparison = computedA.firstExecutionDate.getTime() - computedB.firstExecutionDate.getTime();
           break;
         case "symbol":
           comparison = a.symbol.localeCompare(b.symbol);
           break;
         case "type":
-          comparison = a.type.localeCompare(b.type);
+          comparison = a.instrumentType.localeCompare(b.instrumentType);
           break;
         case "side":
-          comparison = a.side.localeCompare(b.side);
+          comparison = computedA.direction.localeCompare(computedB.direction);
           break;
         case "pnl":
-          comparison = a.pnl - b.pnl;
+          comparison = computedA.pnl - computedB.pnl;
           break;
         case "rMultiple":
-          comparison = a.rMultiple - b.rMultiple;
+          comparison = computedA.rMultiple - computedB.rMultiple;
           break;
         case "strategy":
           comparison = a.strategy.localeCompare(b.strategy);
