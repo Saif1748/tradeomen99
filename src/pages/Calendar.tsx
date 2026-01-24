@@ -1,24 +1,18 @@
 import { useState, useMemo } from "react";
 import { CalendarBlank, CaretLeft, CaretRight } from "@phosphor-icons/react";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
-import PageTitle from "@/components/dashboard/PageTitle";
+import PageHeader from "@/components/dashboard/PageHeader";
 import CalendarGrid from "@/components/calendar/CalendarGrid";
 import { generateMonthData, getMonthStats } from "@/lib/calendarData";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import AddTradeModal from "@/components/trades/AddTradeModal";
-import CreateStrategyModal from "@/components/strategies/CreateStrategyModal";
-import { Trade } from "@/lib/tradesData";
-import { Strategy } from "@/lib/strategiesData";
-import { toast } from "sonner";
 
 const Calendar = () => {
   const today = new Date();
   const [currentDate, setCurrentDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
   const [colorMode, setColorMode] = useState<'pnl' | 'winrate'>('pnl');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notes, setNotes] = useState<Map<string, string>>(new Map());
-  const [addTradeOpen, setAddTradeOpen] = useState(false);
-  const [addStrategyOpen, setAddStrategyOpen] = useState(false);
 
   const monthData = useMemo(() => {
     const data = generateMonthData(currentDate.getFullYear(), currentDate.getMonth());
@@ -44,18 +38,6 @@ const Calendar = () => {
     });
   };
 
-  const handleAddTrade = (newTrade: Omit<Trade, "id">) => {
-    toast.success("Trade logged successfully!");
-  };
-
-  const handleCreateStrategy = (newStrategy: Omit<Strategy, 'id' | 'createdAt' | 'totalTrades' | 'winRate' | 'netPnl' | 'profitFactor' | 'expectancy' | 'avgWin' | 'avgLoss'>) => {
-    toast.success("Strategy created successfully!");
-  };
-
-  const handleAddNote = () => {
-    toast.info("Click on a calendar day to add a note!");
-  };
-
   const monthName = currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   const shortMonthName = currentDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
 
@@ -77,17 +59,14 @@ const Calendar = () => {
   };
 
   return (
-    <DashboardLayout
-      onAddTrade={() => setAddTradeOpen(true)}
-      onAddStrategy={() => setAddStrategyOpen(true)}
-      onAddNote={handleAddNote}
-    >
-      <PageTitle
+    <DashboardLayout>
+      <PageHeader
         title="Calendar"
         icon={<CalendarBlank weight="duotone" className="w-6 h-6 text-primary" />}
+        onMobileMenuOpen={() => setMobileMenuOpen(true)}
       />
 
-      <div className="px-4 sm:px-6 lg:px-8 pb-6 pt-2 space-y-4 sm:space-y-6">
+      <div className="px-4 sm:px-6 lg:px-8 pb-6 pt-4 space-y-4 sm:space-y-6">
         {/* Monthly Stats Cards - Compact on mobile */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4">
           <div className="glass-card p-3 sm:p-5 rounded-xl sm:rounded-2xl">
@@ -209,18 +188,6 @@ const Calendar = () => {
           />
         </div>
       </div>
-
-      {/* Modals */}
-      <AddTradeModal
-        open={addTradeOpen}
-        onOpenChange={setAddTradeOpen}
-        onAddTrade={handleAddTrade}
-      />
-      <CreateStrategyModal
-        open={addStrategyOpen}
-        onOpenChange={setAddStrategyOpen}
-        onCreateStrategy={handleCreateStrategy}
-      />
     </DashboardLayout>
   );
 };

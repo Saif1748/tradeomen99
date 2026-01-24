@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChatCircle, Lightning } from "@phosphor-icons/react";
+import { ChatCircle, Lightning, List } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
@@ -9,11 +9,7 @@ import ChatInput from "@/components/ai-chat/ChatInput";
 import ChatHistorySidebar from "@/components/ai-chat/ChatHistorySidebar";
 import ThinkingIndicator from "@/components/ai-chat/ThinkingIndicator";
 import EmptyState from "@/components/ai-chat/EmptyState";
-import AddTradeModal from "@/components/trades/AddTradeModal";
-import CreateStrategyModal from "@/components/strategies/CreateStrategyModal";
-import { Trade } from "@/lib/tradesData";
-import { Strategy } from "@/lib/strategiesData";
-import { toast } from "sonner";
+import MobileSidebar from "@/components/dashboard/MobileSidebar";
 
 interface Message {
   id: string;
@@ -61,8 +57,7 @@ const AIChat = () => {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [currentChatId, setCurrentChatId] = useState<string | undefined>();
   const [chatHistory] = useState<ChatSession[]>(mockChatHistory);
-  const [addTradeOpen, setAddTradeOpen] = useState(false);
-  const [addStrategyOpen, setAddStrategyOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const hasMessages = messages.length > 0;
@@ -139,24 +134,8 @@ const AIChat = () => {
     setMessages([]);
   };
 
-  const handleAddTrade = (newTrade: Omit<Trade, "id">) => {
-    toast.success("Trade logged successfully!");
-  };
-
-  const handleCreateStrategy = (newStrategy: Omit<Strategy, 'id' | 'createdAt' | 'totalTrades' | 'winRate' | 'netPnl' | 'profitFactor' | 'expectancy' | 'avgWin' | 'avgLoss'>) => {
-    toast.success("Strategy created successfully!");
-  };
-
-  const handleAddNote = () => {
-    toast.info("Note feature coming soon!");
-  };
-
   return (
-    <DashboardLayout
-      onAddTrade={() => setAddTradeOpen(true)}
-      onAddStrategy={() => setAddStrategyOpen(true)}
-      onAddNote={handleAddNote}
-    >
+    <DashboardLayout>
       {/* Chat History Sidebar */}
       <ChatHistorySidebar
         isOpen={historyOpen}
@@ -167,26 +146,41 @@ const AIChat = () => {
         chats={chatHistory}
       />
 
-      <div className="h-[calc(100vh-64px)] flex flex-col">
-        {/* AI Chat Header */}
-        <div className="flex items-center justify-between px-4 sm:px-6 lg:px-8 h-12 sm:h-14 flex-shrink-0 border-b border-border/50">
-          <Button
-            variant="ghost"
-            onClick={() => setHistoryOpen(true)}
-            className="h-8 sm:h-9 gap-2 text-muted-foreground hover:text-foreground hover:bg-secondary/50"
-          >
-            <ChatCircle weight="regular" className="w-4 h-4" />
-            <span className="text-sm hidden sm:inline">Chats</span>
-          </Button>
+      {/* Mobile Sidebar */}
+      <MobileSidebar 
+        open={mobileMenuOpen} 
+        onClose={() => setMobileMenuOpen(false)} 
+      />
 
+      <div className="h-screen flex flex-col">
+        {/* Header */}
+        <header className="flex items-center justify-between px-4 sm:px-6 lg:px-8 h-14 sm:h-16 flex-shrink-0 border-b border-border/50">
           <div className="flex items-center gap-2">
+            {/* Mobile menu button */}
+            <button
+              onClick={() => setMobileMenuOpen(true)}
+              className="md:hidden p-2 rounded-xl bg-secondary/50 border border-border hover:bg-secondary transition-colors"
+            >
+              <List weight="regular" className="w-5 h-5 text-foreground" />
+            </button>
+            <Button
+              variant="ghost"
+              onClick={() => setHistoryOpen(true)}
+              className="h-8 sm:h-9 gap-2 text-muted-foreground hover:text-foreground hover:bg-secondary/50"
+            >
+              <ChatCircle weight="regular" className="w-4 h-4" />
+              <span className="text-sm hidden sm:inline">Chats</span>
+            </Button>
+          </div>
+
+          <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2">
             <Lightning weight="fill" className="w-4 h-4 text-primary" />
             <span className="text-sm font-medium text-foreground">TradeOmen AI</span>
           </div>
 
           {/* Empty div for spacing */}
           <div className="w-10" />
-        </div>
+        </header>
 
         {/* Main Content Area */}
         <div className="flex-1 flex flex-col min-h-0">
@@ -252,18 +246,6 @@ const AIChat = () => {
           </AnimatePresence>
         </div>
       </div>
-
-      {/* Modals */}
-      <AddTradeModal
-        open={addTradeOpen}
-        onOpenChange={setAddTradeOpen}
-        onAddTrade={handleAddTrade}
-      />
-      <CreateStrategyModal
-        open={addStrategyOpen}
-        onOpenChange={setAddStrategyOpen}
-        onCreateStrategy={handleCreateStrategy}
-      />
     </DashboardLayout>
   );
 };

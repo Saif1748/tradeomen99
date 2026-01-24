@@ -1,41 +1,21 @@
 import { Globe, Clock, ArrowsClockwise } from "@phosphor-icons/react";
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
-import PageTitle from "@/components/dashboard/PageTitle";
+import PageHeader from "@/components/dashboard/PageHeader";
 import { useState } from "react";
-import AddTradeModal from "@/components/trades/AddTradeModal";
-import CreateStrategyModal from "@/components/strategies/CreateStrategyModal";
-import { Trade } from "@/lib/tradesData";
-import { Strategy } from "@/lib/strategiesData";
-import { toast } from "sonner";
 
 const Markets = () => {
-  const [addTradeOpen, setAddTradeOpen] = useState(false);
-  const [addStrategyOpen, setAddStrategyOpen] = useState(false);
-
-  const handleAddTrade = (newTrade: Omit<Trade, "id">) => {
-    toast.success("Trade logged successfully!");
-  };
-
-  const handleCreateStrategy = (newStrategy: Omit<Strategy, 'id' | 'createdAt' | 'totalTrades' | 'winRate' | 'netPnl' | 'profitFactor' | 'expectancy' | 'avgWin' | 'avgLoss'>) => {
-    toast.success("Strategy created successfully!");
-  };
-
-  const handleAddNote = () => {
-    toast.info("Note feature coming soon!");
-  };
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   return (
-    <DashboardLayout
-      onAddTrade={() => setAddTradeOpen(true)}
-      onAddStrategy={() => setAddStrategyOpen(true)}
-      onAddNote={handleAddNote}
-    >
-      <PageTitle
+    <DashboardLayout>
+      <PageHeader
         title="Markets"
         icon={<Globe weight="duotone" className="w-6 h-6 text-primary" />}
+        onMobileMenuOpen={() => setMobileMenuOpen(true)}
+        showThemeToggle={false}
       />
 
-      <div className="px-4 sm:px-6 lg:px-8 pb-6 pt-2 flex-1 flex items-center justify-center min-h-[60vh]">
+      <div className="px-4 sm:px-6 lg:px-8 pb-6 pt-4 flex-1 flex items-center justify-center min-h-[60vh]">
         <div className="glass-card p-8 sm:p-12 rounded-2xl text-center max-w-md mx-auto">
           <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-primary/10 flex items-center justify-center">
             <Clock weight="duotone" className="w-8 h-8 text-primary" />
@@ -52,18 +32,6 @@ const Markets = () => {
           </div>
         </div>
       </div>
-
-      {/* Modals */}
-      <AddTradeModal
-        open={addTradeOpen}
-        onOpenChange={setAddTradeOpen}
-        onAddTrade={handleAddTrade}
-      />
-      <CreateStrategyModal
-        open={addStrategyOpen}
-        onOpenChange={setAddStrategyOpen}
-        onCreateStrategy={handleCreateStrategy}
-      />
     </DashboardLayout>
   );
 };
