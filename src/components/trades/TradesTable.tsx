@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { CaretUp, CaretDown } from "@phosphor-icons/react";
 import { format } from "date-fns";
-import { Trade } from "@/lib/tradesData";
+import { Trade, computeTradeData } from "@/lib/tradesData";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -136,121 +136,127 @@ const TradesTable = ({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {paginatedTrades.map((trade) => (
-              <TableRow
-                key={trade.id}
-                className="border-border/50 cursor-pointer hover:bg-secondary/30 transition-colors"
-                onClick={() => onTradeClick(trade)}
-              >
-                <TableCell className="text-muted-foreground">
-                  {format(trade.date, "MMM d, yyyy")}
-                </TableCell>
-                <TableCell className="font-medium text-foreground">
-                  {trade.symbol}
-                </TableCell>
-                <TableCell className="text-muted-foreground">{trade.type}</TableCell>
-                <TableCell>
-                  <Badge
-                    variant="outline"
-                    className={`${
-                      trade.side === "LONG"
-                        ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                        : "border-rose-500/50 bg-rose-500/10 text-rose-600 dark:text-rose-400"
+            {paginatedTrades.map((trade) => {
+              const computed = computeTradeData(trade);
+              return (
+                <TableRow
+                  key={trade.id}
+                  className="border-border/50 cursor-pointer hover:bg-secondary/30 transition-colors"
+                  onClick={() => onTradeClick(trade)}
+                >
+                  <TableCell className="text-muted-foreground">
+                    {format(computed.firstExecutionDate, "MMM d, yyyy")}
+                  </TableCell>
+                  <TableCell className="font-medium text-foreground">
+                    {trade.symbol}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">{trade.instrumentType}</TableCell>
+                  <TableCell>
+                    <Badge
+                      variant="outline"
+                      className={`${
+                        computed.direction === "LONG"
+                          ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                          : "border-rose-500/50 bg-rose-500/10 text-rose-600 dark:text-rose-400"
+                      }`}
+                    >
+                      {computed.direction}
+                    </Badge>
+                  </TableCell>
+                  <TableCell
+                    className={`font-medium ${
+                      computed.pnl >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
                     }`}
                   >
-                    {trade.side}
-                  </Badge>
-                </TableCell>
-                <TableCell
-                  className={`font-medium ${
-                    trade.pnl >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
-                  }`}
-                >
-                  {trade.pnl >= 0 ? "+" : ""}$
-                  {Math.abs(trade.pnl).toLocaleString("en-US", {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
-                  })}
-                </TableCell>
-                <TableCell
-                  className={`${
-                    trade.rMultiple >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
-                  }`}
-                >
-                  {trade.rMultiple >= 0 ? "+" : ""}
-                  {trade.rMultiple.toFixed(2)}R
-                </TableCell>
-                <TableCell className="text-foreground">{trade.strategy}</TableCell>
-                <TableCell>
-                  <div className="flex flex-wrap gap-1">
-                    {trade.tags.slice(0, 2).map((tag, index) => (
-                      <Badge
-                        key={index}
-                        variant="outline"
-                        className="border-primary/30 bg-primary/10 text-primary text-xs"
-                      >
-                        {tag}
-                      </Badge>
-                    ))}
-                    {trade.tags.length > 2 && (
-                      <Badge
-                        variant="outline"
-                        className="border-primary/30 bg-primary/10 text-primary text-xs"
-                      >
-                        +{trade.tags.length - 2}
-                      </Badge>
-                    )}
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
+                    {computed.pnl >= 0 ? "+" : ""}$
+                    {Math.abs(computed.pnl).toLocaleString("en-US", {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
+                  </TableCell>
+                  <TableCell
+                    className={`${
+                      computed.rMultiple >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
+                    }`}
+                  >
+                    {computed.rMultiple >= 0 ? "+" : ""}
+                    {computed.rMultiple.toFixed(2)}R
+                  </TableCell>
+                  <TableCell className="text-foreground">{trade.strategy}</TableCell>
+                  <TableCell>
+                    <div className="flex flex-wrap gap-1">
+                      {trade.tags.slice(0, 2).map((tag, index) => (
+                        <Badge
+                          key={index}
+                          variant="outline"
+                          className="border-primary/30 bg-primary/10 text-primary text-xs"
+                        >
+                          {tag}
+                        </Badge>
+                      ))}
+                      {trade.tags.length > 2 && (
+                        <Badge
+                          variant="outline"
+                          className="border-primary/30 bg-primary/10 text-primary text-xs"
+                        >
+                          +{trade.tags.length - 2}
+                        </Badge>
+                      )}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </div>
 
       {/* Mobile/Tablet Card View - Optimized for scanability */}
       <div className="lg:hidden space-y-2">
-        {paginatedTrades.map((trade) => (
-          <div
-            key={trade.id}
-            onClick={() => onTradeClick(trade)}
-            className="glass-card px-3 py-2.5 rounded-xl cursor-pointer hover:bg-secondary/30 transition-colors"
-          >
-            {/* Row 1: Symbol + Date | P&L (dominant) */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="font-semibold text-foreground truncate">{trade.symbol}</span>
-                <Badge
-                  variant="outline"
-                  className={`text-[10px] px-1.5 py-0 h-4 ${
-                    trade.side === "LONG"
-                      ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                      : "border-rose-500/50 bg-rose-500/10 text-rose-600 dark:text-rose-400"
+        {paginatedTrades.map((trade) => {
+          const computed = computeTradeData(trade);
+          return (
+            <div
+              key={trade.id}
+              onClick={() => onTradeClick(trade)}
+              className="glass-card px-3 py-2.5 rounded-xl cursor-pointer hover:bg-secondary/30 transition-colors"
+            >
+              {/* Row 1: Symbol + Date | P&L (dominant) */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="font-semibold text-foreground truncate">{trade.symbol}</span>
+                  <Badge
+                    variant="outline"
+                    className={`text-[10px] px-1.5 py-0 h-4 ${
+                      computed.direction === "LONG"
+                        ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                        : "border-rose-500/50 bg-rose-500/10 text-rose-600 dark:text-rose-400"
+                    }`}
+                  >
+                    {computed.direction}
+                  </Badge>
+                </div>
+                <span
+                  className={`text-lg font-bold tabular-nums ${
+                    computed.pnl >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
                   }`}
                 >
-                  {trade.side}
-                </Badge>
+                  {computed.pnl >= 0 ? "+" : ""}${Math.abs(computed.pnl).toFixed(0)}
+                </span>
               </div>
-              <span
-                className={`text-lg font-bold tabular-nums ${
-                  trade.pnl >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
-                }`}
-              >
-                {trade.pnl >= 0 ? "+" : ""}${Math.abs(trade.pnl).toFixed(0)}
-              </span>
+              {/* Row 2: Metadata - compact */}
+              <div className="flex items-center gap-1.5 mt-1 text-[11px] text-muted-foreground">
+                <span>{format(computed.firstExecutionDate, "MMM d")}</span>
+                <span>•</span>
+                <span>{trade.strategy}</span>
+                <span>•</span>
+                <span className={computed.rMultiple >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}>
+                  {computed.rMultiple >= 0 ? "+" : ""}{computed.rMultiple.toFixed(1)}R
+                </span>
+              </div>
             </div>
-            {/* Row 2: Metadata - compact */}
-            <div className="flex items-center gap-1.5 mt-1 text-[11px] text-muted-foreground">
-              <span>{format(trade.date, "MMM d")}</span>
-              <span>•</span>
-              <span>{trade.strategy}</span>
-              <span>•</span>
-              <span className={trade.rMultiple >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}>
-                {trade.rMultiple >= 0 ? "+" : ""}{trade.rMultiple.toFixed(1)}R
-              </span>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Pagination */}
