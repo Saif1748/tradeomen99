@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { Plus, MagnifyingGlass, Funnel, Sword } from "@phosphor-icons/react";
-import DashboardLayout from "@/components/dashboard/DashboardLayout";
+import { useDashboard } from "@/components/dashboard/DashboardLayout"; // 1. Import hook
 import PageHeader from "@/components/dashboard/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,6 +30,9 @@ import { Strategy, generateMockStrategies, calculateStrategyStats, strategyStyle
 import { toast } from "sonner";
 
 const Strategies = () => {
+  // 2. Use the hook to get the menu trigger from parent Layout
+  const { onMobileMenuOpen } = useDashboard();
+  
   const [strategies, setStrategies] = useState<Strategy[]>(generateMockStrategies());
   const [selectedStrategy, setSelectedStrategy] = useState<Strategy | null>(null);
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -37,7 +40,7 @@ const Strategies = () => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [styleFilter, setStyleFilter] = useState("all");
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  // 3. Removed local mobileMenuOpen state
 
   const stats = useMemo(() => calculateStrategyStats(strategies), [strategies]);
 
@@ -86,11 +89,12 @@ const Strategies = () => {
   // Show detail view if a strategy is selected
   if (selectedStrategy) {
     return (
-      <DashboardLayout>
+      <>
+        {/* 4. Removed DashboardLayout wrapper */}
         <PageHeader
           title="Strategy Detail"
           icon={<Sword weight="duotone" className="w-6 h-6 text-primary" />}
-          onMobileMenuOpen={() => setMobileMenuOpen(true)}
+          onMobileMenuOpen={onMobileMenuOpen}
         />
         <div className="px-4 sm:px-6 lg:px-8 pb-6 pt-4">
           <StrategyDetail
@@ -127,16 +131,17 @@ const Strategies = () => {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
-      </DashboardLayout>
+      </>
     );
   }
 
   return (
-    <DashboardLayout>
+    <>
+      {/* 5. Removed DashboardLayout wrapper */}
       <PageHeader
         title="Strategies"
         icon={<Sword weight="duotone" className="w-6 h-6 text-primary" />}
-        onMobileMenuOpen={() => setMobileMenuOpen(true)}
+        onMobileMenuOpen={onMobileMenuOpen}
       >
         <Button onClick={() => setCreateModalOpen(true)} className="glow-button gap-2 text-white">
           <Plus weight="bold" className="w-4 h-4" />
@@ -206,7 +211,7 @@ const Strategies = () => {
         onOpenChange={setCreateModalOpen}
         onCreateStrategy={handleCreateStrategy}
       />
-    </DashboardLayout>
+    </>
   );
 };
 

@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { ChartLine, Funnel, Export, CalendarBlank } from "@phosphor-icons/react";
 import { DateRange } from "react-day-picker";
-import DashboardLayout from "@/components/dashboard/DashboardLayout";
+import { useDashboard } from "@/components/dashboard/DashboardLayout"; // 1. Import hook
 import PageHeader from "@/components/dashboard/PageHeader";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -66,6 +66,9 @@ const downloadFile = (content: string, filename: string, type: string) => {
 };
 
 const Reports = () => {
+  // 2. Use the hook to get the menu trigger from parent Layout
+  const { onMobileMenuOpen } = useDashboard();
+  
   const [trades] = useState<Trade[]>(generateMockTrades());
   const [activeTab, setActiveTab] = useState("overview");
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
@@ -74,7 +77,7 @@ const Reports = () => {
   });
   const [instrumentFilter, setInstrumentFilter] = useState("all");
   const [strategyFilter, setStrategyFilter] = useState("all");
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  // 3. Removed local mobileMenuOpen state
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
   const { getCurrencySymbol } = useSettings();
 
@@ -135,11 +138,12 @@ const Reports = () => {
     : "Select dates";
 
   return (
-    <DashboardLayout>
+    <>
+      {/* 4. Removed DashboardLayout wrapper */}
       <PageHeader
         title="Reports"
         icon={<ChartLine weight="duotone" className="w-6 h-6 text-primary" />}
-        onMobileMenuOpen={() => setMobileMenuOpen(true)}
+        onMobileMenuOpen={onMobileMenuOpen}
       />
 
       <div className="px-4 sm:px-6 lg:px-8 pb-6 pt-4 space-y-4 sm:space-y-6">
@@ -400,7 +404,7 @@ const Reports = () => {
           </div>
         </SheetContent>
       </Sheet>
-    </DashboardLayout>
+    </>
   );
 };
 

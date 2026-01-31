@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { Plus, Export, DotsThreeVertical, Funnel, X, CalendarBlank, ChartLineUp } from "@phosphor-icons/react";
-import DashboardLayout from "@/components/dashboard/DashboardLayout";
+import { useDashboard } from "@/components/dashboard/DashboardLayout"; // 1. Import hook
 import PageHeader from "@/components/dashboard/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Trade, generateMockTrades, computeTradeData } from "@/lib/tradesData";
@@ -32,13 +32,16 @@ import {
 } from "@/components/ui/select";
 
 const Trades = () => {
+  // 2. Use the hook to get the menu trigger from the parent Layout
+  const { onMobileMenuOpen } = useDashboard();
+  
   const [trades, setTrades] = useState<Trade[]>(generateMockTrades());
   const [searchQuery, setSearchQuery] = useState("");
   const [sideFilter, setSideFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
   const [sortField, setSortField] = useState("date");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  // 3. Removed local mobileMenuOpen state
 
   const [selectedTrade, setSelectedTrade] = useState<Trade | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -159,11 +162,12 @@ const Trades = () => {
   const hasActiveFilters = sideFilter !== "all" || typeFilter !== "all";
 
   return (
-    <DashboardLayout>
+    <>
+      {/* 4. Removed DashboardLayout wrapper */}
       <PageHeader
         title="Trades"
         icon={<ChartLineUp weight="duotone" className="w-6 h-6 text-primary" />}
-        onMobileMenuOpen={() => setMobileMenuOpen(true)}
+        onMobileMenuOpen={onMobileMenuOpen}
       >
         {/* Desktop: Export + Add Trade */}
         <Button
@@ -355,7 +359,7 @@ const Trades = () => {
         onOpenChange={setEditModalOpen}
         onUpdateTrade={handleUpdateTrade}
       />
-    </DashboardLayout>
+    </>
   );
 };
 

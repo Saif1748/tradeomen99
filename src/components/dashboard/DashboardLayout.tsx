@@ -1,13 +1,21 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
+import { Outlet, useOutletContext } from "react-router-dom";
 import AppSidebar from "./AppSidebar";
 import MobileSidebar from "./MobileSidebar";
 
-interface DashboardLayoutProps {
-  children: React.ReactNode;
-}
+// 1. Define the context type that child pages will use
+export type DashboardContextType = {
+  onMobileMenuOpen: () => void;
+};
 
-const DashboardLayout = ({ children }: DashboardLayoutProps) => {
+// 2. Export a custom hook so child pages can easily access the context
+export const useDashboard = () => {
+  return useOutletContext<DashboardContextType>();
+};
+
+const DashboardLayout = () => {
+  // No "children" prop needed anymore; we use Outlet
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
@@ -21,34 +29,19 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
 
-  // Clone children and inject mobile menu handler
-  const childrenWithProps = React.Children.map(children, child => {
-    if (React.isValidElement(child)) {
-      // Check if it's a PageHeader by looking at the component
-      const childType = child.type as { displayName?: string; name?: string } | string;
-      const componentName = typeof childType === 'function' 
-        ? (childType as { displayName?: string; name?: string }).displayName || (childType as { displayName?: string; name?: string }).name 
-        : '';
-      
-      if (componentName === 'PageHeader') {
-        return React.cloneElement(child as React.ReactElement<{ onMobileMenuOpen?: () => void }>, {
-          onMobileMenuOpen: () => setMobileMenuOpen(true)
-        });
-      }
-    }
-    return child;
-  });
-
   return (
     <div className="min-h-screen bg-background">
+      {/* Sidebar is rendered once here and stays persistent */}
       <AppSidebar
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
       />
+      
       <MobileSidebar 
         open={mobileMenuOpen} 
         onClose={() => setMobileMenuOpen(false)} 
       />
+
       <motion.main
         initial={false}
         animate={{
@@ -57,7 +50,9 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
         transition={{ duration: 0.3, ease: [0.25, 0.46, 0.45, 0.94] }}
         className="min-h-screen"
       >
-        {childrenWithProps}
+        {/* 3. The Outlet renders the current child route (Dashboard, Trades, etc.) */}
+        {/* We pass the mobile menu trigger via context */}
+        <Outlet context={{ onMobileMenuOpen: () => setMobileMenuOpen(true) } satisfies DashboardContextType} />
       </motion.main>
     </div>
   );

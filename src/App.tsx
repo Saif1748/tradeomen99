@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { SettingsProvider } from "@/contexts/SettingsContext";
+import DashboardLayout from "@/components/dashboard/DashboardLayout"; // 1. Import Layout
 
 // Preload images for caching
 import "@/assets/tradeomen-logo.png";
@@ -38,16 +39,23 @@ const App = () => (
         <BrowserRouter>
           <Suspense fallback={<PageLoader />}>
             <Routes>
+              {/* Public Routes */}
               <Route path="/" element={<Index />} />
               <Route path="/auth" element={<Auth />} />
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/trades" element={<Trades />} />
-              <Route path="/strategies" element={<Strategies />} />
-              <Route path="/calendar" element={<Calendar />} />
-              <Route path="/reports" element={<Reports />} />
-              <Route path="/markets" element={<Markets />} />
-              <Route path="/ai-chat" element={<AIChat />} />
-              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+
+              {/* 2. Global Dashboard Routes - Wrapped in Layout */}
+              {/* The Sidebar will persist across all these paths */}
+              <Route element={<DashboardLayout />}>
+                <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/trades" element={<Trades />} />
+                <Route path="/strategies" element={<Strategies />} />
+                <Route path="/calendar" element={<Calendar />} />
+                <Route path="/reports" element={<Reports />} />
+                <Route path="/markets" element={<Markets />} />
+                <Route path="/ai-chat" element={<AIChat />} />
+              </Route>
+
+              {/* Catch-all */}
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>

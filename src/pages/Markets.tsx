@@ -1,17 +1,18 @@
 import { Globe, Clock, ArrowsClockwise } from "@phosphor-icons/react";
-import DashboardLayout from "@/components/dashboard/DashboardLayout";
+import { useDashboard } from "@/components/dashboard/DashboardLayout"; // 1. Import hook
 import PageHeader from "@/components/dashboard/PageHeader";
-import { useState } from "react";
 
 const Markets = () => {
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  // 2. Use the hook to get the menu trigger from parent Layout
+  const { onMobileMenuOpen } = useDashboard();
+  // 3. Removed local mobileMenuOpen state and DashboardLayout wrapper
 
   return (
-    <DashboardLayout>
+    <>
       <PageHeader
         title="Markets"
         icon={<Globe weight="duotone" className="w-6 h-6 text-primary" />}
-        onMobileMenuOpen={() => setMobileMenuOpen(true)}
+        onMobileMenuOpen={onMobileMenuOpen}
         showThemeToggle={false}
       />
 
@@ -32,7 +33,7 @@ const Markets = () => {
           </div>
         </div>
       </div>
-    </DashboardLayout>
+    </>
   );
 };
 

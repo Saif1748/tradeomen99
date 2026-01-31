@@ -3,13 +3,12 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ChatCircle, Lightning, List } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import DashboardLayout from "@/components/dashboard/DashboardLayout";
+import { useDashboard } from "@/components/dashboard/DashboardLayout"; // 1. Import hook
 import ChatMessage from "@/components/ai-chat/ChatMessage";
 import ChatInput from "@/components/ai-chat/ChatInput";
 import ChatHistorySidebar from "@/components/ai-chat/ChatHistorySidebar";
 import ThinkingIndicator from "@/components/ai-chat/ThinkingIndicator";
 import EmptyState from "@/components/ai-chat/EmptyState";
-import MobileSidebar from "@/components/dashboard/MobileSidebar";
 
 interface Message {
   id: string;
@@ -51,13 +50,17 @@ const mockChatHistory: ChatSession[] = [
 ];
 
 const AIChat = () => {
+  // 2. Use global context for mobile menu
+  const { onMobileMenuOpen } = useDashboard();
+  
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [currentChatId, setCurrentChatId] = useState<string | undefined>();
   const [chatHistory] = useState<ChatSession[]>(mockChatHistory);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  // 3. Removed local mobileMenuOpen state and MobileSidebar
+  
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const hasMessages = messages.length > 0;
@@ -135,7 +138,7 @@ const AIChat = () => {
   };
 
   return (
-    <DashboardLayout>
+    <>
       {/* Chat History Sidebar */}
       <ChatHistorySidebar
         isOpen={historyOpen}
@@ -146,19 +149,15 @@ const AIChat = () => {
         chats={chatHistory}
       />
 
-      {/* Mobile Sidebar */}
-      <MobileSidebar 
-        open={mobileMenuOpen} 
-        onClose={() => setMobileMenuOpen(false)} 
-      />
+      {/* 4. Removed local DashboardLayout and MobileSidebar wrappers */}
 
       <div className="h-screen flex flex-col">
         {/* Header */}
         <header className="flex items-center justify-between px-4 sm:px-6 lg:px-8 h-14 sm:h-16 flex-shrink-0 border-b border-border/50">
           <div className="flex items-center gap-2">
-            {/* Mobile menu button */}
+            {/* Mobile menu button using global handler */}
             <button
-              onClick={() => setMobileMenuOpen(true)}
+              onClick={onMobileMenuOpen}
               className="md:hidden p-2 rounded-xl bg-secondary/50 border border-border hover:bg-secondary transition-colors"
             >
               <List weight="regular" className="w-5 h-5 text-foreground" />
@@ -246,7 +245,7 @@ const AIChat = () => {
           </AnimatePresence>
         </div>
       </div>
-    </DashboardLayout>
+    </>
   );
 };
 

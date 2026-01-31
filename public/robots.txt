@@ -12,3 +12,6 @@ Allow: /
 
 User-agent: *
 Allow: /
+
+Sitemap: https://tradeomen.com/sitemap.xml
+Host: https://tradeomen.com

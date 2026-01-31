@@ -1,6 +1,14 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom"; // Added useNavigate
 import { motion } from "framer-motion";
+import { toast } from "sonner"; // Added for notifications
+import { 
+  createUserWithEmailAndPassword, 
+  signInWithEmailAndPassword, 
+  signInWithPopup 
+} from "firebase/auth";
+import { auth, googleProvider } from "@/lib/firebase"; // Import the firebase setup
+
 import {
   Envelope,
   Lock,
@@ -15,21 +23,56 @@ import {
 import logo from "@/assets/tradeomen-logo.png";
 
 const Auth = () => {
+  const navigate = useNavigate(); // Hook for redirection
   const [isLogin, setIsLogin] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
+  const [isLoading, setIsLoading] = useState(false); // New loading state
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Handle auth logic here
-    console.log({ email, password, rememberMe, isLogin });
+    setIsLoading(true);
+
+    try {
+      if (isLogin) {
+        // --- LOGIN LOGIC ---
+        await signInWithEmailAndPassword(auth, email, password);
+        toast.success("Welcome back!");
+        navigate("/dashboard");
+      } else {
+        // --- SIGN UP LOGIC ---
+        await createUserWithEmailAndPassword(auth, email, password);
+        toast.success("Account created successfully!");
+        navigate("/dashboard");
+      }
+    } catch (error: any) {
+      console.error(error);
+      // Clean up Firebase error messages for the user
+      let message = "Authentication failed.";
+      if (error.code === 'auth/invalid-credential') message = "Invalid email or password.";
+      if (error.code === 'auth/email-already-in-use') message = "This email is already registered.";
+      if (error.code === 'auth/weak-password') message = "Password should be at least 6 characters.";
+      
+      toast.error(message);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleGoogleSignIn = () => {
-    // Handle Google sign-in
-    console.log("Google sign-in clicked");
+  const handleGoogleSignIn = async () => {
+    setIsLoading(true);
+    try {
+      await signInWithPopup(auth, googleProvider);
+      toast.success("Signed in with Google!");
+      navigate("/dashboard");
+    } catch (error: any) {
+      console.error(error);
+      toast.error("Google sign-in failed. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -208,10 +251,17 @@ const Auth = () => {
               {/* Submit Button */}
               <button
                 type="submit"
-                className="w-full h-12 rounded-xl glow-button text-primary-foreground text-sm font-normal flex items-center justify-center gap-2 transition-all"
+                disabled={isLoading}
+                className="w-full h-12 rounded-xl glow-button text-primary-foreground text-sm font-normal flex items-center justify-center gap-2 transition-all disabled:opacity-70 disabled:cursor-not-allowed"
               >
-                {isLogin ? "Sign in" : "Create account"}
-                <ArrowRight weight="bold" className="w-4 h-4" />
+                {isLoading ? (
+                  "Processing..."
+                ) : (
+                  <>
+                    {isLogin ? "Sign in" : "Create account"}
+                    <ArrowRight weight="bold" className="w-4 h-4" />
+                  </>
+                )}
               </button>
             </form>
 
@@ -231,7 +281,8 @@ const Auth = () => {
             <button
               type="button"
               onClick={handleGoogleSignIn}
-              className="w-full h-12 rounded-xl bg-card border border-border text-foreground text-sm font-normal flex items-center justify-center gap-3 hover:bg-secondary/50 transition-colors"
+              disabled={isLoading}
+              className="w-full h-12 rounded-xl bg-card border border-border text-foreground text-sm font-normal flex items-center justify-center gap-3 hover:bg-secondary/50 transition-colors disabled:opacity-50"
             >
               <GoogleLogo weight="bold" className="w-5 h-5" />
               Sign in with Google

@@ -1,6 +1,5 @@
-import { useState } from "react";
 import { Wallet } from "@phosphor-icons/react";
-import DashboardLayout from "@/components/dashboard/DashboardLayout";
+import { useDashboard } from "@/components/dashboard/DashboardLayout"; // 1. Import the hook
 import DashboardHeader from "@/components/dashboard/DashboardHeader";
 import MetricCard from "@/components/dashboard/MetricCard";
 import GaugeMetric from "@/components/dashboard/GaugeMetric";
@@ -38,7 +37,8 @@ const radarChartData = [
 ];
 
 const Dashboard = () => {
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  // 2. Use the hook to get the mobile menu trigger from the parent layout
+  const { onMobileMenuOpen } = useDashboard();
   const { formatCurrency, getCurrencySymbol } = useSettings();
 
   // Sample data - would come from API
@@ -46,8 +46,9 @@ const Dashboard = () => {
   const isPositive = netPnL >= 0;
 
   return (
-    <DashboardLayout>
-      <DashboardHeader onMobileMenuOpen={() => setMobileMenuOpen(true)} />
+    <>
+      {/* 3. Pass the context function to the header */}
+      <DashboardHeader onMobileMenuOpen={onMobileMenuOpen} />
 
       {/* Subtitle */}
       <div className="px-4 sm:px-6 lg:px-8 pb-2">
@@ -123,7 +124,7 @@ const Dashboard = () => {
           <MiniCalendar />
         </div>
       </div>
-    </DashboardLayout>
+    </>
   );
 };
 

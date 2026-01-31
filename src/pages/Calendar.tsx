@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { CalendarBlank, CaretLeft, CaretRight } from "@phosphor-icons/react";
-import DashboardLayout from "@/components/dashboard/DashboardLayout";
+import { useDashboard } from "@/components/dashboard/DashboardLayout"; // 1. Import hook
 import PageHeader from "@/components/dashboard/PageHeader";
 import CalendarGrid from "@/components/calendar/CalendarGrid";
 import { generateMonthData, getMonthStats } from "@/lib/calendarData";
@@ -8,10 +8,13 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 const Calendar = () => {
+  // 2. Use the hook to get the menu trigger from parent Layout
+  const { onMobileMenuOpen } = useDashboard();
+  
   const today = new Date();
   const [currentDate, setCurrentDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
   const [colorMode, setColorMode] = useState<'pnl' | 'winrate'>('pnl');
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  // 3. Removed local mobileMenuOpen state
   const [notes, setNotes] = useState<Map<string, string>>(new Map());
 
   const monthData = useMemo(() => {
@@ -59,11 +62,12 @@ const Calendar = () => {
   };
 
   return (
-    <DashboardLayout>
+    <>
+      {/* 4. Removed DashboardLayout wrapper */}
       <PageHeader
         title="Calendar"
         icon={<CalendarBlank weight="duotone" className="w-6 h-6 text-primary" />}
-        onMobileMenuOpen={() => setMobileMenuOpen(true)}
+        onMobileMenuOpen={onMobileMenuOpen}
       />
 
       <div className="px-4 sm:px-6 lg:px-8 pb-6 pt-4 space-y-4 sm:space-y-6">
@@ -188,7 +192,7 @@ const Calendar = () => {
           />
         </div>
       </div>
-    </DashboardLayout>
+    </>
   );
 };
 
