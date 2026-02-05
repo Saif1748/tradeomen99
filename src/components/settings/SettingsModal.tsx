@@ -28,7 +28,7 @@ import { Badge } from "@/components/ui/badge";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
-import { useSettings, UserProfile, TradingPreferences, AppearanceSettings } from "@/contexts/SettingsContext";
+import { useSettings, UserProfile } from "@/contexts/SettingsContext";
 import { toast } from "sonner";
 import {
   User,
@@ -45,6 +45,7 @@ import {
   Check,
   Lightning,
   X,
+  Spinner, // Make sure you have this or use a simple loader
 } from "@phosphor-icons/react";
 
 interface SettingsModalProps {
@@ -76,24 +77,36 @@ const sections: { id: SettingsSection; label: string; icon: React.ElementType }[
 const ProfileSection = () => {
   const { profile, setProfile } = useSettings();
   const [localProfile, setLocalProfile] = useState<UserProfile>(profile);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     setLocalProfile(profile);
   }, [profile]);
 
-  const handleSave = () => {
-    setProfile(localProfile);
-    toast.success("Profile updated successfully");
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      await setProfile(localProfile);
+      toast.success("Profile updated successfully");
+    } catch (error) {
+      toast.error("Failed to update profile");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
-        <div className="w-16 h-16 rounded-full bg-gradient-to-br from-glow-primary to-glow-secondary flex items-center justify-center text-primary-foreground text-xl font-medium">
-          {localProfile.firstName.charAt(0)}{localProfile.lastName.charAt(0)}
+        <div className="w-16 h-16 rounded-full bg-gradient-to-br from-glow-primary to-glow-secondary flex items-center justify-center text-primary-foreground text-xl font-medium overflow-hidden">
+          {profile.photoURL ? (
+             <img src={profile.photoURL} alt="Avatar" className="w-full h-full object-cover" />
+          ) : (
+             <span>{localProfile.firstName.charAt(0)}{localProfile.lastName.charAt(0)}</span>
+          )}
         </div>
         <div className="flex-1">
-          <Button variant="outline" size="sm">Change Avatar</Button>
+          <Button variant="outline" size="sm" disabled>Change Avatar</Button>
         </div>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -120,7 +133,8 @@ const ProfileSection = () => {
           id="email" 
           type="email" 
           value={localProfile.email}
-          onChange={(e) => setLocalProfile({ ...localProfile, email: e.target.value })}
+          disabled // Email usually can't be changed this easily in Firebase
+          className="opacity-70"
         />
       </div>
       <div className="space-y-2">
@@ -134,8 +148,8 @@ const ProfileSection = () => {
           onChange={(e) => setLocalProfile({ ...localProfile, bio: e.target.value })}
         />
       </div>
-      <Button onClick={handleSave} className="glow-button text-white">
-        Save Changes
+      <Button onClick={handleSave} disabled={isSaving} className="glow-button text-white">
+        {isSaving ? "Saving..." : "Save Changes"}
       </Button>
     </div>
   );
@@ -144,7 +158,7 @@ const ProfileSection = () => {
 const AppearanceSection = () => {
   const { theme, setTheme } = useTheme();
   const { appearance, setAppearance } = useSettings();
-  
+   
   return (
     <div className="space-y-6">
       <div className="space-y-3">
@@ -213,17 +227,22 @@ const AppearanceSection = () => {
 
 const TradingSection = () => {
   const { tradingPreferences, setTradingPreferences } = useSettings();
-  
+   
+  const updatePreference = (key: keyof typeof tradingPreferences, value: any) => {
+    // Immediate feedback with toast handled in Context mostly, but here we just trigger it
+    const newPrefs = { ...tradingPreferences, [key]: value };
+    setTradingPreferences(newPrefs);
+    // You could add specific toasts here if desired
+    if (key === 'currency') toast.success(`Currency set to ${value}`);
+  };
+
   return (
     <div className="space-y-6">
       <div className="space-y-2">
         <Label htmlFor="currency">Default Currency</Label>
         <Select 
           value={tradingPreferences.currency}
-          onValueChange={(value: "USD" | "EUR" | "GBP" | "JPY") => {
-            setTradingPreferences({ ...tradingPreferences, currency: value });
-            toast.success(`Currency set to ${value}`);
-          }}
+          onValueChange={(value) => updatePreference('currency', value)}
         >
           <SelectTrigger>
             <SelectValue />
@@ -241,7 +260,7 @@ const TradingSection = () => {
         <Select 
           value={tradingPreferences.timezone}
           onValueChange={(value) => {
-            setTradingPreferences({ ...tradingPreferences, timezone: value });
+            updatePreference('timezone', value);
             toast.success("Timezone updated");
           }}
         >
@@ -265,7 +284,7 @@ const TradingSection = () => {
           onChange={(e) => {
             const value = parseFloat(e.target.value);
             if (!isNaN(value) && value >= 0.5 && value <= 10) {
-              setTradingPreferences({ ...tradingPreferences, riskLevel: value });
+              updatePreference('riskLevel', value);
             }
           }}
           min="0.5" 
@@ -281,7 +300,7 @@ const TradingSection = () => {
         <Switch 
           checked={tradingPreferences.showWeekends}
           onCheckedChange={(checked) => {
-            setTradingPreferences({ ...tradingPreferences, showWeekends: checked });
+            updatePreference('showWeekends', checked);
             toast.success(checked ? "Weekends visible" : "Weekends hidden");
           }}
         />
@@ -294,7 +313,7 @@ const TradingSection = () => {
         <Switch 
           checked={tradingPreferences.autoCalculateFees}
           onCheckedChange={(checked) => {
-            setTradingPreferences({ ...tradingPreferences, autoCalculateFees: checked });
+            updatePreference('autoCalculateFees', checked);
             toast.success(checked ? "Fees auto-calculated" : "Manual fee entry");
           }}
         />
@@ -305,6 +324,7 @@ const TradingSection = () => {
 
 const AISection = () => (
   <div className="space-y-6">
+    {/* ... (AI Section Content remains unchanged) ... */}
     <div className="space-y-2">
       <Label htmlFor="aiModel">AI Model</Label>
       <Select defaultValue="balanced">
@@ -354,6 +374,7 @@ const AISection = () => (
 
 const NotificationsSection = () => (
   <div className="space-y-6">
+     {/* ... (Notifications Section Content remains unchanged) ... */}
     <div className="flex items-center justify-between">
       <div>
         <Label>Email Notifications</Label>
@@ -394,6 +415,7 @@ const NotificationsSection = () => (
 
 const PrivacySection = () => (
   <div className="space-y-6">
+    {/* ... (Privacy Section Content remains unchanged) ... */}
     <div className="flex items-center justify-between">
       <div>
         <Label>Analytics</Label>
@@ -469,6 +491,7 @@ const IntegrationsSection = () => {
 
 const SubscriptionSection = () => (
   <div className="space-y-6">
+     {/* ... (Subscription Section Content remains unchanged) ... */}
     <div className="p-4 rounded-xl bg-gradient-to-br from-primary/20 to-glow-secondary/10 border border-primary/30">
       <div className="flex items-center gap-2 mb-3">
         <Lightning weight="fill" className="w-5 h-5 text-primary" />

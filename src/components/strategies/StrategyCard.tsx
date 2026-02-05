@@ -1,4 +1,4 @@
-import { Strategy } from "@/lib/strategiesData";
+import { Strategy } from "@/types/strategy";
 
 interface StrategyCardProps {
   strategy: Strategy;
@@ -6,14 +6,22 @@ interface StrategyCardProps {
 }
 
 const StrategyCard = ({ strategy, onClick }: StrategyCardProps) => {
-  const winRateColor = strategy.winRate >= 70 ? "stroke-primary" : strategy.winRate >= 50 ? "stroke-amber-400" : "stroke-rose-400";
-  const pnlColor = strategy.netPnl >= 0 ? "text-emerald-400" : "text-rose-400";
-  const avgWinColor = "text-emerald-400";
-  const avgLossColor = "text-rose-400";
+  // ✅ Access nested metrics safely
+  const { 
+    winRate = 0, 
+    totalPnl = 0, 
+    totalTrades = 0, 
+    profitFactor = 0 
+  } = strategy.metrics || {};
+
+  // Color Logic
+  const winRateColor = winRate >= 70 ? "stroke-primary" : winRate >= 50 ? "stroke-amber-400" : "stroke-rose-400";
+  const pnlColor = totalPnl >= 0 ? "text-emerald-400" : "text-rose-400";
   
   // Calculate stroke dasharray for win rate circle
-  const circumference = 2 * Math.PI * 32;
-  const strokeDasharray = `${(strategy.winRate / 100) * circumference} ${circumference}`;
+  const radius = 32;
+  const circumference = 2 * Math.PI * radius;
+  const strokeDasharray = `${(winRate / 100) * circumference} ${circumference}`;
 
   return (
     <div
@@ -22,13 +30,13 @@ const StrategyCard = ({ strategy, onClick }: StrategyCardProps) => {
     >
       {/* Header */}
       <div className="flex items-start gap-3 mb-4">
-        <span className="text-2xl">{strategy.icon}</span>
+        <span className="text-2xl">{strategy.emoji || "⚡"}</span>
         <div className="flex-1 min-w-0">
           <h3 className="font-medium text-foreground tracking-tight-premium truncate">
             {strategy.name}
           </h3>
           <span className="text-xs text-muted-foreground">
-            {strategy.totalTrades} trades
+            {totalTrades} trades
           </span>
         </div>
       </div>
@@ -41,7 +49,7 @@ const StrategyCard = ({ strategy, onClick }: StrategyCardProps) => {
             <circle
               cx="36"
               cy="36"
-              r="32"
+              r={radius}
               fill="none"
               stroke="hsl(var(--muted))"
               strokeWidth="4"
@@ -49,7 +57,7 @@ const StrategyCard = ({ strategy, onClick }: StrategyCardProps) => {
             <circle
               cx="36"
               cy="36"
-              r="32"
+              r={radius}
               fill="none"
               className={winRateColor}
               strokeWidth="4"
@@ -58,40 +66,36 @@ const StrategyCard = ({ strategy, onClick }: StrategyCardProps) => {
             />
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className="text-sm font-medium text-foreground">{Math.round(strategy.winRate)}%</span>
+            <span className="text-sm font-medium text-foreground">{Math.round(winRate)}%</span>
             <span className="text-[10px] text-muted-foreground">WIN</span>
           </div>
         </div>
 
         {/* P&L */}
         <div>
-          <p className="text-xs text-muted-foreground uppercase tracking-wider">NET P&L (USD)</p>
+          <p className="text-xs text-muted-foreground uppercase tracking-wider">NET P&L</p>
           <p className={`text-xl font-medium ${pnlColor}`}>
-            {strategy.netPnl >= 0 ? '+' : ''}${Math.abs(strategy.netPnl).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+            {totalPnl >= 0 ? '+' : ''}${Math.abs(totalPnl).toLocaleString(undefined, { minimumFractionDigits: 2 })}
           </p>
-          <p className="text-xs text-muted-foreground">{strategy.style}</p>
+          <div className="flex items-center gap-2 mt-1">
+             <span className="text-[10px] px-1.5 py-0.5 bg-secondary/50 rounded text-muted-foreground uppercase">
+               {strategy.style?.replace("_", " ") || "GENERAL"}
+             </span>
+          </div>
         </div>
       </div>
 
       {/* Metrics Grid */}
-      <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+      <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs border-t border-border/30 pt-3">
         <div>
           <p className="text-muted-foreground uppercase tracking-wider">PROFIT FACTOR</p>
-          <p className="text-foreground font-medium">{strategy.profitFactor.toFixed(2)}</p>
+          <p className="text-foreground font-medium">{profitFactor.toFixed(2)}</p>
         </div>
         <div>
-          <p className="text-muted-foreground uppercase tracking-wider">EXPECTANCY</p>
-          <p className={strategy.expectancy >= 0 ? "text-emerald-400" : "text-rose-400"}>
-            ${strategy.expectancy.toFixed(2)}
+          <p className="text-muted-foreground uppercase tracking-wider">ASSETS</p>
+          <p className="text-foreground font-medium truncate">
+            {strategy.assetClasses?.join(", ") || "All"}
           </p>
-        </div>
-        <div>
-          <p className="text-muted-foreground uppercase tracking-wider">AVG WIN</p>
-          <p className={avgWinColor}>+${strategy.avgWin.toFixed(2)}</p>
-        </div>
-        <div>
-          <p className="text-muted-foreground uppercase tracking-wider">AVG LOSS</p>
-          <p className={avgLossColor}>-${strategy.avgLoss.toFixed(2)}</p>
         </div>
       </div>
     </div>

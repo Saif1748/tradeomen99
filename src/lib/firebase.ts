@@ -1,5 +1,7 @@
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
+import { getFirestore } from "firebase/firestore";
+import { getStorage } from "firebase/storage"
 
 // This tells Firebase which project to connect to using the keys from your .env file
 const firebaseConfig = {
@@ -11,9 +13,8 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
-// Initialize the application
 const app = initializeApp(firebaseConfig);
-
-// Export the authentication tools so we can use them in Auth.tsx
 export const auth = getAuth(app);
+export const db = getFirestore(app); 
+export const storage = getStorage(app);
 export const googleProvider = new GoogleAuthProvider();

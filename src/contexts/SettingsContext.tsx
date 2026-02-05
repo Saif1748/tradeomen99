@@ -1,10 +1,17 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { onAuthStateChanged, signOut as firebaseSignOut, User } from "firebase/auth";
+import { doc, onSnapshot, updateDoc } from "firebase/firestore";
+import { auth, db } from "@/lib/firebase";
+import { toast } from "sonner";
 
+// --- Types ---
 export interface UserProfile {
   firstName: string;
   lastName: string;
   email: string;
   bio: string;
+  photoURL?: string;
+  tier?: "FREE" | "PRO" | "PREMIUM"; // Added tier to profile type
 }
 
 export interface TradingPreferences {
@@ -22,20 +29,24 @@ export interface AppearanceSettings {
 
 interface SettingsContextType {
   profile: UserProfile;
-  setProfile: (profile: UserProfile) => void;
+  setProfile: (profile: UserProfile) => Promise<void>; 
   tradingPreferences: TradingPreferences;
-  setTradingPreferences: (prefs: TradingPreferences) => void;
+  setTradingPreferences: (prefs: TradingPreferences) => Promise<void>;
   appearance: AppearanceSettings;
   setAppearance: (appearance: AppearanceSettings) => void;
   getCurrencySymbol: () => string;
   formatCurrency: (value: number) => string;
+  isLoading: boolean;
+  logout: () => Promise<void>; // <--- FIXED: Re-added this
 }
 
+// --- Defaults ---
 const defaultProfile: UserProfile = {
-  firstName: "John",
-  lastName: "Doe",
-  email: "john.doe@example.com",
+  firstName: "Guest",
+  lastName: "User",
+  email: "",
   bio: "",
+  tier: "FREE",
 };
 
 const defaultTradingPreferences: TradingPreferences = {
@@ -54,35 +65,135 @@ const defaultAppearance: AppearanceSettings = {
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
 
 export const SettingsProvider = ({ children }: { children: ReactNode }) => {
-  const [profile, setProfileState] = useState<UserProfile>(() => {
-    const saved = localStorage.getItem("userProfile");
-    return saved ? JSON.parse(saved) : defaultProfile;
-  });
-
-  const [tradingPreferences, setTradingPreferencesState] = useState<TradingPreferences>(() => {
-    const saved = localStorage.getItem("tradingPreferences");
-    return saved ? JSON.parse(saved) : defaultTradingPreferences;
-  });
-
+  const [user, setUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  
+  // State
+  const [profile, setProfileState] = useState<UserProfile>(defaultProfile);
+  const [tradingPreferences, setTradingPreferencesState] = useState<TradingPreferences>(defaultTradingPreferences);
+  
+  // Appearance stays in LocalStorage to prevent "theme flash" on load
   const [appearance, setAppearanceState] = useState<AppearanceSettings>(() => {
     const saved = localStorage.getItem("appearanceSettings");
     return saved ? JSON.parse(saved) : defaultAppearance;
   });
 
-  const setProfile = (newProfile: UserProfile) => {
-    setProfileState(newProfile);
-    localStorage.setItem("userProfile", JSON.stringify(newProfile));
+  // 1. Listen to Auth State
+  useEffect(() => {
+    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      if (!currentUser) {
+        setProfileState(defaultProfile);
+        setTradingPreferencesState(defaultTradingPreferences);
+        setIsLoading(false);
+      }
+    });
+    return () => unsubscribeAuth();
+  }, []);
+
+  // 2. Listen to Firestore Data (Real-time)
+  useEffect(() => {
+    if (!user) return;
+
+    const userDocRef = doc(db, "users", user.uid);
+    
+    // onSnapshot gives us real-time updates
+    const unsubscribeSnapshot = onSnapshot(userDocRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+
+        // Parse Name
+        const fullName = data.displayName || "";
+        const [first, ...rest] = fullName.split(" ");
+        const last = rest.join(" ");
+
+        setProfileState({
+          firstName: first || "",
+          lastName: last || "",
+          email: data.email || user.email || "",
+          bio: data.bio || "", 
+          photoURL: data.photoURL || user.photoURL || undefined,
+          tier: data.plan?.tier || "FREE", // Sync tier from Firestore
+        });
+
+        // Parse Trading Preferences (from settings & usage maps)
+        const prefs = data.settings?.preferences || {};
+        setTradingPreferencesState({
+          currency: data.settings?.currency || "USD",
+          timezone: prefs.timezone || "est",
+          riskLevel: prefs.riskLevel || 2,
+          showWeekends: prefs.showWeekends ?? true,
+          autoCalculateFees: prefs.autoCalculateFees ?? true,
+        });
+      }
+      setIsLoading(false);
+    }, (error) => {
+      console.error("Error fetching user data:", error);
+      setIsLoading(false);
+    });
+
+    return () => unsubscribeSnapshot();
+  }, [user]);
+
+  // --- Actions ---
+
+  const setProfile = async (newProfile: UserProfile) => {
+    if (!user) return;
+    
+    setProfileState(newProfile); // Optimistic Update
+
+    try {
+      const userDocRef = doc(db, "users", user.uid);
+      await updateDoc(userDocRef, {
+        displayName: `${newProfile.firstName} ${newProfile.lastName}`.trim(),
+        bio: newProfile.bio,
+      });
+    } catch (error) {
+      console.error("Failed to save profile:", error);
+      toast.error("Failed to save changes");
+    }
   };
 
-  const setTradingPreferences = (prefs: TradingPreferences) => {
-    setTradingPreferencesState(prefs);
-    localStorage.setItem("tradingPreferences", JSON.stringify(prefs));
+  const setTradingPreferences = async (newPrefs: TradingPreferences) => {
+    if (!user) return;
+
+    setTradingPreferencesState(newPrefs); // Optimistic Update
+
+    try {
+      const userDocRef = doc(db, "users", user.uid);
+      await updateDoc(userDocRef, {
+        "settings.currency": newPrefs.currency,
+        "settings.preferences": {
+           timezone: newPrefs.timezone,
+           riskLevel: newPrefs.riskLevel,
+           showWeekends: newPrefs.showWeekends,
+           autoCalculateFees: newPrefs.autoCalculateFees
+        }
+      });
+    } catch (error) {
+      console.error("Failed to save preferences:", error);
+      toast.error("Failed to save preferences");
+    }
   };
 
   const setAppearance = (settings: AppearanceSettings) => {
     setAppearanceState(settings);
     localStorage.setItem("appearanceSettings", JSON.stringify(settings));
   };
+
+  // <--- FIXED: Implemented Logout Function
+  const logout = async () => {
+    try {
+      await firebaseSignOut(auth);
+      setProfileState(defaultProfile);
+      toast.success("Logged out successfully");
+    } catch (error) {
+      console.error("Logout failed:", error);
+      toast.error("Failed to logout");
+    }
+  };
+
+  // --- Helpers ---
 
   const getCurrencySymbol = () => {
     switch (tradingPreferences.currency) {
@@ -104,23 +215,16 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
     return value >= 0 ? `${symbol}${formatted}` : `-${symbol}${formatted}`;
   };
 
-  // Apply font size to root element
+  // Side Effects
   useEffect(() => {
     const root = document.documentElement;
     switch (appearance.fontSize) {
-      case "small":
-        root.style.fontSize = "14px";
-        break;
-      case "medium":
-        root.style.fontSize = "16px";
-        break;
-      case "large":
-        root.style.fontSize = "18px";
-        break;
+      case "small": root.style.fontSize = "14px"; break;
+      case "medium": root.style.fontSize = "16px"; break;
+      case "large": root.style.fontSize = "18px"; break;
     }
   }, [appearance.fontSize]);
 
-  // Apply reduce animations preference
   useEffect(() => {
     const root = document.documentElement;
     if (appearance.reduceAnimations) {
@@ -141,6 +245,8 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
         setAppearance,
         getCurrencySymbol,
         formatCurrency,
+        isLoading,
+        logout, // <--- Exposed in Provider
       }}
     >
       {children}

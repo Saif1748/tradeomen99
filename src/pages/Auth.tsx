@@ -1,13 +1,18 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom"; // Added useNavigate
-import { motion } from "framer-motion";
-import { toast } from "sonner"; // Added for notifications
+import { Link, useNavigate } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
+import { toast } from "sonner";
+import { z } from "zod"; 
 import { 
   createUserWithEmailAndPassword, 
   signInWithEmailAndPassword, 
-  signInWithPopup 
+  signInWithPopup,
+  updateProfile,
+  sendEmailVerification, 
+  sendPasswordResetEmail,
 } from "firebase/auth";
-import { auth, googleProvider } from "@/lib/firebase"; // Import the firebase setup
+import { auth, googleProvider } from "@/lib/firebase";
+import { syncUserWithFirestore } from "@/services/userService";
 
 import {
   Envelope,
@@ -19,43 +24,162 @@ import {
   ChartLineUp,
   Brain,
   Lightning,
+  User,
 } from "@phosphor-icons/react";
 import logo from "@/assets/tradeomen-logo.png";
 
+// --- Validation Schemas ---
+const loginSchema = z.object({
+  email: z.string().email("Invalid email address"),
+  password: z.string().min(1, "Password is required"),
+});
+
+const signupSchema = z.object({
+  firstName: z.string().min(2, "First name is too short"),
+  lastName: z.string().min(2, "Last name is too short"),
+  email: z.string().email("Invalid email address"),
+  password: z.string()
+    .min(8, "Password must be at least 8 characters")
+    .regex(/[A-Z]/, "Password must contain an uppercase letter")
+    .regex(/[0-9]/, "Password must contain a number"),
+});
+
 const Auth = () => {
-  const navigate = useNavigate(); // Hook for redirection
+  const navigate = useNavigate();
   const [isLogin, setIsLogin] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [rememberMe, setRememberMe] = useState(false);
-  const [isLoading, setIsLoading] = useState(false); // New loading state
+  const [isLoading, setIsLoading] = useState(false);
 
+  // Unified Form State
+  const [formData, setFormData] = useState({
+    firstName: "",
+    lastName: "",
+    email: "",
+    password: "",
+  });
+
+  const handleChange = (field: string, value: string) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  // --- Password Reset Logic ---
+  const handleForgotPassword = async () => {
+    if (!formData.email) {
+      toast.error("Please enter your email address first.");
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      await sendPasswordResetEmail(auth, formData.email);
+      // ✅ Best Practice: Do not reveal if the email exists or not
+      toast.success("If an account exists, a reset link has been sent.");
+    } catch (error: any) {
+      console.error(error);
+      // Only show specific errors for rate limiting or invalid format
+      if (error.code === 'auth/invalid-email') {
+        toast.error("Invalid email address format.");
+      } else if (error.code === 'auth/too-many-requests') {
+        toast.error("Too many attempts. Please try again later.");
+      } else {
+        // Fallback for user-not-found or other errors to maintain ambiguity
+        toast.success("If an account exists, a reset link has been sent.");
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // --- Main Auth Logic ---
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
     try {
       if (isLogin) {
-        // --- LOGIN LOGIC ---
-        await signInWithEmailAndPassword(auth, email, password);
-        toast.success("Welcome back!");
-        navigate("/dashboard");
+        // === LOGIN FLOW ===
+        const data = loginSchema.parse({
+          email: formData.email, 
+          password: formData.password
+        });
+
+        const userCredential = await signInWithEmailAndPassword(auth, data.email, data.password);
+        
+        // Sync & Redirect
+        if (userCredential.user) {
+          await syncUserWithFirestore(userCredential.user);
+          
+          if (!userCredential.user.emailVerified) {
+             // ℹ️ Informational toast, but we handle enforcement in ProtectedRoute
+            toast("Please verify your email to access all features.", { icon: "📧" });
+          } else {
+            toast.success("Welcome back!");
+          }
+          
+          navigate("/dashboard");
+        }
+
       } else {
-        // --- SIGN UP LOGIC ---
-        await createUserWithEmailAndPassword(auth, email, password);
-        toast.success("Account created successfully!");
+        // === SIGN UP FLOW ===
+        const data = signupSchema.parse(formData);
+
+        // 1. Create Account
+        const userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password);
+
+        // 2. Update Profile (Display Name)
+        if (auth.currentUser) {
+          await updateProfile(auth.currentUser, {
+            displayName: `${data.firstName} ${data.lastName}`.trim()
+          });
+          
+          // 3. Send Verification Email
+          await sendEmailVerification(auth.currentUser);
+          
+          // Force reload to apply changes locally
+          await auth.currentUser.reload();
+        }
+
+        // 4. Sync User to Firestore
+        const userToSync = auth.currentUser || userCredential.user;
+        await syncUserWithFirestore(userToSync);
+
+        toast.success("Account created! Please check your inbox to verify.");
         navigate("/dashboard");
       }
     } catch (error: any) {
       console.error(error);
-      // Clean up Firebase error messages for the user
-      let message = "Authentication failed.";
-      if (error.code === 'auth/invalid-credential') message = "Invalid email or password.";
-      if (error.code === 'auth/email-already-in-use') message = "This email is already registered.";
-      if (error.code === 'auth/weak-password') message = "Password should be at least 6 characters.";
       
-      toast.error(message);
+      // Handle Zod Validation Errors
+      if (error instanceof z.ZodError) {
+        toast.error(error.errors[0].message);
+      } else {
+        // 🔐 Security: Anti-Enumeration Error Handling
+        const code = error.code;
+        let message = "Authentication failed.";
+
+        // Group all "User/Password" errors into one generic message
+        const ambiguousErrors = [
+          'auth/invalid-credential',
+          'auth/user-not-found',
+          'auth/wrong-password',
+        ];
+
+        if (ambiguousErrors.includes(code)) {
+          message = "Invalid email or password.";
+        } 
+        // Specific handling for non-credential errors
+        else if (code === 'auth/email-already-in-use') {
+          message = "This email is already registered.";
+        } 
+        else if (code === 'auth/too-many-requests') {
+          message = "Account temporarily locked due to failed attempts. Try later.";
+        }
+        else if (code === 'auth/network-request-failed') {
+          message = "Network error. Please check your connection.";
+        }
+        
+        toast.error(message);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -64,7 +188,12 @@ const Auth = () => {
   const handleGoogleSignIn = async () => {
     setIsLoading(true);
     try {
-      await signInWithPopup(auth, googleProvider);
+      const result = await signInWithPopup(auth, googleProvider);
+      
+      if (result.user) {
+        await syncUserWithFirestore(result.user);
+      }
+
       toast.success("Signed in with Google!");
       navigate("/dashboard");
     } catch (error: any) {
@@ -79,12 +208,10 @@ const Auth = () => {
     <div className="min-h-screen bg-background flex">
       {/* Left Side - Branding */}
       <div className="hidden lg:flex lg:w-1/2 xl:w-3/5 relative overflow-hidden">
-        {/* Background gradients */}
         <div className="absolute inset-0 hero-gradient" />
         <div className="absolute inset-0 mesh-gradient" />
         
         <div className="relative z-10 flex flex-col justify-center px-12 xl:px-20">
-          {/* Logo */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -95,7 +222,6 @@ const Auth = () => {
             </Link>
           </motion.div>
 
-          {/* Tagline */}
           <motion.h1
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -117,38 +243,30 @@ const Auth = () => {
             built for the future of trading
           </motion.p>
 
-          {/* Feature Icons */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.3 }}
             className="relative"
           >
-            {/* Decorative circles and icons */}
             <div className="flex flex-wrap gap-8 xl:gap-12">
               <div className="flex flex-col items-center gap-3">
                 <div className="w-14 h-14 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center">
                   <Brain weight="light" className="w-7 h-7 text-primary" />
                 </div>
-                <span className="text-sm font-light text-muted-foreground">
-                  AI Analysis
-                </span>
+                <span className="text-sm font-light text-muted-foreground">AI Analysis</span>
               </div>
               <div className="flex flex-col items-center gap-3">
                 <div className="w-14 h-14 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center">
                   <ChartLineUp weight="light" className="w-7 h-7 text-primary" />
                 </div>
-                <span className="text-sm font-light text-muted-foreground">
-                  Performance Tracking
-                </span>
+                <span className="text-sm font-light text-muted-foreground">Performance Tracking</span>
               </div>
               <div className="flex flex-col items-center gap-3">
                 <div className="w-14 h-14 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center">
                   <Lightning weight="light" className="w-7 h-7 text-primary" />
                 </div>
-                <span className="text-sm font-light text-muted-foreground">
-                  Real-time Sync
-                </span>
+                <span className="text-sm font-light text-muted-foreground">Real-time Sync</span>
               </div>
             </div>
           </motion.div>
@@ -170,7 +288,6 @@ const Auth = () => {
             </Link>
           </div>
 
-          {/* Auth Card */}
           <div className="glass-card p-8 sm:p-10 rounded-2xl">
             <h2 className="text-2xl font-normal tracking-tight-premium text-foreground mb-2">
               {isLogin ? "Welcome Back" : "Create Account"}
@@ -178,21 +295,51 @@ const Auth = () => {
             <p className="text-sm font-light text-muted-foreground mb-8">
               {isLogin
                 ? "Sign in to unleash the power of AI in trading"
-                : "Start your journey to smarter trading"}
+                : "Join the future of trading intelligence"}
             </p>
 
-            <form onSubmit={handleSubmit} className="space-y-5">
+            <form onSubmit={handleSubmit} className="space-y-4">
+              
+              {/* Name Fields - Slide in animation */}
+              <AnimatePresence>
+                {!isLogin && (
+                  <motion.div 
+                    initial={{ opacity: 0, height: 0, marginBottom: 0 }}
+                    animate={{ opacity: 1, height: "auto", marginBottom: 16 }}
+                    exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+                    className="grid grid-cols-2 gap-4 overflow-hidden"
+                  >
+                    <div className="relative">
+                      <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                      <input
+                        type="text"
+                        placeholder="First Name"
+                        value={formData.firstName}
+                        onChange={(e) => handleChange("firstName", e.target.value)}
+                        className="w-full h-12 pl-12 pr-4 rounded-xl bg-secondary/50 border border-border text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                      />
+                    </div>
+                    <div className="relative">
+                       <input
+                        type="text"
+                        placeholder="Last Name"
+                        value={formData.lastName}
+                        onChange={(e) => handleChange("lastName", e.target.value)}
+                        className="w-full h-12 px-4 rounded-xl bg-secondary/50 border border-border text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                      />
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
               {/* Email Input */}
               <div className="relative">
-                <Envelope
-                  weight="regular"
-                  className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground"
-                />
+                <Envelope weight="regular" className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                 <input
                   type="email"
                   placeholder="Email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  value={formData.email}
+                  onChange={(e) => handleChange("email", e.target.value)}
                   className="w-full h-12 pl-12 pr-4 rounded-xl bg-secondary/50 border border-border text-foreground placeholder:text-muted-foreground text-sm font-light focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
                   required
                 />
@@ -200,15 +347,12 @@ const Auth = () => {
 
               {/* Password Input */}
               <div className="relative">
-                <Lock
-                  weight="regular"
-                  className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground"
-                />
+                <Lock weight="regular" className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                 <input
                   type={showPassword ? "text" : "password"}
-                  placeholder="Password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder={isLogin ? "Password" : "Password (Min 8 chars)"}
+                  value={formData.password}
+                  onChange={(e) => handleChange("password", e.target.value)}
                   className="w-full h-12 pl-12 pr-12 rounded-xl bg-secondary/50 border border-border text-foreground placeholder:text-muted-foreground text-sm font-light focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
                   required
                 />
@@ -217,30 +361,16 @@ const Auth = () => {
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
                 >
-                  {showPassword ? (
-                    <EyeSlash weight="regular" className="w-5 h-5" />
-                  ) : (
-                    <Eye weight="regular" className="w-5 h-5" />
-                  )}
+                  {showPassword ? <EyeSlash className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
               </div>
 
-              {/* Remember Me & Forgot Password */}
+              {/* Forgot Password Logic */}
               {isLogin && (
-                <div className="flex items-center justify-between">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={rememberMe}
-                      onChange={(e) => setRememberMe(e.target.checked)}
-                      className="w-4 h-4 rounded border-border bg-secondary/50 text-primary focus:ring-primary/50"
-                    />
-                    <span className="text-sm font-light text-muted-foreground">
-                      Remember me
-                    </span>
-                  </label>
-                  <button
-                    type="button"
+                <div className="flex justify-end">
+                  <button 
+                    type="button" 
+                    onClick={handleForgotPassword}
                     className="text-sm font-light text-primary hover:underline"
                   >
                     Forgot your password?
@@ -265,19 +395,11 @@ const Auth = () => {
               </button>
             </form>
 
-            {/* Divider */}
             <div className="relative my-6">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-border" />
-              </div>
-              <div className="relative flex justify-center">
-                <span className="px-4 text-xs font-light text-muted-foreground bg-card">
-                  or
-                </span>
-              </div>
+              <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-border" /></div>
+              <div className="relative flex justify-center"><span className="px-4 text-xs font-light text-muted-foreground bg-card">or</span></div>
             </div>
 
-            {/* Google Sign In */}
             <button
               type="button"
               onClick={handleGoogleSignIn}
@@ -288,12 +410,14 @@ const Auth = () => {
               Sign in with Google
             </button>
 
-            {/* Toggle Auth Mode */}
             <p className="text-center text-sm font-light text-muted-foreground mt-8">
               {isLogin ? "Don't have an account?" : "Already have an account?"}{" "}
               <button
                 type="button"
-                onClick={() => setIsLogin(!isLogin)}
+                onClick={() => {
+                  setIsLogin(!isLogin);
+                  setFormData(prev => ({ ...prev, password: "" })); 
+                }}
                 className="text-primary hover:underline font-normal"
               >
                 {isLogin ? "Sign up" : "Sign in"}
@@ -301,16 +425,8 @@ const Auth = () => {
             </p>
           </div>
 
-          {/* Terms */}
           <p className="text-center text-xs font-light text-muted-foreground mt-6 px-4">
-            By continuing, you agree to our{" "}
-            <Link to="/terms" className="text-primary hover:underline">
-              Terms of Service
-            </Link>{" "}
-            and{" "}
-            <Link to="/privacy" className="text-primary hover:underline">
-              Privacy Policy
-            </Link>
+            By continuing, you agree to our <Link to="/terms" className="text-primary hover:underline">Terms of Service</Link> and <Link to="/privacy" className="text-primary hover:underline">Privacy Policy</Link>
           </p>
         </motion.div>
       </div>

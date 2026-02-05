@@ -10,12 +10,12 @@ export type DashboardContextType = {
 };
 
 // 2. Export a custom hook so child pages can easily access the context
+// Usage in child page: const { onMobileMenuOpen } = useDashboard();
 export const useDashboard = () => {
   return useOutletContext<DashboardContextType>();
 };
 
 const DashboardLayout = () => {
-  // No "children" prop needed anymore; we use Outlet
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);

@@ -16,23 +16,36 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Strategy, RuleGroup, strategyIcons, defaultRuleGroups } from "@/lib/strategiesData";
+import { v4 as uuidv4 } from "uuid"; 
+
+// --- 🔌 Industry Grade Types ---
+import { Strategy, StrategyRuleGroup, TradingStyle, DEFAULT_RULE_GROUPS } from "@/types/strategy";
+import { AssetClass } from "@/types/trade";
+
+// --- Constants (Moved local to avoid dependency on old lib file) ---
+const STRATEGY_ICONS = ["📈", "📉", "⚡", "🐢", "🧠", "🎯", "💎", "🤖", "🌊", "🕯️"];
 
 interface CreateStrategyModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onCreateStrategy: (strategy: Omit<Strategy, 'id' | 'createdAt' | 'totalTrades' | 'winRate' | 'netPnl' | 'profitFactor' | 'expectancy' | 'avgWin' | 'avgLoss'>) => void;
+  // Updated signature to allow flexible partial strategy creation
+  onCreateStrategy: (strategy: Partial<Strategy>) => void;
 }
 
 const CreateStrategyModal = ({ open, onOpenChange, onCreateStrategy }: CreateStrategyModalProps) => {
   const [name, setName] = useState("");
   const [icon, setIcon] = useState("📈");
   const [description, setDescription] = useState("");
-  const [style, setStyle] = useState("");
-  const [instruments, setInstruments] = useState("");
-  const [ruleGroups, setRuleGroups] = useState<RuleGroup[]>(
-    defaultRuleGroups.map(g => ({ ...g, rules: [] }))
+  
+  // UI keeps text inputs as requested, we parse them on submit
+  const [style, setStyle] = useState(""); 
+  const [instruments, setInstruments] = useState(""); 
+  
+  // Initialize with Deep Copy of defaults to prevent mutation issues
+  const [ruleGroups, setRuleGroups] = useState<StrategyRuleGroup[]>(
+    JSON.parse(JSON.stringify(DEFAULT_RULE_GROUPS))
   );
+  
   const [newRuleInputs, setNewRuleInputs] = useState<{ [key: string]: string }>({});
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
 
@@ -43,7 +56,7 @@ const CreateStrategyModal = ({ open, onOpenChange, onCreateStrategy }: CreateStr
     setRuleGroups(prev =>
       prev.map(g =>
         g.id === groupId
-          ? { ...g, rules: [...g.rules, ruleText] }
+          ? { ...g, items: [...g.items, ruleText] } // Updated 'rules' to 'items' to match schema
           : g
       )
     );
@@ -54,7 +67,7 @@ const CreateStrategyModal = ({ open, onOpenChange, onCreateStrategy }: CreateStr
     setRuleGroups(prev =>
       prev.map(g =>
         g.id === groupId
-          ? { ...g, rules: g.rules.filter((_, i) => i !== ruleIndex) }
+          ? { ...g, items: g.items.filter((_, i) => i !== ruleIndex) }
           : g
       )
     );
@@ -65,10 +78,10 @@ const CreateStrategyModal = ({ open, onOpenChange, onCreateStrategy }: CreateStr
   };
 
   const handleAddGroup = () => {
-    const newGroup: RuleGroup = {
-      id: `custom-${Date.now()}`,
+    const newGroup: StrategyRuleGroup = {
+      id: uuidv4(), // Robust ID generation
       name: "New Group",
-      rules: []
+      items: []
     };
     setRuleGroups(prev => [...prev, newGroup]);
   };
@@ -84,13 +97,27 @@ const CreateStrategyModal = ({ open, onOpenChange, onCreateStrategy }: CreateStr
   const handleSubmit = () => {
     if (!name.trim()) return;
 
+    // 1. Safe Parse Instruments (Comma separated string -> Enum Array)
+    const parsedAssets = instruments
+      .split(",")
+      .map(i => i.trim().toUpperCase())
+      .filter(i => ["STOCK", "CRYPTO", "FOREX", "FUTURES"].includes(i)) as AssetClass[];
+
+    // 2. Safe Parse Style
+    const parsedStyle = (style.toUpperCase() || "DAY_TRADE") as TradingStyle;
+
+    // 3. Clean Rules (Remove empty groups if desired, or keep them)
+    const cleanRules = ruleGroups.filter(g => g.items.length > 0 || g.name !== "New Group");
+
+    // 4. Send Payload
     onCreateStrategy({
       name: name.trim(),
-      icon,
+      emoji: icon, // Map 'icon' state to 'emoji' field
       description: description.trim(),
-      style: style.trim(),
-      instruments: instruments.split(",").map(i => i.trim().toUpperCase()).filter(Boolean),
-      ruleGroups: ruleGroups.filter(g => g.rules.length > 0 || g.name !== "New Group")
+      style: parsedStyle,
+      assetClasses: parsedAssets.length > 0 ? parsedAssets : ["STOCK"],
+      rules: cleanRules,
+      trackMissedTrades: false // Default
     });
 
     // Reset form
@@ -99,7 +126,7 @@ const CreateStrategyModal = ({ open, onOpenChange, onCreateStrategy }: CreateStr
     setDescription("");
     setStyle("");
     setInstruments("");
-    setRuleGroups(defaultRuleGroups.map(g => ({ ...g, rules: [] })));
+    setRuleGroups(JSON.parse(JSON.stringify(DEFAULT_RULE_GROUPS)));
     setNewRuleInputs({});
     onOpenChange(false);
   };
@@ -134,7 +161,7 @@ const CreateStrategyModal = ({ open, onOpenChange, onCreateStrategy }: CreateStr
                   </PopoverTrigger>
                   <PopoverContent className="w-48 p-2" align="end">
                     <div className="grid grid-cols-6 gap-1">
-                      {strategyIcons.map((emoji) => (
+                      {STRATEGY_ICONS.map((emoji) => (
                         <button
                           key={emoji}
                           onClick={() => {
@@ -223,7 +250,7 @@ const CreateStrategyModal = ({ open, onOpenChange, onCreateStrategy }: CreateStr
                     </div>
 
                     {/* Existing Rules */}
-                    {group.rules.map((rule, index) => (
+                    {group.items.map((rule, index) => (
                       <div key={index} className="flex items-center gap-2 text-sm text-muted-foreground">
                         <div className="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />
                         <span className="flex-1">{rule}</span>
@@ -264,7 +291,7 @@ const CreateStrategyModal = ({ open, onOpenChange, onCreateStrategy }: CreateStr
             Cancel
           </Button>
           <Button 
-            onClick={handleSubmit}
+            onClick={handleSubmit} 
             disabled={!name.trim()}
             className="glow-button"
           >

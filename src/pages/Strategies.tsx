@@ -1,6 +1,6 @@
-import { useState, useMemo } from "react";
-import { Plus, MagnifyingGlass, Funnel, Sword } from "@phosphor-icons/react";
-import { useDashboard } from "@/components/dashboard/DashboardLayout"; // 1. Import hook
+import { useState, useMemo, useEffect } from "react";
+import { Plus, MagnifyingGlass, Funnel, Sword, ArrowClockwise } from "@phosphor-icons/react";
+import { useDashboard } from "@/components/dashboard/DashboardLayout";
 import PageHeader from "@/components/dashboard/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,71 +26,124 @@ import StrategyCard from "@/components/strategies/StrategyCard";
 import CreateStrategyModal from "@/components/strategies/CreateStrategyModal";
 import EditStrategyModal from "@/components/strategies/EditStrategyModal";
 import StrategyDetail from "@/components/strategies/StrategyDetail";
-import { Strategy, generateMockStrategies, calculateStrategyStats, strategyStyles } from "@/lib/strategiesData";
 import { toast } from "sonner";
 
+// --- Industry Grade Imports ---
+import { auth } from "@/lib/firebase";
+import { getStrategies, deleteStrategy, createStrategy, updateStrategy } from "@/services/strategyService";
+import { Strategy, TradingStyle } from "@/types/strategy";
+
+// Helper for style options (can be moved to constants)
+const STRATEGY_STYLES: TradingStyle[] = ["SCALP", "DAY_TRADE", "SWING", "POSITION", "INVESTMENT"];
+
 const Strategies = () => {
-  // 2. Use the hook to get the menu trigger from parent Layout
   const { onMobileMenuOpen } = useDashboard();
   
-  const [strategies, setStrategies] = useState<Strategy[]>(generateMockStrategies());
+  const [strategies, setStrategies] = useState<Strategy[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [selectedStrategy, setSelectedStrategy] = useState<Strategy | null>(null);
+  
+  // Modals
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  
+  // Filters
   const [searchQuery, setSearchQuery] = useState("");
   const [styleFilter, setStyleFilter] = useState("all");
-  // 3. Removed local mobileMenuOpen state
 
-  const stats = useMemo(() => calculateStrategyStats(strategies), [strategies]);
+  // --- 1. Fetch Logic ---
+  const fetchStrategies = async () => {
+    try {
+      if (auth.currentUser) {
+        setIsLoading(true);
+        const data = await getStrategies(auth.currentUser.uid);
+        setStrategies(data);
+      }
+    } catch (error) {
+      console.error("Fetch error:", error);
+      toast.error("Failed to load strategies");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
+  useEffect(() => {
+    fetchStrategies();
+  }, []);
+
+  // --- 2. Stats Calculation (Client Side) ---
+  const stats = useMemo(() => {
+    const totalStrategies = strategies.length;
+    const combinedTrades = strategies.reduce((acc, s) => acc + (s.metrics?.totalTrades || 0), 0);
+    const totalPnl = strategies.reduce((acc, s) => acc + (s.metrics?.totalPnl || 0), 0);
+    
+    // Average Win Rate (Weighted by trade count could be better, but simple average for now)
+    const activeStrategies = strategies.filter(s => (s.metrics?.totalTrades || 0) > 0);
+    const avgWinRate = activeStrategies.length > 0
+      ? activeStrategies.reduce((acc, s) => acc + (s.metrics?.winRate || 0), 0) / activeStrategies.length
+      : 0;
+
+    return { totalStrategies, combinedTrades, totalPnl, avgWinRate };
+  }, [strategies]);
+
+  // --- 3. Filter Logic ---
   const filteredStrategies = useMemo(() => {
     return strategies.filter(s => {
       const matchesSearch = s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        s.description.toLowerCase().includes(searchQuery.toLowerCase());
+        (s.description || "").toLowerCase().includes(searchQuery.toLowerCase());
+      
       const matchesStyle = styleFilter === "all" || s.style === styleFilter;
+      
       return matchesSearch && matchesStyle;
     });
   }, [strategies, searchQuery, styleFilter]);
 
-  const handleCreateStrategy = (newStrategy: Omit<Strategy, 'id' | 'createdAt' | 'totalTrades' | 'winRate' | 'netPnl' | 'profitFactor' | 'expectancy' | 'avgWin' | 'avgLoss'>) => {
-    const strategy: Strategy = {
-      ...newStrategy,
-      id: Date.now().toString(),
-      createdAt: new Date().toISOString().split('T')[0],
-      totalTrades: 0,
-      winRate: 0,
-      netPnl: 0,
-      profitFactor: 0,
-      expectancy: 0,
-      avgWin: 0,
-      avgLoss: 0
-    };
-    setStrategies(prev => [...prev, strategy]);
-    toast.success("Strategy created successfully");
+  // --- 4. Handlers ---
+
+  const handleCreateStrategy = async (newStrategyData: any) => {
+    if (!auth.currentUser) return;
+    try {
+      await createStrategy(auth.currentUser.uid, newStrategyData);
+      toast.success("Strategy created successfully");
+      fetchStrategies(); // Refresh list
+      setCreateModalOpen(false);
+    } catch (error) {
+      toast.error("Failed to create strategy");
+    }
   };
 
-  const handleUpdateStrategy = (updatedStrategy: Strategy) => {
-    setStrategies(prev =>
-      prev.map(s => s.id === updatedStrategy.id ? updatedStrategy : s)
-    );
-    setSelectedStrategy(updatedStrategy);
-    toast.success("Strategy updated successfully");
+  const handleUpdateStrategy = async (updatedData: Partial<Strategy>) => {
+    if (!auth.currentUser || !selectedStrategy) return;
+    try {
+      await updateStrategy(auth.currentUser.uid, selectedStrategy.id, updatedData);
+      toast.success("Strategy updated successfully");
+      fetchStrategies(); // Refresh list
+      // Update local selected state to reflect changes immediately in Detail View
+      setSelectedStrategy(prev => prev ? { ...prev, ...updatedData } : null);
+      setEditModalOpen(false);
+    } catch (error) {
+      toast.error("Failed to update strategy");
+    }
   };
 
-  const handleDeleteStrategy = () => {
-    if (!selectedStrategy) return;
-    setStrategies(prev => prev.filter(s => s.id !== selectedStrategy.id));
-    setSelectedStrategy(null);
-    setDeleteDialogOpen(false);
-    toast.success("Strategy deleted");
+  const handleDeleteStrategy = async () => {
+    if (!auth.currentUser || !selectedStrategy) return;
+    try {
+      await deleteStrategy(auth.currentUser.uid, selectedStrategy.id);
+      toast.success("Strategy deleted");
+      fetchStrategies(); // Refresh list
+      setSelectedStrategy(null); // Return to list view
+      setDeleteDialogOpen(false);
+    } catch (error) {
+      toast.error("Failed to delete strategy");
+    }
   };
 
-  // Show detail view if a strategy is selected
+  // --- Render: Detail View ---
   if (selectedStrategy) {
     return (
       <>
-        {/* 4. Removed DashboardLayout wrapper */}
         <PageHeader
           title="Strategy Detail"
           icon={<Sword weight="duotone" className="w-6 h-6 text-primary" />}
@@ -113,11 +166,12 @@ const Strategies = () => {
         />
 
         <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-          <AlertDialogContent>
+          <AlertDialogContent className="bg-card border-border">
             <AlertDialogHeader>
               <AlertDialogTitle>Delete Strategy</AlertDialogTitle>
               <AlertDialogDescription>
-                Are you sure you want to delete "{selectedStrategy.name}"? This action cannot be undone.
+                Are you sure you want to delete "{selectedStrategy.name}"? 
+                This action cannot be undone and will remove the tag from associated trades.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -135,19 +189,24 @@ const Strategies = () => {
     );
   }
 
+  // --- Render: List View ---
   return (
     <>
-      {/* 5. Removed DashboardLayout wrapper */}
       <PageHeader
         title="Strategies"
         icon={<Sword weight="duotone" className="w-6 h-6 text-primary" />}
         onMobileMenuOpen={onMobileMenuOpen}
       >
-        <Button onClick={() => setCreateModalOpen(true)} className="glow-button gap-2 text-white">
-          <Plus weight="bold" className="w-4 h-4" />
-          <span className="hidden sm:inline">New Strategy</span>
-          <span className="sm:hidden">New</span>
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={fetchStrategies} disabled={isLoading}>
+             <ArrowClockwise className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+          </Button>
+          <Button onClick={() => setCreateModalOpen(true)} className="glow-button gap-2 text-white">
+            <Plus weight="bold" className="w-4 h-4" />
+            <span className="hidden sm:inline">New Strategy</span>
+            <span className="sm:hidden">New</span>
+          </Button>
+        </div>
       </PageHeader>
 
       <div className="px-4 sm:px-6 lg:px-8 pb-6 pt-4 space-y-4 sm:space-y-6">
@@ -175,9 +234,9 @@ const Strategies = () => {
               <Funnel weight="regular" className="w-4 h-4 mr-2" />
               <SelectValue placeholder="All Styles" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="bg-card border-border">
               <SelectItem value="all">All Styles</SelectItem>
-              {strategyStyles.map(style => (
+              {STRATEGY_STYLES.map(style => (
                 <SelectItem key={style} value={style}>{style}</SelectItem>
               ))}
             </SelectContent>
@@ -185,7 +244,11 @@ const Strategies = () => {
         </div>
 
         {/* Strategy Cards Grid */}
-        {filteredStrategies.length > 0 ? (
+        {isLoading ? (
+           <div className="h-64 flex items-center justify-center">
+             <div className="h-8 w-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+           </div>
+        ) : filteredStrategies.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
             {filteredStrategies.map(strategy => (
               <StrategyCard
@@ -202,6 +265,12 @@ const Strategies = () => {
                 ? "No strategies match your search."
                 : "No strategies yet. Create your first strategy to get started."}
             </p>
+            {/* Optional: Add a button to create one here if list is empty */}
+            {!searchQuery && styleFilter === "all" && (
+               <Button variant="link" onClick={() => setCreateModalOpen(true)} className="mt-2">
+                 Create Strategy
+               </Button>
+            )}
           </div>
         )}
       </div>

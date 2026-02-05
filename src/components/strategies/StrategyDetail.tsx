@@ -2,9 +2,8 @@ import { useState } from "react";
 import { ArrowLeft, PencilSimple, Trash, TrendUp, TrendDown } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Strategy } from "@/lib/strategiesData";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { Strategy } from "@/types/strategy";
 
 interface StrategyDetailProps {
   strategy: Strategy;
@@ -16,8 +15,25 @@ interface StrategyDetailProps {
 const StrategyDetail = ({ strategy, onBack, onEdit, onDelete }: StrategyDetailProps) => {
   const [activeTab, setActiveTab] = useState("rules");
 
-  const pnlColor = strategy.netPnl >= 0 ? "text-emerald-400" : "text-rose-400";
-  const winRateColor = strategy.winRate >= 50 ? "text-emerald-400" : "text-rose-400";
+  // 🛡️ 1. Safe Access to Metrics
+  const metrics = strategy.metrics || { 
+    totalPnl: 0, 
+    winRate: 0, 
+    totalTrades: 0, 
+    profitFactor: 0 
+  };
+
+  // 🛡️ 2. Safe Access to Rules (Prevents the crash)
+  // If rules is undefined or not an array, default to empty array
+  const ruleGroups = Array.isArray(strategy.rules) ? strategy.rules : [];
+
+  const pnlColor = metrics.totalPnl >= 0 ? "text-emerald-400" : "text-rose-400";
+  const winRateColor = metrics.winRate >= 50 ? "text-emerald-400" : "text-rose-400";
+
+  // Placeholders for advanced metrics not yet in DB
+  const expectancy = 0; 
+  const avgWin = 0;
+  const avgLoss = 0;
 
   return (
     <div className="space-y-6">
@@ -34,21 +50,21 @@ const StrategyDetail = ({ strategy, onBack, onEdit, onDelete }: StrategyDetailPr
           </Button>
           <div>
             <div className="flex items-center gap-3 mb-2">
-              <span className="text-3xl">{strategy.icon}</span>
+              <span className="text-3xl">{strategy.emoji || "⚡"}</span>
               <h1 className="text-2xl font-medium text-foreground tracking-tight-premium">
                 {strategy.name}
               </h1>
             </div>
             <p className="text-muted-foreground max-w-2xl mb-3">
-              {strategy.description}
+              {strategy.description || "No description provided."}
             </p>
             <div className="flex flex-wrap gap-2">
               <Badge variant="outline" className="border-border text-foreground">
-                {strategy.style}
+                {strategy.style?.replace("_", " ")}
               </Badge>
-              {strategy.instruments.map((instrument) => (
-                <Badge key={instrument} variant="outline" className="border-border text-foreground">
-                  {instrument}
+              {strategy.assetClasses?.map((asset) => (
+                <Badge key={asset} variant="outline" className="border-border text-foreground">
+                  {asset}
                 </Badge>
               ))}
             </div>
@@ -68,21 +84,21 @@ const StrategyDetail = ({ strategy, onBack, onEdit, onDelete }: StrategyDetailPr
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="glass-card p-5 rounded-xl">
           <p className="text-sm text-muted-foreground mb-1">Total Trades</p>
-          <p className="text-2xl font-medium text-foreground">{strategy.totalTrades}</p>
+          <p className="text-2xl font-medium text-foreground">{metrics.totalTrades}</p>
         </div>
         <div className="glass-card p-5 rounded-xl">
           <p className="text-sm text-muted-foreground mb-1">Win Rate</p>
-          <p className={`text-2xl font-medium ${winRateColor}`}>{strategy.winRate.toFixed(1)}%</p>
+          <p className={`text-2xl font-medium ${winRateColor}`}>{metrics.winRate.toFixed(1)}%</p>
         </div>
         <div className="glass-card p-5 rounded-xl">
           <p className="text-sm text-muted-foreground mb-1">Net P&L (USD)</p>
           <p className={`text-2xl font-medium ${pnlColor}`}>
-            {strategy.netPnl >= 0 ? '+' : ''}${strategy.netPnl.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+            {metrics.totalPnl >= 0 ? '+' : ''}${metrics.totalPnl.toLocaleString(undefined, { minimumFractionDigits: 2 })}
           </p>
         </div>
         <div className="glass-card p-5 rounded-xl">
           <p className="text-sm text-muted-foreground mb-1">Profit Factor</p>
-          <p className="text-2xl font-medium text-foreground">{strategy.profitFactor.toFixed(2)}</p>
+          <p className="text-2xl font-medium text-foreground">{metrics.profitFactor.toFixed(2)}</p>
         </div>
       </div>
 
@@ -92,8 +108,8 @@ const StrategyDetail = ({ strategy, onBack, onEdit, onDelete }: StrategyDetailPr
         <div className="grid grid-cols-3 gap-6">
           <div>
             <p className="text-sm text-muted-foreground mb-1">Expectancy</p>
-            <p className={`text-xl font-medium ${strategy.expectancy >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-              ${strategy.expectancy.toFixed(2)}
+            <p className={`text-xl font-medium ${expectancy >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+              ${expectancy.toFixed(2)}
             </p>
           </div>
           <div>
@@ -101,7 +117,7 @@ const StrategyDetail = ({ strategy, onBack, onEdit, onDelete }: StrategyDetailPr
             <div className="flex items-center gap-2">
               <TrendUp weight="regular" className="w-4 h-4 text-emerald-400" />
               <p className="text-xl font-medium text-emerald-400">
-                +${strategy.avgWin.toFixed(2)}
+                +${avgWin.toFixed(2)}
               </p>
             </div>
           </div>
@@ -110,7 +126,7 @@ const StrategyDetail = ({ strategy, onBack, onEdit, onDelete }: StrategyDetailPr
             <div className="flex items-center gap-2">
               <TrendDown weight="regular" className="w-4 h-4 text-rose-400" />
               <p className="text-xl font-medium text-rose-400">
-                -${strategy.avgLoss.toFixed(2)}
+                -${avgLoss.toFixed(2)}
               </p>
             </div>
           </div>
@@ -133,22 +149,30 @@ const StrategyDetail = ({ strategy, onBack, onEdit, onDelete }: StrategyDetailPr
 
         <TabsContent value="rules" className="mt-4">
           <div className="grid md:grid-cols-2 gap-4">
-            {strategy.ruleGroups.map((group) => (
-              <div key={group.id} className="glass-card p-5 rounded-xl">
-                <h3 className="font-medium text-foreground mb-3">{group.name} Rules</h3>
-                <ul className="space-y-2">
-                  {group.rules.map((rule, index) => (
-                    <li key={index} className="flex items-start gap-2 text-sm text-muted-foreground">
-                      <div className="w-1.5 h-1.5 rounded-full bg-primary mt-2 flex-shrink-0" />
-                      <span>{rule}</span>
-                    </li>
-                  ))}
-                  {group.rules.length === 0 && (
-                    <li className="text-sm text-muted-foreground/50 italic">No rules defined</li>
-                  )}
-                </ul>
+            {/* 🛡️ 3. Iterate over the Safe 'ruleGroups' variable */}
+            {ruleGroups.length > 0 ? (
+              ruleGroups.map((group) => (
+                <div key={group.id} className="glass-card p-5 rounded-xl">
+                  <h3 className="font-medium text-foreground mb-3">{group.name}</h3>
+                  <ul className="space-y-2">
+                    {group.items && group.items.length > 0 ? (
+                      group.items.map((rule, index) => (
+                        <li key={index} className="flex items-start gap-2 text-sm text-muted-foreground">
+                          <div className="w-1.5 h-1.5 rounded-full bg-primary mt-2 flex-shrink-0" />
+                          <span>{rule}</span>
+                        </li>
+                      ))
+                    ) : (
+                      <li className="text-sm text-muted-foreground/50 italic">No rules defined</li>
+                    )}
+                  </ul>
+                </div>
+              ))
+            ) : (
+              <div className="col-span-2 text-center p-8 text-muted-foreground border border-dashed border-border/50 rounded-xl">
+                No rules configured for this strategy.
               </div>
-            ))}
+            )}
           </div>
         </TabsContent>
 
