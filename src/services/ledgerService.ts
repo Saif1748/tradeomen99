@@ -5,26 +5,25 @@ import {
   query, 
   orderBy, 
   getDocs,
+  getDoc,
   Timestamp,
-  addDoc
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { CashTransaction } from "@/types/account";
+import { AccountTransaction, TransactionType } from "@/types/account";
 
 // Helper to get references
 const getAccountRef = (accountId: string) => doc(db, "accounts", accountId);
 const getLedgerCollection = (accountId: string) => collection(db, "accounts", accountId, "ledger");
 
 /**
- * ⚡️ CORE: Record a Deposit or Withdrawal
- * This uses a Transaction to ensure the Ledger and Account Balance 
- * update at the exact same time. No "glitches".
+ * ⚡️ CORE: Record a Deposit, Withdrawal, or Adjustment
+ * Uses a Transaction to ensure Ledger and Balance update atomically.
  */
 export const recordCashMovement = async (
   accountId: string, 
   userId: string,
   data: { 
-    type: "DEPOSIT" | "WITHDRAWAL"; 
+    type: "DEPOSIT" | "WITHDRAWAL" | "ADJUSTMENT"; 
     amount: number; 
     description: string 
   }
@@ -32,7 +31,7 @@ export const recordCashMovement = async (
   const accountRef = getAccountRef(accountId);
   const ledgerRef = doc(getLedgerCollection(accountId));
 
-  // Ensure positive numbers for math logic below
+  // Ensure positive numbers for magnitude, handle sign logic below
   const absAmount = Math.abs(data.amount);
 
   return await runTransaction(db, async (transaction) => {
@@ -46,16 +45,23 @@ export const recordCashMovement = async (
     // 2. Calculate New Balance
     let newBalance = currentBalance;
     
+    // Logic: 
+    // - DEPOSIT: Always Add
+    // - WITHDRAWAL: Always Subtract
+    // - ADJUSTMENT: Add if positive input, Subtract if negative (handled by passed amount sign)
+    //   But since we use absAmount, let's stick to explicit type logic:
+    
     if (data.type === "DEPOSIT") {
       newBalance += absAmount;
-    } else {
-      // Optional: Prevent negative balance?
-      // if (currentBalance < absAmount) throw new Error("Insufficient funds");
+    } else if (data.type === "WITHDRAWAL") {
       newBalance -= absAmount;
+    } else if (data.type === "ADJUSTMENT") {
+      // For adjustment, we trust the sign of the original input
+      newBalance += data.amount; 
     }
 
-    // 3. Create the Ledger Entry ( The "Execution" )
-    const transactionRecord: CashTransaction = {
+    // 3. Create the Ledger Entry
+    const transactionRecord: AccountTransaction = {
       id: ledgerRef.id,
       accountId,
       userId,
@@ -63,6 +69,7 @@ export const recordCashMovement = async (
       amount: absAmount,
       description: data.description,
       date: Timestamp.now(),
+      // status: 'completed' // implicitly completed
     };
 
     transaction.set(ledgerRef, transactionRecord);
@@ -87,16 +94,18 @@ export const getAccountLedger = async (accountId: string) => {
   );
   
   const snap = await getDocs(q);
-  return snap.docs.map(d => d.data() as CashTransaction);
+  return snap.docs.map(d => d.data() as AccountTransaction);
 };
 
 /**
- * Get realtime balance (Optional helper, usually avail on Account object)
+ * Get realtime balance
  */
 export const getAccountBalance = async (accountId: string) => {
   const accountRef = getAccountRef(accountId);
-  // We don't need a transaction just to read
-  const snap = await getDocs(query(collection(db, "accounts"), orderBy("updatedAt", "desc"))); 
-  // Better to just get the doc:
-  // Note: Usually you get this from useWorkspace context, not a separate call
+  const snap = await getDoc(accountRef);
+  
+  if (snap.exists()) {
+    return snap.data().balance as number;
+  }
+  return 0;
 };

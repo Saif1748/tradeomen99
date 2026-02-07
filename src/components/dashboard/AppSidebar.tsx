@@ -14,15 +14,15 @@ import {
   Sparkle,
   Crown,
   SignOut,
-  Plus,   // ✅ Import Plus
-  Wallet, // ✅ Import Wallet
+  Wallet,
+  CaretUpDown, // ✅ Import CaretUpDown
 } from "@phosphor-icons/react";
 import logo from "@/assets/tradeomen-logo.png";
 import icon from "@/assets/tradeomen-icon.png";
 import SettingsModal from "@/components/settings/SettingsModal";
 import { useSettings } from "@/contexts/SettingsContext";
-import { useWorkspace } from "@/contexts/WorkspaceContext"; // ✅ Import Workspace Context
-import CashModal from "@/components/workspace/CashModal";   // ✅ Import Cash Modal
+import { useWorkspace } from "@/contexts/WorkspaceContext"; 
+import { AccountModal } from "@/components/accounts/AccountModal"; // ✅ Import Account Modal
 
 const navItems = [
   { title: "Dashboard", path: "/dashboard", icon: House },
@@ -34,7 +34,6 @@ const navItems = [
   { title: "AI Chat", path: "/ai-chat", icon: Robot },
 ];
 
-// 1. Define Industry-Grade Badge Styles
 const PLAN_STYLES = {
   FREE: {
     label: "Starter Plan",
@@ -65,10 +64,10 @@ const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
   const location = useLocation();
   const navigate = useNavigate();
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [cashModalOpen, setCashModalOpen] = useState(false); // ✅ Cash Modal State
+  const [accountModalOpen, setAccountModalOpen] = useState(false); // ✅ Account Modal State
   
   const { profile, logout } = useSettings();
-  const { activeAccount } = useWorkspace(); // ✅ Get Active Account Data
+  const { activeAccount } = useWorkspace(); 
 
   const userTier = (profile as any).tier || "FREE"; 
   const currentPlan = PLAN_STYLES[userTier as keyof typeof PLAN_STYLES] || PLAN_STYLES.FREE;
@@ -86,6 +85,16 @@ const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
       await logout();
       navigate("/auth");
     }
+  };
+
+  // ✅ Helper from your snippet
+  const formatBalance = (balance: number) => {
+    const isNegative = balance < 0;
+    const formatted = Math.abs(balance).toLocaleString("en-US", {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    });
+    return isNegative ? `-$${formatted}` : `$${formatted}`;
   };
 
   return (
@@ -137,6 +146,47 @@ const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
             )}
           </AnimatePresence>
         </div>
+
+        {/* ✅ NEW: Account Selector (Placed at top as per industry standard for switchers) */}
+        {activeAccount && (
+            <div className={`px-3 pt-2 pb-4 ${collapsed ? "px-2" : ""}`}>
+                <motion.button
+                onClick={() => setAccountModalOpen(true)}
+                whileHover={{ scale: 1.01 }}
+                whileTap={{ scale: 0.99 }}
+                className={`w-full p-3 rounded-xl bg-gradient-to-br from-primary/10 to-glow-secondary/5 border border-primary/20 hover:border-primary/40 transition-all duration-200 group ${collapsed ? "p-2" : ""}`}
+                >
+                <div className={`flex items-center ${collapsed ? "justify-center" : "gap-3"}`}>
+                    <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-primary/30 to-glow-secondary/30 flex items-center justify-center shrink-0">
+                        <Wallet weight="fill" className="w-4 h-4 text-primary" />
+                    </div>
+                    <AnimatePresence>
+                    {!collapsed && (
+                        <motion.div
+                        initial={{ opacity: 0, width: 0 }}
+                        animate={{ opacity: 1, width: "auto" }}
+                        exit={{ opacity: 0, width: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="flex-1 text-left overflow-hidden"
+                        >
+                        <div className="flex items-center justify-between">
+                            <div className="min-w-0">
+                            <p className="text-sm font-medium text-foreground truncate">
+                                {activeAccount.name}
+                            </p>
+                            <p className={`text-xs font-medium ${activeAccount.balance >= 0 ? "text-primary" : "text-red-400"}`}>
+                                {formatBalance(activeAccount.balance)}
+                            </p>
+                            </div>
+                            <CaretUpDown weight="bold" className="w-4 h-4 text-muted-foreground group-hover:text-foreground shrink-0 ml-2" />
+                        </div>
+                        </motion.div>
+                    )}
+                    </AnimatePresence>
+                </div>
+                </motion.button>
+            </div>
+        )}
 
         {/* Dynamic Plan Badge */}
         <AnimatePresence>
@@ -198,54 +248,6 @@ const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
           })}
         </nav>
 
-        {/* ✅ NEW: Account Balance Section (Just above footer) */}
-        <AnimatePresence>
-          {!collapsed && activeAccount && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 20 }}
-              className="px-3 mt-2"
-            >
-              <div className="p-3 rounded-xl bg-gradient-to-br from-secondary/80 to-secondary/30 border border-border/50 relative overflow-hidden group">
-                {/* Background Decor */}
-                <div className="absolute top-0 right-0 w-16 h-16 bg-primary/5 rounded-full blur-2xl -mr-8 -mt-8" />
-                
-                {/* Header Row */}
-                <div className="flex items-center justify-between mb-1.5 relative z-10">
-                  <div className="flex items-center gap-1.5 text-muted-foreground">
-                    <Wallet weight="fill" className="w-3.5 h-3.5 opacity-70" />
-                    <span className="text-[10px] uppercase tracking-wider font-semibold truncate max-w-[100px]">
-                      {activeAccount.name}
-                    </span>
-                  </div>
-                  
-                  {/* Manage Funds Button */}
-                  <button
-                    onClick={() => setCashModalOpen(true)}
-                    className="w-5 h-5 flex items-center justify-center rounded-md bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground transition-all shadow-sm hover:shadow-md"
-                    title="Manage Funds"
-                  >
-                    <Plus weight="bold" className="w-3 h-3" />
-                  </button>
-                </div>
-
-                {/* Balance Row */}
-                <div className="flex items-baseline gap-1 relative z-10">
-                  <span className={`text-lg font-bold font-mono tracking-tight ${
-                    activeAccount.balance >= 0 ? "text-foreground" : "text-rose-500"
-                  }`}>
-                    ${activeAccount.balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </span>
-                  <span className="text-[10px] text-muted-foreground font-medium">
-                    {activeAccount.currency}
-                  </span>
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
         {/* User Section (Bottom Footer) */}
         <div className="p-4 mt-2">
           <div
@@ -306,8 +308,8 @@ const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
       {/* Settings Modal */}
       <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
 
-      {/* ✅ Cash Modal */}
-      <CashModal open={cashModalOpen} onOpenChange={setCashModalOpen} />
+      {/* Account Modal (Triggered by the new selector) */}
+      <AccountModal open={accountModalOpen} onOpenChange={setAccountModalOpen} />
     </>
   );
 };

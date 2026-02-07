@@ -5,16 +5,18 @@ import {
   getDocs, 
   setDoc, 
   updateDoc, 
+  addDoc,        // ✅ Added
+  deleteDoc,     // ✅ Added
   query, 
   where, 
-  documentId,
-  Timestamp,
-  runTransaction,
-  arrayUnion,
+  documentId, 
+  Timestamp, 
+  runTransaction, 
+  arrayUnion, 
   serverTimestamp
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { Account, AccountMember, UserProfile } from "@/types/account";
+import { Account, AccountMember, UserProfile, Invitation } from "@/types/account"; // ✅ Added Invitation
 
 // --- Constants ---
 const FIRESTORE_BATCH_LIMIT = 30; // Firestore 'in' query limit
@@ -209,4 +211,142 @@ export const getUserProfile = async (userId: string) => {
     console.error("Error fetching profile:", error);
     return null;
   }
+};
+
+/**
+ * ✏️ Rename Account (NEW)
+ */
+export const updateAccountName = async (accountId: string, newName: string) => {
+  if (!newName.trim()) throw new Error("Account name cannot be empty");
+  
+  const ref = doc(db, "accounts", accountId);
+  await updateDoc(ref, { 
+    name: newName.trim(),
+    updatedAt: Timestamp.now()
+  });
+};
+
+/**
+ * 🗑️ Delete Account (NEW)
+ * Currently performs a shallow delete of the account document.
+ */
+export const deleteAccount = async (accountId: string) => {
+  const ref = doc(db, "accounts", accountId);
+  await deleteDoc(ref);
+};
+
+// =========================================================
+// 💌 INVITATION SYSTEM
+// =========================================================
+
+/**
+ * Send an invite to an email address
+ */
+export const sendInvitation = async (
+  accountId: string, 
+  accountName: string,
+  inviterId: string, 
+  email: string, 
+  role: "EDITOR" | "VIEWER" = "EDITOR"
+) => {
+  const invitationsRef = collection(db, "invitations");
+  
+  // Check for existing pending invite
+  const q = query(
+    invitationsRef, 
+    where("accountId", "==", accountId),
+    where("email", "==", email),
+    where("status", "==", "pending")
+  );
+  
+  const existing = await getDocs(q);
+  if (!existing.empty) throw new Error("User already invited");
+
+  const newInvite: Omit<Invitation, "id"> = {
+    accountId,
+    accountName,
+    inviterId,
+    email,
+    role,
+    status: "pending",
+    createdAt: Timestamp.now()
+  };
+
+  await addDoc(invitationsRef, newInvite);
+};
+
+/**
+ * Get invites sent BY this account (for Owners to see pending)
+ */
+export const getAccountPendingInvites = async (accountId: string) => {
+  const q = query(
+    collection(db, "invitations"),
+    where("accountId", "==", accountId),
+    where("status", "==", "pending")
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map(d => ({ id: d.id, ...d.data() } as Invitation));
+};
+
+/**
+ * Get invites received BY this user (found by their email)
+ */
+export const getUserInvitations = async (userEmail: string) => {
+  const q = query(
+    collection(db, "invitations"),
+    where("email", "==", userEmail),
+    where("status", "==", "pending")
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map(d => ({ id: d.id, ...d.data() } as Invitation));
+};
+
+/**
+ * Accept an invitation:
+ * 1. Add user to Account Members
+ * 2. Add Account ID to User Profile
+ * 3. Mark invite as accepted
+ */
+export const acceptInvitation = async (userId: string, userEmail: string, invitation: Invitation) => {
+  await runTransaction(db, async (transaction) => {
+    // 1. References
+    const accountRef = doc(db, "accounts", invitation.accountId);
+    const userRef = doc(db, "users", userId);
+    const inviteRef = doc(db, "invitations", invitation.id);
+
+    // 2. Read Account to get current members
+    const accountSnap = await transaction.get(accountRef);
+    if (!accountSnap.exists()) throw new Error("Account no longer exists");
+    
+    const accountData = accountSnap.data() as Account;
+    const members = accountData.members || {};
+
+    // 3. Add new member
+    const newMember: AccountMember = {
+      uid: userId,
+      email: userEmail,
+      role: invitation.role,
+      joinedAt: Timestamp.now()
+    };
+    
+    members[userId] = newMember;
+
+    // 4. Reads for User Profile
+    const userSnap = await transaction.get(userRef);
+    if (!userSnap.exists()) throw new Error("User profile not found");
+    
+    // 5. Writes
+    transaction.update(accountRef, { members });
+    transaction.update(userRef, { 
+      joinedAccountIds: arrayUnion(invitation.accountId) 
+    });
+    transaction.update(inviteRef, { status: "accepted" });
+  });
+};
+
+/**
+ * Reject/Cancel Invitation
+ */
+export const rejectInvitation = async (invitationId: string) => {
+  await deleteDoc(doc(db, "invitations", invitationId));
 };

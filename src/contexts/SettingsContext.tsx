@@ -6,12 +6,13 @@ import { toast } from "sonner";
 
 // --- Types ---
 export interface UserProfile {
+  uid: string; // ✅ Added: Critical for permission checks in other components
   firstName: string;
   lastName: string;
   email: string;
   bio: string;
   photoURL?: string;
-  tier?: "FREE" | "PRO" | "PREMIUM"; // Added tier to profile type
+  tier?: "FREE" | "PRO" | "PREMIUM";
 }
 
 export interface TradingPreferences {
@@ -29,7 +30,7 @@ export interface AppearanceSettings {
 
 interface SettingsContextType {
   profile: UserProfile;
-  setProfile: (profile: UserProfile) => Promise<void>; 
+  setProfile: (profile: UserProfile) => Promise<void>;
   tradingPreferences: TradingPreferences;
   setTradingPreferences: (prefs: TradingPreferences) => Promise<void>;
   appearance: AppearanceSettings;
@@ -37,11 +38,12 @@ interface SettingsContextType {
   getCurrencySymbol: () => string;
   formatCurrency: (value: number) => string;
   isLoading: boolean;
-  logout: () => Promise<void>; // <--- FIXED: Re-added this
+  logout: () => Promise<void>;
 }
 
 // --- Defaults ---
 const defaultProfile: UserProfile = {
+  uid: "", // ✅ Added default
   firstName: "Guest",
   lastName: "User",
   email: "",
@@ -108,15 +110,16 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
         const last = rest.join(" ");
 
         setProfileState({
+          uid: user.uid, // ✅ Added: Ensure UID is populated from Auth
           firstName: first || "",
           lastName: last || "",
           email: data.email || user.email || "",
-          bio: data.bio || "", 
+          bio: data.bio || "",
           photoURL: data.photoURL || user.photoURL || undefined,
-          tier: data.plan?.tier || "FREE", // Sync tier from Firestore
+          tier: data.plan?.tier || "FREE",
         });
 
-        // Parse Trading Preferences (from settings & usage maps)
+        // Parse Trading Preferences
         const prefs = data.settings?.preferences || {};
         setTradingPreferencesState({
           currency: data.settings?.currency || "USD",
@@ -181,7 +184,6 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
     localStorage.setItem("appearanceSettings", JSON.stringify(settings));
   };
 
-  // <--- FIXED: Implemented Logout Function
   const logout = async () => {
     try {
       await firebaseSignOut(auth);
@@ -246,7 +248,7 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
         getCurrencySymbol,
         formatCurrency,
         isLoading,
-        logout, // <--- Exposed in Provider
+        logout,
       }}
     >
       {children}

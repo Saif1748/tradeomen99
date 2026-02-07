@@ -7,19 +7,19 @@ import {
   query, 
   where, 
   getDocs,
-  orderBy,
+  orderBy, 
   limit,
   getDoc,
   setDoc,
   deleteDoc,
-  writeBatch
+  writeBatch,
+  increment // ✅ Added for atomic balance updates
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Trade, Execution, TradeDirection, ExecutionSide, TradeStatus } from "@/types/trade";
+import { AccountTransaction } from "@/types/account"; // ✅ Updated to match your new types
 
 // --- 🧠 CORE LOGIC: The P&L Calculator ---
-// This runs inside the transaction to ensure math never drifts.
-// It keeps the Parent Trade in sync with its Child Executions.
 const calculateTradeStats = (
   currentTrade: Trade, 
   newExec: Execution
@@ -36,14 +36,12 @@ const calculateTradeStats = (
 
   if (isEntry) {
     // --- ENTRY LOGIC (Weighted Average) ---
-    // Formula: ((OldQty * OldAvg) + (NewQty * NewPrice)) / TotalQty
     const totalValue = (netQty * avgEntry) + (newExec.quantity * newExec.price);
     netQty += newExec.quantity;
     // Avoid division by zero
     avgEntry = netQty > 0 ? totalValue / netQty : 0;
   } else {
     // --- EXIT LOGIC (Realized PnL) ---
-    // FIFO approximation: PnL = (ExitPrice - EntryPrice) * Qty
     const priceDiff = currentTrade.direction === "LONG" 
       ? newExec.price - avgEntry 
       : avgEntry - newExec.price;
@@ -51,13 +49,11 @@ const calculateTradeStats = (
     realizedPnl += priceDiff * newExec.quantity;
     netQty -= newExec.quantity;
     
-    // Safety clamp: Quantity shouldn't go negative unless flipping position
-    // (For this version, we assume simple open/close logic)
+    // Safety clamp
     if (netQty < 0) netQty = 0; 
   }
 
   // 2. Determine Status
-  // If net quantity hits 0, the trade is effectively closed
   const status: TradeStatus = netQty <= 0 ? "CLOSED" : "OPEN";
   const closeDate = netQty <= 0 ? newExec.date : undefined;
 
@@ -78,10 +74,12 @@ const calculateTradeStats = (
 
 /**
  * Creates a new empty Trade.
- * Call this when the user clicks "New Trade" or "Import".
+ * ⚠️ ARCHITECTURE UPDATE: Trades are now stored under the User's ID for this version,
+ * but logically linked to an accountId.
  */
 export const createTrade = async (userId: string, tradeData: Partial<Trade>) => {
-  // Auto-generate ID so we can return it immediately
+  // Use the user's subcollection (Legacy/Simple Mode)
+  // If you want full team sharing, this should change to `accounts/${accountId}/trades`
   const tradeRef = doc(collection(db, "users", userId, "trades"));
   
   const newTrade: Trade = {
@@ -95,7 +93,7 @@ export const createTrade = async (userId: string, tradeData: Partial<Trade>) => 
     status: "OPEN",
     openDate: tradeData.openDate || Timestamp.now(),
     
-    // Initial Stats (Zeroed out)
+    // Initial Stats
     netQuantity: 0,
     avgEntryPrice: 0,
     grossPnl: 0,
@@ -108,7 +106,7 @@ export const createTrade = async (userId: string, tradeData: Partial<Trade>) => 
     source: "MANUAL",
     createdAt: Timestamp.now(),
     updatedAt: Timestamp.now(),
-    ...tradeData // Override with any passed data
+    ...tradeData
   };
 
   await setDoc(tradeRef, newTrade);
@@ -118,17 +116,19 @@ export const createTrade = async (userId: string, tradeData: Partial<Trade>) => 
 /**
  * The Engine: Adds an execution and updates the Trade parent.
  * USES TRANSACTIONS: If one fails, all fail. 100% Data Integrity.
+ * ✅ UPDATE: Now syncs with Account Balance & Ledger
  */
 export const addExecution = async (userId: string, tradeId: string, execData: Partial<Execution>) => {
   const tradeRef = doc(db, "users", userId, "trades", tradeId);
   const execRef = doc(collection(tradeRef, "executions"));
 
   await runTransaction(db, async (transaction) => {
-    // 1. Read Parent Trade (Must be inside transaction for safety)
+    // 1. Read Parent Trade
     const tradeSnap = await transaction.get(tradeRef);
     if (!tradeSnap.exists()) throw new Error("Trade not found");
 
     const currentTrade = tradeSnap.data() as Trade;
+    const accountId = currentTrade.accountId;
     
     // 2. Prepare New Execution
     const newExec: Execution = {
@@ -147,19 +147,57 @@ export const addExecution = async (userId: string, tradeId: string, execData: Pa
     // 3. Calculate New Parent State
     const updates = calculateTradeStats(currentTrade, newExec);
 
-    // 4. Commit All Changes Atomically
+    // 4. Commit Trade & Execution Changes
     transaction.set(execRef, newExec);
     transaction.update(tradeRef, updates);
+
+    // --- 5. 💰 ACCOUNT SYNC LOGIC ---
+    if (accountId && accountId !== "DEFAULT") {
+        const oldGrossPnl = currentTrade.grossPnl || 0;
+        const newGrossPnl = updates.grossPnl || 0;
+        
+        // Calculate the PnL realized strictly by THIS execution
+        const pnlDelta = newGrossPnl - oldGrossPnl;
+        const feesPaid = newExec.fees || 0;
+        
+        // Net impact on account cash (PnL - Fees)
+        const balanceChange = pnlDelta - feesPaid;
+
+        if (balanceChange !== 0) {
+            const accountRef = doc(db, "accounts", accountId);
+            const ledgerRef = doc(collection(db, "accounts", accountId, "ledger"));
+
+            // A. Update Balance Atomically
+            transaction.update(accountRef, {
+                balance: increment(balanceChange),
+                updatedAt: Timestamp.now()
+            });
+
+            // B. Create Ledger Entry
+            // Determine semantic type: PROFIT or LOSS
+            const type = balanceChange > 0 ? "PROFIT" : "LOSS";
+
+            const ledgerEntry: AccountTransaction = {
+                id: ledgerRef.id,
+                accountId,
+                userId,
+                type: type, 
+                amount: Math.abs(balanceChange),
+                description: `Trade ${currentTrade.symbol} ${newExec.side} @ ${newExec.price}`,
+                date: Timestamp.now()
+            };
+
+            transaction.set(ledgerRef, ledgerEntry);
+        }
+    }
   });
 };
 
 /**
  * Fetches the most recent trades for the Dashboard.
- * Optimized for speed (Limit 50).
  */
 export const getRecentTrades = async (userId: string, count = 50) => {
   const tradesRef = collection(db, "users", userId, "trades");
-  // Index required: openDate DESC
   const q = query(tradesRef, orderBy("openDate", "desc"), limit(count));
   
   const snapshot = await getDocs(q);
@@ -167,7 +205,7 @@ export const getRecentTrades = async (userId: string, count = 50) => {
 };
 
 /**
- * Fetches a single trade with all its details.
+ * Fetches a single trade.
  */
 export const getTradeById = async (userId: string, tradeId: string) => {
   const tradeRef = doc(db, "users", userId, "trades", tradeId);
@@ -177,7 +215,6 @@ export const getTradeById = async (userId: string, tradeId: string) => {
 
 /**
  * Fetches all executions for a specific trade.
- * Used when viewing the "Trade Details" page (Deep Dive).
  */
 export const getTradeExecutions = async (userId: string, tradeId: string) => {
   const execsRef = collection(db, "users", userId, "trades", tradeId, "executions");
@@ -188,25 +225,19 @@ export const getTradeExecutions = async (userId: string, tradeId: string) => {
 };
 
 /**
- * Deletes a trade and all its executions (Batch Delete).
- * Firestore doesn't cascade delete automatically, so we handle it here.
+ * Deletes a trade and all its executions.
  */
 export const deleteTrade = async (userId: string, tradeId: string) => {
-  // 1. Get all executions first
   const execs = await getTradeExecutions(userId, tradeId);
-  
   const batch = writeBatch(db);
   
-  // 2. Queue execution deletions
   execs.forEach(exec => {
     const ref = doc(db, "users", userId, "trades", tradeId, "executions", exec.id);
     batch.delete(ref);
   });
   
-  // 3. Queue parent trade deletion
   const tradeRef = doc(db, "users", userId, "trades", tradeId);
   batch.delete(tradeRef);
   
-  // 4. Commit batch
   await batch.commit();
 };
