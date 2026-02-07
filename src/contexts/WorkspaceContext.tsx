@@ -6,7 +6,6 @@ import {
   collection, 
   query, 
   where, 
-  documentId,
   Unsubscribe
 } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
@@ -16,6 +15,7 @@ import {
   switchUserAccount, 
   provisionDefaultAccount 
 } from "@/services/accountService";
+import { repairAccountSchema } from "@/services/migrationService"; // ✅ Import Migration Service
 import { toast } from "sonner";
 
 // --- Context Type Definition ---
@@ -30,12 +30,14 @@ interface WorkspaceContextType {
 // Create Context
 const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefined);
 
-// ✅ FIX 1: Use 'export function' to satisfy Vite HMR
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
-  // State
+  // --- State ---
   const [activeAccount, setActiveAccount] = useState<Account | null>(null);
   const [availableAccounts, setAvailableAccounts] = useState<Account[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  
+  // Internal state to track user's preferred workspace from their profile
+  const [preferredAccountId, setPreferredAccountId] = useState<string | null>(null);
 
   // Refs to track subscriptions
   const userProfileUnsub = useRef<Unsubscribe | null>(null);
@@ -44,78 +46,71 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   // --- 1. Main Auth & Data Listener ---
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
-      // Cleanup previous listeners
+      // Cleanup previous listeners on auth change
       if (userProfileUnsub.current) userProfileUnsub.current();
       if (accountsUnsub.current) accountsUnsub.current();
 
       if (!firebaseUser) {
         setActiveAccount(null);
         setAvailableAccounts([]);
+        setPreferredAccountId(null);
         setIsLoading(false);
         return;
       }
 
-      // 1. Listen to User Profile
+      // 🛠️ TRIGGER MIGRATION (Background Process)
+      // This runs silently. If the user has old data (missing 'memberIds'),
+      // this fixes it. Once fixed, the Firestore listener below (LISTENER B)
+      // automatically receives the data update and shows the accounts.
+      repairAccountSchema(firebaseUser.uid);
+
+      // ----------------------------------------------------------------
+      // LISTENER A: User Profile (Preferences & Auto-Provisioning)
+      // ----------------------------------------------------------------
       const userRef = doc(db, "users", firebaseUser.uid);
       
       userProfileUnsub.current = onSnapshot(userRef, async (docSnap) => {
-        // A. Handle New User
+        // Handle Missing Profile (Auto-Provisioning)
         if (!docSnap.exists()) {
           try {
             await provisionDefaultAccount(firebaseUser.uid, firebaseUser.email!);
           } catch (err) {
             console.error("Auto-provisioning failed", err);
-            setIsLoading(false);
           }
           return;
         }
 
-        // B. Handle Existing User
         const profile = docSnap.data() as UserProfile;
         
-        // Safety Check: If profile exists but has no accounts
-        if (!profile.joinedAccountIds || profile.joinedAccountIds.length === 0) {
-           await provisionDefaultAccount(firebaseUser.uid, firebaseUser.email!);
-           return;
+        // Sync the preference. The 'Effect' below will handle the actual switching.
+        if (profile.activeAccountId) {
+            setPreferredAccountId(profile.activeAccountId);
         }
+      });
 
-        // 2. Real-time Accounts Listener
-        const accountIds = profile.joinedAccountIds.slice(0, 30); 
+      // ----------------------------------------------------------------
+      // LISTENER B: Accounts (The Source of Truth)
+      // ✅ Robust Query using 'memberIds' array
+      // This query never fails due to permissions because it only requests
+      // docs where the user is EXPLICITLY listed in the array.
+      // ----------------------------------------------------------------
+      const q = query(
+        collection(db, "accounts"), 
+        where("memberIds", "array-contains", firebaseUser.uid)
+      );
 
-        // Clear existing listener
-        if (accountsUnsub.current) accountsUnsub.current();
+      accountsUnsub.current = onSnapshot(q, (querySnapshot) => {
+        const fetchedAccounts = querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        } as Account));
 
-        // ✅ FIX 2: Prevent query error if array is empty
-        if (accountIds.length === 0) {
-          setAvailableAccounts([]);
-          setIsLoading(false);
-          return;
-        }
-
-        const q = query(
-          collection(db, "accounts"), 
-          where(documentId(), "in", accountIds)
-        );
-
-        accountsUnsub.current = onSnapshot(q, (querySnapshot) => {
-          const fetchedAccounts = querySnapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          } as Account));
-
-          setAvailableAccounts(fetchedAccounts);
-
-          // Determine Active Account
-          const targetId = profile.activeAccountId || activeAccount?.id;
-          const active = fetchedAccounts.find(a => a.id === targetId) || fetchedAccounts[0];
-          
-          setActiveAccount(prev => (prev?.id !== active?.id ? active : prev));
-          setIsLoading(false);
-        }, (error) => {
-          console.error("Error listening to accounts:", error);
-          // ✅ FIX 3: Ensure loading stops even on error (prevents UI freeze)
-          setIsLoading(false); 
-        });
+        setAvailableAccounts(fetchedAccounts);
+        setIsLoading(false); // We have data, safe to render
+      }, (error) => {
+        console.error("Error listening to accounts:", error);
+        // ✅ Self-Healing: Stop loading even on error so UI doesn't freeze
+        setIsLoading(false); 
       });
     });
 
@@ -126,20 +121,48 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  // --- 2. Action Handlers ---
+  // --- 2. Derived State: Active Account Sync ---
+  // This ensures we select the correct account whenever:
+  // A) The list of accounts changes (Listener B)
+  // B) The user's preference changes (Listener A)
+  useEffect(() => {
+    if (availableAccounts.length === 0) {
+        setActiveAccount(null);
+        return;
+    }
+
+    // 1. Try to match the user's last active preference
+    let target = availableAccounts.find(a => a.id === preferredAccountId);
+
+    // 2. Fallback: If preference is invalid/missing, pick the first available one
+    if (!target) {
+        target = availableAccounts[0];
+    }
+
+    // Only update if actually different to prevent re-renders
+    setActiveAccount(prev => (prev?.id !== target.id ? target : prev));
+    
+  }, [availableAccounts, preferredAccountId]);
+
+  // --- 3. Action Handlers ---
 
   const handleSwitch = async (accountId: string) => {
     if (!auth.currentUser) return;
     
-    // Optimistic UI Update
+    // Optimistic UI Update (Instant feedback)
     const target = availableAccounts.find(a => a.id === accountId);
-    if (target) setActiveAccount(target);
+    if (target) {
+        setActiveAccount(target);
+        setPreferredAccountId(accountId); // Update local state immediately
+    }
 
     try {
       await switchUserAccount(auth.currentUser.uid, accountId);
       toast.success(`Switched to ${target?.name}`);
     } catch (error) {
+      console.error(error);
       toast.error("Failed to switch account");
+      // Revert is handled automatically by the snapshot listener if write fails
     }
   };
 
@@ -148,6 +171,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     try {
       await createAccount(auth.currentUser.uid, auth.currentUser.email!, name);
       toast.success("New workspace created");
+      // The snapshot listeners will automatically pick up the new account 
+      // and the activeAccountId change from the backend transaction.
     } catch (error) {
       console.error(error);
       toast.error("Failed to create workspace");
@@ -169,7 +194,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   );
 }
 
-// ✅ FIX 4: Export hook as a function to satisfy HMR
 export function useWorkspace() {
   const context = useContext(WorkspaceContext);
   if (context === undefined) {

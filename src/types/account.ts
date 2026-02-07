@@ -2,9 +2,9 @@ import { Timestamp } from "firebase/firestore";
 
 // --- 1. Enums & Unions ---
 export type AccountRole = "OWNER" | "EDITOR" | "VIEWER";
-export type AccountType = "personal" | "business" | "demo"; // ✅ Added for UI Icons
+export type AccountType = "personal" | "business" | "demo"; 
 export type TransactionType = "DEPOSIT" | "WITHDRAWAL" | "ADJUSTMENT" | "PROFIT" | "LOSS";
-export type InvitationStatus = "pending" | "accepted" | "rejected"; // ✅ Added for Invites
+export type InvitationStatus = "pending" | "accepted" | "rejected"; 
 
 // --- 2. Member Interface ---
 export interface AccountMember {
@@ -18,7 +18,6 @@ export interface AccountMember {
 }
 
 // --- 3. Transaction Interface ---
-// Previously "CashTransaction" - renamed for clarity
 export interface AccountTransaction {
   id: string;
   type: TransactionType;
@@ -38,7 +37,13 @@ export interface Account {
   type?: AccountType; // Optional, defaults to 'personal' if missing
   ownerId: string;
   
-  // O(1) Lookup Map: { "uid123": { role: "OWNER", ... } }
+  // ✅ CRITICAL ADDITION FOR ROBUSTNESS
+  // A simple array of UIDs ["uid1", "uid2"] used strictly for 
+  // high-performance 'array-contains' queries and Security Rules.
+  // This acts as the "Source of Truth" for access.
+  memberIds: string[]; 
+  
+  // O(1) Lookup Map for Role Checks: { "uid123": { role: "OWNER", ... } }
   members: Record<string, AccountMember>; 
   
   // Financials
@@ -60,6 +65,8 @@ export interface UserProfile {
   photoURL?: string;
   
   // Navigation State
+  // Note: We still keep this to know which account user *last visited*,
+  // but we no longer rely on 'joinedAccountIds' for permission checks.
   activeAccountId: string | null; 
   joinedAccountIds: string[]; 
   
@@ -67,11 +74,11 @@ export interface UserProfile {
   updatedAt?: Timestamp;
 }
 
-// --- 6. Invitations (New Feature) ---
+// --- 6. Invitations ---
 export interface Invitation {
   id: string;
   accountId: string;
-  accountName: string; // Denormalized for UI (so we don't need to fetch the account to show the name)
+  accountName: string; // Denormalized for UI
   inviterId: string;   // Who sent it
   email: string;       // Who is invited
   role: AccountRole;

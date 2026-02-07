@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, ReactNode, useRef } from "react";
 import { onAuthStateChanged, signOut as firebaseSignOut, User } from "firebase/auth";
 import { doc, onSnapshot, updateDoc } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
@@ -6,7 +6,7 @@ import { toast } from "sonner";
 
 // --- Types ---
 export interface UserProfile {
-  uid: string; // ✅ Added: Critical for permission checks in other components
+  uid: string;
   firstName: string;
   lastName: string;
   email: string;
@@ -43,7 +43,7 @@ interface SettingsContextType {
 
 // --- Defaults ---
 const defaultProfile: UserProfile = {
-  uid: "", // ✅ Added default
+  uid: "",
   firstName: "Guest",
   lastName: "User",
   email: "",
@@ -74,11 +74,16 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
   const [profile, setProfileState] = useState<UserProfile>(defaultProfile);
   const [tradingPreferences, setTradingPreferencesState] = useState<TradingPreferences>(defaultTradingPreferences);
   
-  // Appearance stays in LocalStorage to prevent "theme flash" on load
+  // Appearance (Local Storage)
   const [appearance, setAppearanceState] = useState<AppearanceSettings>(() => {
+    if (typeof window === 'undefined') return defaultAppearance;
     const saved = localStorage.getItem("appearanceSettings");
     return saved ? JSON.parse(saved) : defaultAppearance;
   });
+
+  // Refs for State Reversion (Snapshot of previous valid state)
+  const prevProfileRef = useRef<UserProfile>(defaultProfile);
+  const prevPrefsRef = useRef<TradingPreferences>(defaultTradingPreferences);
 
   // 1. Listen to Auth State
   useEffect(() => {
@@ -99,35 +104,41 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
 
     const userDocRef = doc(db, "users", user.uid);
     
-    // onSnapshot gives us real-time updates
     const unsubscribeSnapshot = onSnapshot(userDocRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
 
-        // Parse Name
+        // Safe Name Parsing
         const fullName = data.displayName || "";
-        const [first, ...rest] = fullName.split(" ");
-        const last = rest.join(" ");
+        const nameParts = fullName.trim().split(" ");
+        const first = nameParts[0] || "";
+        const last = nameParts.slice(1).join(" ") || ""; // Handles "John Von Neumann" correctly
 
-        setProfileState({
-          uid: user.uid, // ✅ Added: Ensure UID is populated from Auth
-          firstName: first || "",
-          lastName: last || "",
+        const loadedProfile: UserProfile = {
+          uid: user.uid,
+          firstName: first,
+          lastName: last,
           email: data.email || user.email || "",
           bio: data.bio || "",
           photoURL: data.photoURL || user.photoURL || undefined,
           tier: data.plan?.tier || "FREE",
-        });
+        };
 
-        // Parse Trading Preferences
-        const prefs = data.settings?.preferences || {};
-        setTradingPreferencesState({
+        const prefsData = data.settings?.preferences || {};
+        const loadedPrefs: TradingPreferences = {
           currency: data.settings?.currency || "USD",
-          timezone: prefs.timezone || "est",
-          riskLevel: prefs.riskLevel || 2,
-          showWeekends: prefs.showWeekends ?? true,
-          autoCalculateFees: prefs.autoCalculateFees ?? true,
-        });
+          timezone: prefsData.timezone || "est",
+          riskLevel: prefsData.riskLevel ?? 2,
+          showWeekends: prefsData.showWeekends ?? true,
+          autoCalculateFees: prefsData.autoCalculateFees ?? true,
+        };
+
+        setProfileState(loadedProfile);
+        setTradingPreferencesState(loadedPrefs);
+        
+        // Update refs for reversion
+        prevProfileRef.current = loadedProfile;
+        prevPrefsRef.current = loadedPrefs;
       }
       setIsLoading(false);
     }, (error) => {
@@ -143,39 +154,48 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
   const setProfile = async (newProfile: UserProfile) => {
     if (!user) return;
     
-    setProfileState(newProfile); // Optimistic Update
+    // 1. Optimistic Update
+    setProfileState(newProfile); 
 
     try {
       const userDocRef = doc(db, "users", user.uid);
       await updateDoc(userDocRef, {
         displayName: `${newProfile.firstName} ${newProfile.lastName}`.trim(),
         bio: newProfile.bio,
+        // We don't update email/uid/tier here as those are managed elsewhere
       });
+      // Update successful, sync ref
+      prevProfileRef.current = newProfile;
     } catch (error) {
       console.error("Failed to save profile:", error);
       toast.error("Failed to save changes");
+      // 2. Revert on Error
+      setProfileState(prevProfileRef.current);
     }
   };
 
   const setTradingPreferences = async (newPrefs: TradingPreferences) => {
     if (!user) return;
 
-    setTradingPreferencesState(newPrefs); // Optimistic Update
+    // 1. Optimistic Update
+    setTradingPreferencesState(newPrefs);
 
     try {
       const userDocRef = doc(db, "users", user.uid);
+      // 2. Granular Updates (Safer than overwriting the whole object)
       await updateDoc(userDocRef, {
         "settings.currency": newPrefs.currency,
-        "settings.preferences": {
-           timezone: newPrefs.timezone,
-           riskLevel: newPrefs.riskLevel,
-           showWeekends: newPrefs.showWeekends,
-           autoCalculateFees: newPrefs.autoCalculateFees
-        }
+        "settings.preferences.timezone": newPrefs.timezone,
+        "settings.preferences.riskLevel": newPrefs.riskLevel,
+        "settings.preferences.showWeekends": newPrefs.showWeekends,
+        "settings.preferences.autoCalculateFees": newPrefs.autoCalculateFees
       });
+      prevPrefsRef.current = newPrefs;
     } catch (error) {
       console.error("Failed to save preferences:", error);
       toast.error("Failed to save preferences");
+      // 3. Revert on Error
+      setTradingPreferencesState(prevPrefsRef.current);
     }
   };
 
@@ -187,7 +207,9 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
   const logout = async () => {
     try {
       await firebaseSignOut(auth);
+      // Clear state immediately to prevent "flash" of old data on next login
       setProfileState(defaultProfile);
+      setTradingPreferencesState(defaultTradingPreferences);
       toast.success("Logged out successfully");
     } catch (error) {
       console.error("Logout failed:", error);
@@ -208,6 +230,8 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const formatCurrency = (value: number) => {
+    if (isNaN(value)) return `${getCurrencySymbol()}0.00`;
+    
     const symbol = getCurrencySymbol();
     const absValue = Math.abs(value);
     const formatted = absValue.toLocaleString('en-US', { 
@@ -217,7 +241,7 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
     return value >= 0 ? `${symbol}${formatted}` : `-${symbol}${formatted}`;
   };
 
-  // Side Effects
+  // --- Side Effects (Appearance) ---
   useEffect(() => {
     const root = document.documentElement;
     switch (appearance.fontSize) {

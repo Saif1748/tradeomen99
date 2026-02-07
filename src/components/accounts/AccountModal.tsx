@@ -1,23 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  X,
-  Users,
-  ArrowDown,
-  ArrowUp,
-  Plus,
-  CaretRight,
-  Clock,
-  Buildings,
-  User,
-  GameController,
-  EnvelopeSimple,
-  Trash,
-  Check,
-  SpinnerGap,
-  Crown,
-  PencilSimple, // ✅ Added for Edit
-  Warning       // ✅ Added for Delete
+  X, Users, ArrowDown, ArrowUp, Plus, CaretRight, Clock, Buildings, User,
+  GameController, EnvelopeSimple, Trash, Check, SpinnerGap, Crown,
+  PencilSimple, Warning
 } from "@phosphor-icons/react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -38,34 +24,38 @@ import {
   getUserInvitations, 
   acceptInvitation, 
   rejectInvitation,
-  updateAccountName, // ✅ Added
-  deleteAccount      // ✅ Added
+  updateAccountName, 
+  deleteAccount      
 } from "@/services/accountService";
-import { Account, AccountTransaction, Invitation } from "@/types/account";
+import { AccountTransaction, Invitation } from "@/types/account";
 
 interface AccountModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
-const accountTypeIcons = {
+const accountTypeIcons: Record<string, any> = {
   personal: User,
   business: Buildings,
   demo: GameController,
-};
-
-const accountTypeLabels = {
-  personal: "Personal",
-  business: "Business",
-  demo: "Demo",
 };
 
 export const AccountModal = ({ open, onOpenChange }: AccountModalProps) => {
   const { availableAccounts, activeAccount, createNewAccount, switchAccount } = useWorkspace();
   const { profile } = useSettings();
 
+  // --- 1. ARCHITECTURE FIX: Track ID, not Object ---
+  // We track WHICH account is being viewed, but we pull the data from the 'Live' context.
+  const [viewedAccountId, setViewedAccountId] = useState<string | null>(null);
+
+  // Derived: The 'Live' Account Object
+  // If availableAccounts updates (due to balance change/sync), this auto-updates.
+  const selectedAccount = useMemo(() => {
+    if (!viewedAccountId && activeAccount) return activeAccount; // Default to active
+    return availableAccounts.find(a => a.id === viewedAccountId) || activeAccount;
+  }, [viewedAccountId, availableAccounts, activeAccount]);
+
   // Data State
-  const [selectedAccount, setSelectedAccount] = useState<Account | null>(null);
   const [transactions, setTransactions] = useState<AccountTransaction[]>([]);
   
   // Invite State
@@ -75,12 +65,12 @@ export const AccountModal = ({ open, onOpenChange }: AccountModalProps) => {
   const [isInviting, setIsInviting] = useState(false);
   const [showInviteInput, setShowInviteInput] = useState(false);
 
-  // ✅ Edit Name State
+  // Edit Name State
   const [isEditingName, setIsEditingName] = useState(false);
   const [editNameValue, setEditNameValue] = useState("");
   const [isSavingName, setIsSavingName] = useState(false);
 
-  // ✅ Delete State
+  // Delete State
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
@@ -88,17 +78,13 @@ export const AccountModal = ({ open, onOpenChange }: AccountModalProps) => {
   const [depositOpen, setDepositOpen] = useState(false);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
 
-  // 1. Sync Selected Account
-  useEffect(() => {
-    if (open && activeAccount && !selectedAccount) {
-      setSelectedAccount(activeAccount);
-    }
-  }, [open, activeAccount, selectedAccount]);
-
-  // 2. Fetch Account Details
+  // --- 2. OPTIMIZATION FIX: Efficient Fetching ---
+  // Only re-fetch when the ID changes (switching accounts), not when balance/name updates.
   useEffect(() => {
     if (!selectedAccount) return;
-    setEditNameValue(selectedAccount.name); // Sync edit input
+    
+    // Sync the edit input whenever the account changes
+    setEditNameValue(selectedAccount.name);
 
     const fetchData = async () => {
       try {
@@ -114,9 +100,9 @@ export const AccountModal = ({ open, onOpenChange }: AccountModalProps) => {
     };
 
     fetchData();
-  }, [selectedAccount]);
+  }, [selectedAccount?.id]); // ✅ Dependency is strictly the ID
 
-  // 3. Fetch "My Invitations"
+  // Fetch "My Invitations"
   useEffect(() => {
     if (profile?.email && open) {
       getUserInvitations(profile.email).then(setMyInvites);
@@ -127,15 +113,20 @@ export const AccountModal = ({ open, onOpenChange }: AccountModalProps) => {
 
   const handleUpdateName = async () => {
     if (!selectedAccount || !editNameValue.trim()) return;
+    
+    // UI State for the form only
     setIsSavingName(true);
+    
     try {
       await updateAccountName(selectedAccount.id, editNameValue);
       toast.success("Account name updated");
       setIsEditingName(false);
-      // Optimistic update locally to avoid waiting for fetch
-      setSelectedAccount(prev => prev ? { ...prev, name: editNameValue } : null);
+      // NOTE: We do NOT need to setSelectedAccount manually here.
+      // The Firestore listener in WorkspaceContext will pick up the change
+      // and 'selectedAccount' (the derived memo) will update automatically.
     } catch (e) {
-      toast.error("Failed to update name");
+      console.error(e);
+      toast.error("Failed to update name. Permissions error?");
     } finally {
       setIsSavingName(false);
     }
@@ -148,10 +139,10 @@ export const AccountModal = ({ open, onOpenChange }: AccountModalProps) => {
       await deleteAccount(selectedAccount.id);
       toast.success("Account deleted");
       
-      // If deleted, try to switch to another account or close modal
+      // Smart Fallback
       const fallback = availableAccounts.find(a => a.id !== selectedAccount.id);
       if (fallback) {
-        setSelectedAccount(fallback);
+        setViewedAccountId(fallback.id);
         setShowDeleteConfirm(false);
       } else {
         onOpenChange(false);
@@ -162,6 +153,12 @@ export const AccountModal = ({ open, onOpenChange }: AccountModalProps) => {
     } finally {
       setIsDeleting(false);
     }
+  };
+
+  const handleSwitchView = (account: any) => {
+    setViewedAccountId(account.id);
+    setIsEditingName(false);
+    setShowDeleteConfirm(false);
   };
 
   const handleInvite = async () => {
@@ -176,6 +173,7 @@ export const AccountModal = ({ open, onOpenChange }: AccountModalProps) => {
       toast.success(`Invitation sent to ${inviteEmail}`);
       setInviteEmail("");
       setShowInviteInput(false);
+      // Refresh invites list manually since this isn't in the account object
       const updated = await getAccountPendingInvites(selectedAccount.id);
       setPendingInvites(updated);
     } catch (error: any) {
@@ -212,8 +210,11 @@ export const AccountModal = ({ open, onOpenChange }: AccountModalProps) => {
     }
   };
 
+  // Safe checks
+  if (!selectedAccount) return null;
+
   const formatBalance = (val: number) => {
-    return val.toLocaleString("en-US", { style: "currency", currency: selectedAccount?.currency || "USD" });
+    return val.toLocaleString("en-US", { style: "currency", currency: selectedAccount.currency || "USD" });
   };
 
   const formatDate = (date: any) => {
@@ -221,8 +222,6 @@ export const AccountModal = ({ open, onOpenChange }: AccountModalProps) => {
     const d = date.toDate ? date.toDate() : new Date(date);
     return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   };
-
-  if (!selectedAccount) return null;
 
   // --- PERMISSIONS CHECK ---
   const accountType = selectedAccount.type || "personal";
@@ -235,7 +234,7 @@ export const AccountModal = ({ open, onOpenChange }: AccountModalProps) => {
   
   const canInvite = isOwner || isEditor;
   const canEdit = isOwner || isEditor;
-  const canDelete = isOwner; // Only owner can delete
+  const canDelete = isOwner; 
 
   return (
     <>
@@ -262,11 +261,7 @@ export const AccountModal = ({ open, onOpenChange }: AccountModalProps) => {
                     return (
                       <motion.button
                         key={account.id}
-                        onClick={() => {
-                          setSelectedAccount(account);
-                          setIsEditingName(false);
-                          setShowDeleteConfirm(false);
-                        }}
+                        onClick={() => handleSwitchView(account)}
                         className={`w-full p-3 rounded-xl text-left transition-all duration-200 group ${
                           isSelected
                             ? "bg-primary/15 border border-primary/30"
@@ -290,8 +285,9 @@ export const AccountModal = ({ open, onOpenChange }: AccountModalProps) => {
                                 </span>
                               )}
                             </div>
+                            {/* Live Balance Update Check */}
                             <div className={`text-sm font-medium mt-0.5 ${account.balance >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                              {formatBalance(account.balance)}
+                              {account.balance.toLocaleString("en-US", { style: "currency", currency: account.currency || "USD" })}
                             </div>
                           </div>
                           {isSelected && <CaretRight weight="bold" className="w-4 h-4 text-primary mt-1" />}
@@ -352,7 +348,6 @@ export const AccountModal = ({ open, onOpenChange }: AccountModalProps) => {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 h-8">
-                        {/* ✅ Edit Name UI */}
                         {isEditingName ? (
                           <div className="flex items-center gap-2 w-full max-w-[300px]">
                             <Input 
@@ -371,7 +366,6 @@ export const AccountModal = ({ open, onOpenChange }: AccountModalProps) => {
                         ) : (
                           <>
                             <h3 className="text-xl font-semibold text-foreground truncate max-w-[250px]">{selectedAccount.name}</h3>
-                            {/* Edit Pencil */}
                             {canEdit && (
                               <button onClick={() => setIsEditingName(true)} className="p-1 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors">
                                 <PencilSimple weight="bold" className="w-4 h-4" />
@@ -424,7 +418,7 @@ export const AccountModal = ({ open, onOpenChange }: AccountModalProps) => {
                     </div>
                   </div>
 
-                  {/* Members */}
+                  {/* Members Section (Unchanged, Logic is robust) */}
                   <div>
                     <div className="flex items-center justify-between mb-4">
                       <h4 className="text-sm font-medium text-foreground flex items-center gap-2">
@@ -519,7 +513,7 @@ export const AccountModal = ({ open, onOpenChange }: AccountModalProps) => {
                     </div>
                   </div>
 
-                  {/* ✅ DANGER ZONE (Delete Account) */}
+                  {/* Danger Zone (Delete) */}
                   {canDelete && (
                     <div className="mt-8 pt-8 border-t border-red-500/20">
                       <h4 className="text-sm font-semibold text-red-500 mb-2 flex items-center gap-2">
@@ -552,6 +546,7 @@ export const AccountModal = ({ open, onOpenChange }: AccountModalProps) => {
         </DialogContent>
       </Dialog>
 
+      {/* Modals rely on IDs now, so they stay synced too */}
       <DepositModal open={depositOpen} onOpenChange={setDepositOpen} accountName={selectedAccount.name} accountId={selectedAccount.id} />
       <WithdrawModal open={withdrawOpen} onOpenChange={setWithdrawOpen} accountName={selectedAccount.name} accountId={selectedAccount.id} currentBalance={selectedAccount.balance} />
     </>

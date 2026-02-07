@@ -5,8 +5,8 @@ import {
   getDocs, 
   setDoc, 
   updateDoc, 
-  addDoc,        // ✅ Added
-  deleteDoc,     // ✅ Added
+  addDoc,        
+  deleteDoc,     
   query, 
   where, 
   documentId, 
@@ -16,7 +16,7 @@ import {
   serverTimestamp
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { Account, AccountMember, UserProfile, Invitation } from "@/types/account"; // ✅ Added Invitation
+import { Account, AccountMember, UserProfile, Invitation } from "@/types/account";
 
 // --- Constants ---
 const FIRESTORE_BATCH_LIMIT = 30; // Firestore 'in' query limit
@@ -63,6 +63,8 @@ export const createAccount = async (
     id: accountRef.id,
     name: accountName.trim(),
     ownerId: userId,
+    // ✅ CRITICAL ADDITION: Initialize the memberIds array for fast queries
+    memberIds: [userId], 
     members: { [userId]: newMember },
     
     // Financials
@@ -336,7 +338,12 @@ export const acceptInvitation = async (userId: string, userEmail: string, invita
     if (!userSnap.exists()) throw new Error("User profile not found");
     
     // 5. Writes
-    transaction.update(accountRef, { members });
+    transaction.update(accountRef, { 
+      members,
+      // ✅ CRITICAL ADDITION: Sync the Search Array Atomically
+      memberIds: arrayUnion(userId) 
+    });
+    
     transaction.update(userRef, { 
       joinedAccountIds: arrayUnion(invitation.accountId) 
     });

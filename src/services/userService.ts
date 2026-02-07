@@ -29,13 +29,15 @@ export const logAuditEvent = async (
     await addDoc(logsRef, {
       action,
       status,
-      details,
+      // ✅ FIX: Convert undefined to null to prevent Firestore crash
+      // Firestore throws "Unsupported field value: undefined" otherwise.
+      details: details ?? null, 
       timestamp: serverTimestamp(),
-      userAgent: navigator.userAgent, // Captures browser/device info
+      userAgent: navigator.userAgent ?? "Unknown", // Robust fallback
     });
   } catch (error) {
     // Fail silently so we don't block the user if logging fails
-    console.error("Audit log failed:", error); 
+    console.warn("Audit log failed (Non-critical):", error); 
   }
 };
 
@@ -44,6 +46,8 @@ export const logAuditEvent = async (
  * Handles Lifecycle (Pending -> Active) and Security fields.
  */
 export const syncUserWithFirestore = async (authUser: User): Promise<UserDocument> => {
+  if (!authUser?.uid) throw new Error("Invalid User object provided to sync.");
+
   const userRef = doc(db, "users", authUser.uid);
   const userSnap = await getDoc(userRef);
 
@@ -63,8 +67,8 @@ export const syncUserWithFirestore = async (authUser: User): Promise<UserDocumen
       "failedLoginCount": 0,                   // Reset failed attempts on success
     });
 
-    // 🧾 Log the Login Event
-    await logAuditEvent(authUser.uid, "LOGIN", "SUCCESS");
+    // 🧾 Log the Login Event (Non-blocking)
+    logAuditEvent(authUser.uid, "LOGIN", "SUCCESS").catch(e => console.warn(e));
 
     return userSnap.data() as UserDocument;
   } else {
@@ -73,7 +77,8 @@ export const syncUserWithFirestore = async (authUser: User): Promise<UserDocumen
     const newUser: UserDocument = {
       // --- Identity ---
       uid: authUser.uid,
-      email: authUser.email || "",
+      // ✅ Robustness: Ensure strictly string or null, never undefined
+      email: authUser.email || "", 
       displayName: authUser.displayName || "New Trader",
       photoURL: authUser.photoURL || null,
       role: "user",
@@ -123,7 +128,7 @@ export const syncUserWithFirestore = async (authUser: User): Promise<UserDocumen
     await setDoc(userRef, newUser);
     
     // 🧾 Log the Signup Event
-    await logAuditEvent(authUser.uid, "SIGNUP", "SUCCESS", "Via Email/Google");
+    logAuditEvent(authUser.uid, "SIGNUP", "SUCCESS", "Via Email/Google").catch(e => console.warn(e));
 
     return newUser;
   }
