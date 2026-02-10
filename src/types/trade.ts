@@ -1,81 +1,105 @@
 import { Timestamp } from "firebase/firestore";
 
-// --- Enums & Union Types for Type Safety ---
+// --- Enums & Union Types ---
 export type TradeDirection = "LONG" | "SHORT";
-export type TradeStatus = "OPEN" | "CLOSED" | "CANCELED";
-export type AssetClass = "STOCK" | "CRYPTO" | "FOREX" | "FUTURES";
+export type TradeStatus = "OPEN" | "CLOSED"; 
+export type AssetClass = "STOCK" | "CRYPTO" | "FOREX" | "FUTURES" | "OPTIONS" | "INDEX";
 export type ExecutionSide = "BUY" | "SELL";
-export type TradeEmotion = "CONFIDENT" | "NEUTRAL" | "FEARFUL" | "GREEDY" | "REVENGING" | "FOMO";
+export type TradeEmotion = "CONFIDENT" | "NEUTRAL" | "FEARFUL" | "GREEDY" | "REVENGING" | "FOMO" | "HESITANT";
 
-// --- 🏗️ CHILD: Execution (The Raw Log) ---
-// Stored in sub-collection: /users/{userId}/trades/{tradeId}/executions/{executionId}
+// --- 🏗️ CHILD: Execution (The Immutable Ledger) ---
+// Stored in sub-collection: /trades/{tradeId}/executions/{executionId}
 export interface Execution {
   id: string;
   tradeId: string;
+  accountId: string; 
   userId: string;
   
   // Core Data
-  date: Timestamp;      // When the fill happened
+  date: Timestamp;       // Exact fill time
   side: ExecutionSide;
   price: number;
-  quantity: number;
-  fees: number;         // Commission + Swap + SEC fees
+  quantity: number;      // Always positive
+  fees: number;          // Commission + Swap + SEC fees (Always positive)
   
+  // Execution Quality (New)
+  expectedPrice?: number; // The Limit/Stop price (used to calc slippage)
+
   // Meta
-  brokerOrderId?: string; // Link to external broker ID
+  brokerOrderId?: string; // External Broker ID (e.g., "IB-12345")
   notes?: string;
-  metadata?: Record<string, any>; // Flexible JSON bag for broker-specific data
+  metadata?: Record<string, any>; // Flexible JSON bag for broker specifics
 }
 
 // --- 🏛️ PARENT: Trade (The Aggregate) ---
-// Stored in root collection: /users/{userId}/trades/{tradeId}
-// This document is optimized for reading Lists and Dashboards (Read Heavy)
+// Stored in ROOT collection: /trades/{tradeId}
 export interface Trade {
   id: string;
-  userId: string;
   
-  // 1. Identification
-  symbol: string;
+  // --- 1. Identity & Access ---
+  accountId: string;   // 🔒 CRITICAL: Workspace Isolation Key
+  userId: string;      // 👤 Owner of the trade record
+  strategyId?: string; // 🔗 Link to Strategy ID
+  
+  // ✅ AUDIT TRAIL
+  createdBy?: string;  
+  updatedBy?: string;  
+
+  // --- 2. Core Trade Info ---
+  symbol: string;      // Normalized (e.g., "BTCUSD", "AAPL")
   direction: TradeDirection;
   assetClass: AssetClass;
-  strategyId?: string; // Link to Strategy ID
-  accountId: string;   // Link to Broker Account ID
-  
-  // 2. Lifecycle
   status: TradeStatus;
-  openDate: Timestamp;
-  closeDate?: Timestamp; // Undefined if OPEN
-  durationSeconds?: number; // Calculated on close
+  
+  // --- 3. Live Aggregates (The "State") ---
+  // Updated atomically via Transaction. Allows O(1) reads.
+  netQuantity: number;     // Remaining open size. (0 = Closed)
+  avgEntryPrice: number;   // Weighted Average Price of ALL entry fills
+  avgExitPrice?: number;   // Weighted Average Price of ALL exit fills
+  totalExecutions: number; // Count of child docs
+  investedAmount: number;  // Cost Basis (Total $ currently invested)
 
-  // 3. Live Aggregates (Updated via Transaction)
-  // These allow the dashboard to render instantly without fetching executions
-  netQuantity: number;    // Remaining open position size. If 0, trade is usually CLOSED.
-  avgEntryPrice: number;  // Weighted Average Price of entry executions
-  avgExitPrice?: number;  // Weighted Average Price of exit executions
+  // --- 4. Financials (The "Result") ---
+  grossPnl: number;        // Raw PnL from price action only
+  totalFees: number;       // Sum of all execution fees
+  netPnl: number;          // grossPnl - totalFees
+  returnPercent?: number;  // ROI % (netPnl / investedAmount)
   
-  // 4. Financials
-  grossPnl: number;       // Raw PnL from price movement
-  totalFees: number;      // Sum of all execution fees
-  netPnl: number;         // grossPnl - totalFees
-  returnPercent?: number; // ROI percentage
-  
-  // 5. Risk Management
+  // --- 5. Risk Management (The "Plan") ---
   initialStopLoss?: number;
   takeProfitTarget?: number;
-  riskMultiple?: number; // R-Multiple (e.g., 2.5R)
-  maxDrawdown?: number;  // MAE (Maximum Adverse Excursion) - lowest point during trade
-  maxRunup?: number;     // MFE (Maximum Favorable Excursion) - highest point during trade
   
-  // 6. Psychology & Review
-  tags: string[];
-  notes?: string;        // HTML or Markdown content. Images stored as <img> tags.
-  screenshots: string[]; // Array of Firebase Storage URLs
+  riskAmount?: number;     // $ Amount risked (Entry - SL) * Qty
+  plannedRR?: number;      // Planned Risk:Reward Ratio
+  riskMultiple?: number;   // Realized R-Multiple (Net PnL / Risk Amount)
+  
+  // --- 6. Advanced Performance (MAE/MFE) ---
+  mae?: number;            // Max Adverse Excursion (Lowest price against you)
+  mfe?: number;            // Max Favorable Excursion (Highest price for you)
+  profitCapture?: number;  // Efficiency: Net PnL / MFE
+  
+  // --- 7. Execution Quality ---
+  totalSlippage?: number;  // Sum of |Fill Price - Expected Price|
+  executionScore?: number; // 0-1 Score based on slippage vs profit
+  
+  // --- 8. Psychology & Review ---
+  tags: string[];          
+  notes?: string;          
+  screenshots: string[];   
   emotion?: TradeEmotion;
-  mistakes?: string[];   // Array of specific mistake tags (e.g., "Chased Entry")
+  mistakes?: string[];     
+  disciplineScore?: number; // 0-1 Score based on plan adherence
   
-  // 7. System & Metadata
+  // --- 9. Time Metrics ---
+  entryDate: Timestamp;    // Date of FIRST execution
+  exitDate?: Timestamp;    // Date of LAST execution (if closed)
+  durationSeconds?: number; // Calculated on close
+  timeToMFE?: number;       // Seconds from entry until peak profit point
+  
+  // --- 10. Metadata ---
   source: "MANUAL" | "IMPORT" | "API";
-  importBatchId?: string; // If imported via CSV/Broker Sync
+  importBatchId?: string;
+  
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }

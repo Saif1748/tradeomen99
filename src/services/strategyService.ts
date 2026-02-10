@@ -1,44 +1,60 @@
 import { 
   collection, 
   doc, 
-  setDoc, 
   getDocs, 
   deleteDoc, 
   query, 
+  where, 
   orderBy, 
-  Timestamp,
-  updateDoc
+  serverTimestamp, 
+  Timestamp, 
+  updateDoc, 
+  addDoc
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { 
   Strategy, 
   INITIAL_METRICS, 
-  DEFAULT_RULE_GROUPS // ✅ Updated Import
+  DEFAULT_RULE_GROUPS, 
+  StrategyStatus 
 } from "@/types/strategy";
+import { logActivity } from "./auditService"; // ✅ Import Audit Service
 
-const COLLECTION = "strategies";
+const COLLECTION_NAME = "strategies";
 
 /**
- * Creates a robust Strategy document.
- * Accepts a partial strategy object from the UI and fills in system defaults.
+ * 🟢 Create a robust Strategy (Scoped to Account)
+ * Uses a root collection with 'accountId' for multi-user access.
+ * Includes Audit Logging.
  */
 export const createStrategy = async (
-  userId: string, 
+  accountId: string,
+  userId: string, // Creator ID
   data: Partial<Strategy>
 ) => {
-  const ref = doc(collection(db, "users", userId, COLLECTION));
+  if (!accountId) throw new Error("Workspace context missing.");
+  if (!userId) throw new Error("User context missing.");
+
+  const collectionRef = collection(db, COLLECTION_NAME);
   
-  // Random color generator for badges
+  // Random color generator for badges (SaaS Polish)
   const randomColor = "#" + Math.floor(Math.random()*16777215).toString(16);
 
-  const newStrategy: Strategy = {
-    id: ref.id,
-    userId,
+  const newStrategy: any = {
+    // --- Identity & Access ---
+    accountId, 
+    userId, // Legacy owner field
+    
+    // ✅ Audit Fields
+    createdBy: userId,
+    updatedBy: userId,
+
     // --- Core Info ---
-    name: data.name || "New Strategy",
-    description: data.description || "",
+    name: data.name?.trim() || "New Strategy",
+    description: data.description?.trim() || "",
+    status: (data.status as StrategyStatus) || "developing",
     emoji: data.emoji || "⚡",
-    color: randomColor,
+    color: data.color || randomColor,
     
     // --- Classification ---
     style: data.style || "DAY_TRADE",
@@ -46,47 +62,105 @@ export const createStrategy = async (
     trackMissedTrades: false,
 
     // --- The Playbook ---
-    // ✅ FIXED: Correctly assigns the array of rule groups
+    // ✅ Robust Default: Ensure rules structure exists even if empty
     rules: data.rules && data.rules.length > 0 
       ? data.rules 
       : DEFAULT_RULE_GROUPS,
 
     // --- System Defaults ---
     metrics: INITIAL_METRICS, 
-    createdAt: Timestamp.now(),
-    updatedAt: Timestamp.now(),
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
   };
 
-  await setDoc(ref, newStrategy);
-  return newStrategy;
-};
-
-/**
- * Get all strategies (Fast Read)
- */
-export const getStrategies = async (userId: string) => {
-  const ref = collection(db, "users", userId, COLLECTION);
-  const q = query(ref, orderBy("name", "asc"));
+  // Use addDoc to let Firestore generate the ID automatically
+  const docRef = await addDoc(collectionRef, newStrategy);
   
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map(doc => doc.data() as Strategy);
+  // 📝 Log Activity
+  await logActivity(
+    accountId, 
+    userId, 
+    "CREATE", 
+    "STRATEGY", 
+    docRef.id, 
+    `Created strategy: ${newStrategy.name}`
+  );
+  
+  return { id: docRef.id, ...newStrategy };
 };
 
 /**
- * Update Strategy
+ * 🔵 Get Strategies (Scoped to Account)
+ * Fetches all strategies belonging to the active workspace.
  */
-export const updateStrategy = async (userId: string, strategyId: string, updates: Partial<Strategy>) => {
-  const ref = doc(db, "users", userId, COLLECTION, strategyId);
-  await updateDoc(ref, {
+export const getStrategies = async (accountId: string) => {
+  if (!accountId) return [];
+
+  try {
+    const q = query(
+      collection(db, COLLECTION_NAME),
+      where("accountId", "==", accountId), // ✅ Filter by Workspace
+      orderBy("createdAt", "desc")
+    );
+
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    } as Strategy));
+  } catch (error) {
+    console.error("Error fetching strategies:", error);
+    return [];
+  }
+};
+
+/**
+ * 🟡 Update Strategy (With Audit)
+ */
+export const updateStrategy = async (
+  strategyId: string, 
+  accountId: string,
+  userId: string, // ✅ Track who is editing
+  updates: Partial<Strategy>
+) => {
+  if (!strategyId) return;
+  const docRef = doc(db, COLLECTION_NAME, strategyId);
+  
+  await updateDoc(docRef, {
     ...updates,
-    updatedAt: Timestamp.now()
+    updatedBy: userId, // ✅ Audit Field
+    updatedAt: serverTimestamp()
   });
+
+  // 📝 Log Activity
+  // We log a generic update here. For highly detailed logs, we'd compare old vs new.
+  await logActivity(
+    accountId, 
+    userId, 
+    "UPDATE", 
+    "STRATEGY", 
+    strategyId, 
+    "Updated strategy configuration",
+    updates
+  );
 };
 
 /**
- * Delete Strategy
+ * 🔴 Delete Strategy (With Audit)
  */
-export const deleteStrategy = async (userId: string, strategyId: string) => {
-  const ref = doc(db, "users", userId, COLLECTION, strategyId);
-  await deleteDoc(ref);
+export const deleteStrategy = async (strategy: Strategy, userId: string) => {
+  if (!strategy?.id) return;
+  
+  const docRef = doc(db, COLLECTION_NAME, strategy.id);
+  await deleteDoc(docRef);
+
+  // 📝 Log Activity
+  await logActivity(
+    strategy.accountId, 
+    userId, 
+    "DELETE", 
+    "STRATEGY", 
+    strategy.id, 
+    `Deleted strategy: ${strategy.name}`
+  );
 };

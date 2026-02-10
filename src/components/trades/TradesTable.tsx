@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { CaretUp, CaretDown } from "@phosphor-icons/react";
 import { format } from "date-fns";
-import { Trade, computeTradeData } from "@/lib/tradesData";
+import { Trade } from "@/types/trade"; // ✅ Use Real Type
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -76,6 +76,13 @@ const TradesTable = ({
     return pages;
   };
 
+  // Helper to safely format dates from Firestore Timestamp or JS Date
+  const formatDate = (dateInput: any) => {
+    if (!dateInput) return "-";
+    const date = dateInput.toMillis ? dateInput.toDate() : new Date(dateInput);
+    return format(date, "MMM d, yyyy");
+  };
+
   return (
     <div className="space-y-4">
       {/* Desktop Table View */}
@@ -85,10 +92,10 @@ const TradesTable = ({
             <TableRow className="border-border/50 hover:bg-transparent">
               <TableHead
                 className="cursor-pointer text-muted-foreground font-normal"
-                onClick={() => onSort("date")}
+                onClick={() => onSort("entryDate")}
               >
                 Date
-                <SortIcon field="date" />
+                <SortIcon field="entryDate" />
               </TableHead>
               <TableHead
                 className="cursor-pointer text-muted-foreground font-normal"
@@ -99,17 +106,17 @@ const TradesTable = ({
               </TableHead>
               <TableHead
                 className="cursor-pointer text-muted-foreground font-normal"
-                onClick={() => onSort("type")}
+                onClick={() => onSort("assetClass")}
               >
                 Type
-                <SortIcon field="type" />
+                <SortIcon field="assetClass" />
               </TableHead>
               <TableHead
                 className="cursor-pointer text-muted-foreground font-normal"
-                onClick={() => onSort("side")}
+                onClick={() => onSort("direction")}
               >
                 Side
-                <SortIcon field="side" />
+                <SortIcon field="direction" />
               </TableHead>
               <TableHead
                 className="cursor-pointer text-muted-foreground font-normal"
@@ -120,24 +127,20 @@ const TradesTable = ({
               </TableHead>
               <TableHead
                 className="cursor-pointer text-muted-foreground font-normal"
-                onClick={() => onSort("rMultiple")}
+                onClick={() => onSort("riskMultiple")}
               >
                 R-Multiple
-                <SortIcon field="rMultiple" />
-              </TableHead>
-              <TableHead
-                className="cursor-pointer text-muted-foreground font-normal"
-                onClick={() => onSort("strategy")}
-              >
-                Strategy
-                <SortIcon field="strategy" />
+                <SortIcon field="riskMultiple" />
               </TableHead>
               <TableHead className="text-muted-foreground font-normal">Tags</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {paginatedTrades.map((trade) => {
-              const computed = computeTradeData(trade);
+              // Ensure we have numbers
+              const pnl = trade.netPnl || 0;
+              const rMultiple = trade.riskMultiple || 0;
+
               return (
                 <TableRow
                   key={trade.id}
@@ -145,47 +148,47 @@ const TradesTable = ({
                   onClick={() => onTradeClick(trade)}
                 >
                   <TableCell className="text-muted-foreground">
-                    {format(computed.firstExecutionDate, "MMM d, yyyy")}
+                    {formatDate(trade.entryDate)}
                   </TableCell>
                   <TableCell className="font-medium text-foreground">
                     {trade.symbol}
                   </TableCell>
-                  <TableCell className="text-muted-foreground">{trade.instrumentType}</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {trade.assetClass}
+                  </TableCell>
                   <TableCell>
                     <Badge
                       variant="outline"
                       className={`${
-                        computed.direction === "LONG"
+                        trade.direction === "LONG"
                           ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
                           : "border-rose-500/50 bg-rose-500/10 text-rose-600 dark:text-rose-400"
                       }`}
                     >
-                      {computed.direction}
+                      {trade.direction}
                     </Badge>
                   </TableCell>
                   <TableCell
                     className={`font-medium ${
-                      computed.pnl >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
+                      pnl >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
                     }`}
                   >
-                    {computed.pnl >= 0 ? "+" : ""}$
-                    {Math.abs(computed.pnl).toLocaleString("en-US", {
+                    {pnl >= 0 ? "+" : ""}$
+                    {Math.abs(pnl).toLocaleString("en-US", {
                       minimumFractionDigits: 2,
                       maximumFractionDigits: 2,
                     })}
                   </TableCell>
                   <TableCell
                     className={`${
-                      computed.rMultiple >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
+                      rMultiple >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
                     }`}
                   >
-                    {computed.rMultiple >= 0 ? "+" : ""}
-                    {computed.rMultiple.toFixed(2)}R
+                    {rMultiple > 0 ? `${rMultiple.toFixed(2)}R` : "-"}
                   </TableCell>
-                  <TableCell className="text-foreground">{trade.strategy}</TableCell>
                   <TableCell>
                     <div className="flex flex-wrap gap-1">
-                      {trade.tags.slice(0, 2).map((tag, index) => (
+                      {trade.tags?.slice(0, 2).map((tag, index) => (
                         <Badge
                           key={index}
                           variant="outline"
@@ -194,12 +197,12 @@ const TradesTable = ({
                           {tag}
                         </Badge>
                       ))}
-                      {trade.tags.length > 2 && (
+                      {(trade.tags?.length || 0) > 2 && (
                         <Badge
                           variant="outline"
                           className="border-primary/30 bg-primary/10 text-primary text-xs"
                         >
-                          +{trade.tags.length - 2}
+                          +{(trade.tags?.length || 0) - 2}
                         </Badge>
                       )}
                     </div>
@@ -214,7 +217,9 @@ const TradesTable = ({
       {/* Mobile/Tablet Card View - Optimized for scanability */}
       <div className="lg:hidden space-y-2">
         {paginatedTrades.map((trade) => {
-          const computed = computeTradeData(trade);
+          const pnl = trade.netPnl || 0;
+          const rMultiple = trade.riskMultiple || 0;
+
           return (
             <div
               key={trade.id}
@@ -228,31 +233,35 @@ const TradesTable = ({
                   <Badge
                     variant="outline"
                     className={`text-[10px] px-1.5 py-0 h-4 ${
-                      computed.direction === "LONG"
+                      trade.direction === "LONG"
                         ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
                         : "border-rose-500/50 bg-rose-500/10 text-rose-600 dark:text-rose-400"
                     }`}
                   >
-                    {computed.direction}
+                    {trade.direction}
                   </Badge>
                 </div>
                 <span
                   className={`text-lg font-bold tabular-nums ${
-                    computed.pnl >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
+                    pnl >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
                   }`}
                 >
-                  {computed.pnl >= 0 ? "+" : ""}${Math.abs(computed.pnl).toFixed(0)}
+                  {pnl >= 0 ? "+" : ""}${Math.abs(pnl).toFixed(0)}
                 </span>
               </div>
               {/* Row 2: Metadata - compact */}
               <div className="flex items-center gap-1.5 mt-1 text-[11px] text-muted-foreground">
-                <span>{format(computed.firstExecutionDate, "MMM d")}</span>
+                <span>{formatDate(trade.entryDate)}</span>
                 <span>•</span>
-                <span>{trade.strategy}</span>
-                <span>•</span>
-                <span className={computed.rMultiple >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}>
-                  {computed.rMultiple >= 0 ? "+" : ""}{computed.rMultiple.toFixed(1)}R
-                </span>
+                <span>{trade.assetClass}</span>
+                {rMultiple !== 0 && (
+                    <>
+                        <span>•</span>
+                        <span className={rMultiple >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}>
+                        {rMultiple.toFixed(1)}R
+                        </span>
+                    </>
+                )}
               </div>
             </div>
           );

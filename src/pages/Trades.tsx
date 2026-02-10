@@ -1,16 +1,9 @@
-import { useState, useMemo } from "react";
-import { Plus, Export, DotsThreeVertical, Funnel, X, CalendarBlank, ChartLineUp } from "@phosphor-icons/react";
-import { useDashboard } from "@/components/dashboard/DashboardLayout"; // 1. Import hook
+import { useState, useMemo, useEffect } from "react";
+import { Plus, Export, DotsThreeVertical, Funnel, CalendarBlank, ChartLineUp } from "@phosphor-icons/react";
+import { useDashboard } from "@/components/dashboard/DashboardLayout";
 import PageHeader from "@/components/dashboard/PageHeader";
 import { Button } from "@/components/ui/button";
-import { Trade, generateMockTrades, computeTradeData } from "@/lib/tradesData";
-import TradesStatsCards from "@/components/trades/TradesStatsCards";
-import TradesFilters from "@/components/trades/TradesFilters";
-import TradesTable from "@/components/trades/TradesTable";
-import TradeDetailSheet from "@/components/trades/TradeDetailSheet";
-import AddTradeModal from "@/components/trades/AddTradeModal";
-import EditTradeModal from "@/components/trades/EditTradeModal";
-import { toast } from "sonner";
+import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -30,19 +23,40 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { toast } from "sonner";
+
+// --- Industry Grade Imports ---
+import { auth } from "@/lib/firebase";
+import { useWorkspace } from "@/contexts/WorkspaceContext"; // ✅ Workspace Context
+import { getTrades, createTrade, updateTrade, deleteTrade } from "@/services/tradeService";
+import { Trade } from "@/types/trade";
+
+// Components
+import TradesStatsCards from "@/components/trades/TradesStatsCards";
+import TradesFilters from "@/components/trades/TradesFilters";
+import TradesTable from "@/components/trades/TradesTable";
+import TradeDetailSheet from "@/components/trades/TradeDetailSheet";
+import AddTradeModal from "@/components/trades/AddTradeModal";
+import EditTradeModal from "@/components/trades/EditTradeModal";
 
 const Trades = () => {
-  // 2. Use the hook to get the menu trigger from the parent Layout
   const { onMobileMenuOpen } = useDashboard();
   
-  const [trades, setTrades] = useState<Trade[]>(generateMockTrades());
+  // ✅ 1. Consume Workspace Context
+  const { activeAccount, isLoading: isWorkspaceLoading } = useWorkspace();
+
+  const [trades, setTrades] = useState<Trade[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  
+  // Filters & Sort
   const [searchQuery, setSearchQuery] = useState("");
   const [sideFilter, setSideFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
-  const [sortField, setSortField] = useState("date");
+  const [sortField, setSortField] = useState("entryDate");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
-  // 3. Removed local mobileMenuOpen state
 
+  // UI State
   const [selectedTrade, setSelectedTrade] = useState<Trade | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [addModalOpen, setAddModalOpen] = useState(false);
@@ -50,7 +64,28 @@ const Trades = () => {
   const [tradeToEdit, setTradeToEdit] = useState<Trade | null>(null);
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
 
-  // Filter and sort trades
+  // --- 2. Fetch Logic (Real Data) ---
+  const fetchTrades = async () => {
+    if (!activeAccount?.id) return;
+    
+    try {
+      setIsLoading(true);
+      const data = await getTrades(activeAccount.id);
+      setTrades(data);
+    } catch (error) {
+      console.error("Fetch trades error:", error);
+      toast.error("Failed to load trades");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Re-fetch when workspace changes
+  useEffect(() => {
+    fetchTrades();
+  }, [activeAccount?.id]);
+
+  // --- 3. Filter & Sort Logic (Client Side) ---
   const filteredTrades = useMemo(() => {
     let result = [...trades];
 
@@ -60,50 +95,36 @@ const Trades = () => {
       result = result.filter(
         (t) =>
           t.symbol.toLowerCase().includes(query) ||
-          t.notes.toLowerCase().includes(query) ||
-          t.tags.some((tag) => tag.toLowerCase().includes(query))
+          (t.notes || "").toLowerCase().includes(query) ||
+          (t.tags || []).some((tag) => tag.toLowerCase().includes(query))
       );
     }
 
     // Side filter
     if (sideFilter !== "all") {
-      result = result.filter((t) => {
-        const computed = computeTradeData(t);
-        return computed.direction === sideFilter;
-      });
+      result = result.filter((t) => t.direction === sideFilter);
     }
 
     // Type filter
     if (typeFilter !== "all") {
-      result = result.filter((t) => t.instrumentType === typeFilter);
+      result = result.filter((t) => t.assetClass === typeFilter);
     }
 
     // Sort
     result.sort((a, b) => {
-      const computedA = computeTradeData(a);
-      const computedB = computeTradeData(b);
       let comparison = 0;
       switch (sortField) {
-        case "date":
-          comparison = computedA.firstExecutionDate.getTime() - computedB.firstExecutionDate.getTime();
+        case "entryDate":
+          // Use .toMillis() if it's a Firestore Timestamp, fallback if Date
+          const dateA = a.entryDate?.toMillis ? a.entryDate.toMillis() : new Date(a.entryDate).getTime();
+          const dateB = b.entryDate?.toMillis ? b.entryDate.toMillis() : new Date(b.entryDate).getTime();
+          comparison = dateA - dateB;
           break;
         case "symbol":
           comparison = a.symbol.localeCompare(b.symbol);
           break;
-        case "type":
-          comparison = a.instrumentType.localeCompare(b.instrumentType);
-          break;
-        case "side":
-          comparison = computedA.direction.localeCompare(computedB.direction);
-          break;
         case "pnl":
-          comparison = computedA.pnl - computedB.pnl;
-          break;
-        case "rMultiple":
-          comparison = computedA.rMultiple - computedB.rMultiple;
-          break;
-        case "strategy":
-          comparison = a.strategy.localeCompare(b.strategy);
+          comparison = (a.netPnl || 0) - (b.netPnl || 0);
           break;
         default:
           comparison = 0;
@@ -113,6 +134,8 @@ const Trades = () => {
 
     return result;
   }, [trades, searchQuery, sideFilter, typeFilter, sortField, sortDirection]);
+
+  // --- 4. Handlers ---
 
   const handleSort = (field: string) => {
     if (sortField === field) {
@@ -128,13 +151,17 @@ const Trades = () => {
     setDetailOpen(true);
   };
 
-  const handleAddTrade = (newTrade: Omit<Trade, "id">) => {
-    const trade: Trade = {
-      ...newTrade,
-      id: Date.now().toString(),
-    };
-    setTrades([trade, ...trades]);
-    toast.success("Trade logged successfully!");
+  const handleAddTrade = async (newTradeData: any) => {
+    if (!activeAccount || !auth.currentUser) return;
+    try {
+      await createTrade(activeAccount.id, auth.currentUser.uid, newTradeData);
+      toast.success("Trade logged successfully");
+      fetchTrades(); 
+      setAddModalOpen(false);
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to create trade");
+    }
   };
 
   const handleEditTrade = (trade: Trade) => {
@@ -143,72 +170,103 @@ const Trades = () => {
     setEditModalOpen(true);
   };
 
-  const handleUpdateTrade = (updatedTrade: Trade) => {
-    setTrades(trades.map((t) => (t.id === updatedTrade.id ? updatedTrade : t)));
-    toast.success("Trade updated successfully!");
+  const handleUpdateTrade = async (updatedData: Partial<Trade>) => {
+    if (!tradeToEdit || !activeAccount || !auth.currentUser) return;
+    try {
+      // ✅ Updated to pass userId for audit logging
+      await updateTrade(tradeToEdit.id, activeAccount.id, auth.currentUser.uid, tradeToEdit, updatedData);
+      toast.success("Trade updated successfully");
+      fetchTrades();
+      setEditModalOpen(false);
+    } catch (e) {
+      toast.error("Failed to update trade");
+    }
   };
 
-  const handleDeleteTrade = (trade: Trade) => {
-    setTrades(trades.filter((t) => t.id !== trade.id));
-    setDetailOpen(false);
-    toast.success("Trade deleted successfully!");
+  const handleDeleteTrade = async (trade: Trade) => {
+    if (!auth.currentUser) return;
+    try {
+      // ✅ Updated to pass userId for audit logging
+      await deleteTrade(trade, auth.currentUser.uid); 
+      toast.success("Trade deleted");
+      setDetailOpen(false);
+      fetchTrades();
+    } catch (e) {
+      toast.error("Failed to delete trade");
+    }
   };
 
   const clearFilters = () => {
     setSideFilter("all");
     setTypeFilter("all");
+    setSearchQuery("");
   };
 
   const hasActiveFilters = sideFilter !== "all" || typeFilter !== "all";
 
+  // --- Render ---
   return (
     <>
-      {/* 4. Removed DashboardLayout wrapper */}
       <PageHeader
         title="Trades"
         icon={<ChartLineUp weight="duotone" className="w-6 h-6 text-primary" />}
         onMobileMenuOpen={onMobileMenuOpen}
       >
-        {/* Desktop: Export + Add Trade */}
-        <Button
-          variant="outline"
-          className="hidden sm:flex gap-2 bg-secondary/50 border-border/50 hover:bg-secondary"
-          onClick={() => toast.success("Exporting...")}
-        >
-          <Export weight="regular" className="w-4 h-4" />
-          Export
-        </Button>
-        <Button
-          onClick={() => setAddModalOpen(true)}
-          className="gap-2 glow-button text-white"
-        >
-          <Plus weight="bold" className="w-4 h-4" />
-          <span className="hidden sm:inline">Add Trade</span>
-          <span className="sm:hidden">Add</span>
-        </Button>
-        {/* Mobile: Overflow menu for Export */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="icon" className="sm:hidden bg-secondary/50 border-border/50">
-              <DotsThreeVertical weight="bold" className="w-5 h-5" />
+        {/* Desktop Header Actions */}
+        <div className="hidden sm:flex gap-2">
+            <Button
+              variant="outline"
+              className="gap-2 bg-secondary/50 border-border/50 hover:bg-secondary"
+              onClick={() => toast.info("Export feature coming soon")}
+            >
+              <Export weight="regular" className="w-4 h-4" />
+              Export
             </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="bg-card border-border">
-            <DropdownMenuItem onClick={() => toast.success("Exporting CSV...")}>
-              <Export weight="regular" className="w-4 h-4 mr-2" />
-              Export CSV
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => toast.success("Exporting PDF...")}>
-              <Export weight="regular" className="w-4 h-4 mr-2" />
-              Export PDF
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+            <Button
+              onClick={() => setAddModalOpen(true)}
+              disabled={isWorkspaceLoading || !activeAccount}
+              className="gap-2 glow-button text-white"
+            >
+              <Plus weight="bold" className="w-4 h-4" />
+              Add Trade
+            </Button>
+        </div>
+
+        {/* Mobile Header Actions */}
+        <div className="sm:hidden flex gap-2">
+            <Button 
+                onClick={() => setAddModalOpen(true)} 
+                size="sm"
+                className="glow-button text-white"
+            >
+                <Plus weight="bold" className="w-4 h-4 mr-1" /> Add
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="icon" className="bg-secondary/50 border-border/50">
+                  <DotsThreeVertical weight="bold" className="w-5 h-5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="bg-card border-border">
+                <DropdownMenuItem onClick={() => toast.info("Export CSV...")}>
+                  <Export weight="regular" className="w-4 h-4 mr-2" />
+                  Export CSV
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+        </div>
       </PageHeader>
 
       <div className="px-4 sm:px-6 lg:px-8 pb-6 pt-4 space-y-4 sm:space-y-6">
-        {/* Stats Cards */}
-        <TradesStatsCards trades={trades} />
+        
+        {/* Loading State for Stats */}
+        {isLoading || isWorkspaceLoading ? (
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+               {[1,2,3,4].map(i => <Skeleton key={i} className="h-24 w-full rounded-xl" />)}
+            </div>
+        ) : (
+            <TradesStatsCards trades={trades} />
+        )}
 
         {/* Filters - Desktop */}
         <div className="hidden sm:block">
@@ -222,7 +280,7 @@ const Trades = () => {
           />
         </div>
 
-        {/* Filters - Mobile: Compact search + filter button */}
+        {/* Filters - Mobile */}
         <div className="sm:hidden glass-card p-3 rounded-xl">
           <div className="flex gap-2">
             <div className="relative flex-1">
@@ -242,32 +300,25 @@ const Trades = () => {
             >
               <Funnel weight={hasActiveFilters ? "fill" : "regular"} className="w-4 h-4" />
               Filters
-              {hasActiveFilters && (
-                <span className="ml-1 w-4 h-4 rounded-full bg-primary text-white text-[10px] flex items-center justify-center">
-                  {(sideFilter !== "all" ? 1 : 0) + (typeFilter !== "all" ? 1 : 0)}
-                </span>
-              )}
             </Button>
           </div>
         </div>
 
         {/* Table */}
-        <TradesTable
-          trades={filteredTrades}
-          onTradeClick={handleTradeClick}
-          sortField={sortField}
-          sortDirection={sortDirection}
-          onSort={handleSort}
-        />
+        {isLoading || isWorkspaceLoading ? (
+            <div className="glass-card rounded-xl p-6 space-y-4">
+                {[1,2,3,4,5].map(i => <Skeleton key={i} className="h-12 w-full" />)}
+            </div>
+        ) : (
+            <TradesTable
+              trades={filteredTrades}
+              onTradeClick={handleTradeClick}
+              sortField={sortField}
+              sortDirection={sortDirection}
+              onSort={handleSort}
+            />
+        )}
       </div>
-
-      {/* Mobile FAB for Add Trade */}
-      <button
-        onClick={() => setAddModalOpen(true)}
-        className="fixed bottom-6 right-6 sm:hidden w-14 h-14 rounded-full glow-button text-white shadow-lg flex items-center justify-center z-40"
-      >
-        <Plus weight="bold" className="w-6 h-6" />
-      </button>
 
       {/* Mobile Filter Sheet */}
       <Sheet open={filterSheetOpen} onOpenChange={setFilterSheetOpen}>
@@ -283,16 +334,6 @@ const Trades = () => {
             </div>
           </SheetHeader>
           <div className="space-y-4 pb-6">
-            {/* Date Range Placeholder */}
-            <div className="space-y-2">
-              <label className="text-sm text-muted-foreground">Date Range</label>
-              <Button variant="outline" className="w-full justify-start gap-2 bg-secondary/50 border-border/50">
-                <CalendarBlank weight="regular" className="w-4 h-4" />
-                This Month
-              </Button>
-            </div>
-            
-            {/* Side Filter */}
             <div className="space-y-2">
               <label className="text-sm text-muted-foreground">Side</label>
               <Select value={sideFilter} onValueChange={setSideFilter}>
@@ -307,7 +348,6 @@ const Trades = () => {
               </Select>
             </div>
 
-            {/* Type Filter */}
             <div className="space-y-2">
               <label className="text-sm text-muted-foreground">Type</label>
               <Select value={typeFilter} onValueChange={setTypeFilter}>
@@ -316,11 +356,10 @@ const Trades = () => {
                 </SelectTrigger>
                 <SelectContent className="bg-card border-border">
                   <SelectItem value="all">All Types</SelectItem>
-                  <SelectItem value="Crypto">Crypto</SelectItem>
-                  <SelectItem value="Stock">Stock</SelectItem>
-                  <SelectItem value="Forex">Forex</SelectItem>
-                  <SelectItem value="Futures">Futures</SelectItem>
-                  <SelectItem value="Options">Options</SelectItem>
+                  <SelectItem value="STOCK">Stock</SelectItem>
+                  <SelectItem value="CRYPTO">Crypto</SelectItem>
+                  <SelectItem value="FOREX">Forex</SelectItem>
+                  <SelectItem value="FUTURES">Futures</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -335,30 +374,32 @@ const Trades = () => {
         </SheetContent>
       </Sheet>
 
-      {/* Trade Detail Sheet/Modal */}
+      {/* Detail Sheet */}
       <TradeDetailSheet
         trade={selectedTrade}
         open={detailOpen}
         onOpenChange={setDetailOpen}
         onEdit={handleEditTrade}
         onDelete={handleDeleteTrade}
-        allTrades={trades}
       />
 
-      {/* Add Trade Modal */}
+      {/* Add Modal */}
       <AddTradeModal
         open={addModalOpen}
         onOpenChange={setAddModalOpen}
-        onAddTrade={handleAddTrade}
+        accountId={activeAccount?.id} // ✅ Pass ID
+        onSubmit={handleAddTrade}
       />
 
-      {/* Edit Trade Modal */}
-      <EditTradeModal
-        trade={tradeToEdit}
-        open={editModalOpen}
-        onOpenChange={setEditModalOpen}
-        onUpdateTrade={handleUpdateTrade}
-      />
+      {/* Edit Modal */}
+      {tradeToEdit && (
+        <EditTradeModal
+          trade={tradeToEdit}
+          open={editModalOpen}
+          onOpenChange={setEditModalOpen}
+          onUpdateTrade={handleUpdateTrade}
+        />
+      )}
     </>
   );
 };

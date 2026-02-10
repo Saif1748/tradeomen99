@@ -22,7 +22,7 @@ import { v4 as uuidv4 } from "uuid";
 import { Strategy, StrategyRuleGroup, TradingStyle, DEFAULT_RULE_GROUPS } from "@/types/strategy";
 import { AssetClass } from "@/types/trade";
 
-// --- Constants (Moved local to avoid dependency on old lib file) ---
+// --- Constants ---
 const STRATEGY_ICONS = ["📈", "📉", "⚡", "🐢", "🧠", "🎯", "💎", "🤖", "🌊", "🕯️"];
 
 interface CreateStrategyModalProps {
