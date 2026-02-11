@@ -14,20 +14,16 @@ import { toast } from "sonner";
 import { DepositModal } from "./DepositModal";
 import { WithdrawModal } from "./WithdrawModal";
 
-// Real Data Sources
-import { useWorkspace } from "@/contexts/WorkspaceContext";
+// Contexts
 import { useSettings } from "@/contexts/SettingsContext";
-import { getAccountLedger } from "@/services/ledgerService";
-import { 
-  sendInvitation, 
-  getAccountPendingInvites, 
-  getUserInvitations, 
-  acceptInvitation, 
-  rejectInvitation,
-  updateAccountName, 
-  deleteAccount      
-} from "@/services/accountService";
-import { AccountTransaction, Invitation } from "@/types/account";
+
+// Industry-Grade Hooks
+import { useAccounts } from "@/hooks/useAccounts";
+import { useInvitations } from "@/hooks/useInvitations";
+import { useLedger } from "@/hooks/useLedger";
+
+// Types
+import { Invitation } from "@/types/account";
 
 interface AccountModalProps {
   open: boolean;
@@ -41,117 +37,115 @@ const accountTypeIcons: Record<string, any> = {
 };
 
 export const AccountModal = ({ open, onOpenChange }: AccountModalProps) => {
-  const { availableAccounts, activeAccount, createNewAccount, switchAccount } = useWorkspace();
   const { profile } = useSettings();
 
-  // --- 1. ARCHITECTURE FIX: Track ID, not Object ---
-  // We track WHICH account is being viewed, but we pull the data from the 'Live' context.
+  // --- 1. Accounts Hook (The Core Data Source) ---
+  const { 
+    accounts, 
+    activeAccount, 
+    createAccount, 
+    switchAccount, 
+    renameAccount, 
+    deleteAccount,
+    isRenaming,
+    isDeleting 
+  } = useAccounts(profile?.uid, profile?.email);
+
+  // --- 2. View Selection Logic ---
+  // We track local state for which account we are "inspecting" in the modal.
   const [viewedAccountId, setViewedAccountId] = useState<string | null>(null);
 
   // Derived: The 'Live' Account Object
-  // If availableAccounts updates (due to balance change/sync), this auto-updates.
+  // Automatically updates if the cache updates (e.g. balance change via optimistic update)
   const selectedAccount = useMemo(() => {
-    if (!viewedAccountId && activeAccount) return activeAccount; // Default to active
-    return availableAccounts.find(a => a.id === viewedAccountId) || activeAccount;
-  }, [viewedAccountId, availableAccounts, activeAccount]);
+    // 1. Try to find the specifically viewed account
+    if (viewedAccountId) {
+      const found = accounts.find(a => a.id === viewedAccountId);
+      // If found, return it. If not (e.g., just deleted), fall through.
+      if (found) return found; 
+    }
+    // 2. Fallback to the globally active account, or the first available one
+    return activeAccount || accounts[0];
+  }, [viewedAccountId, accounts, activeAccount]);
 
-  // Data State
-  const [transactions, setTransactions] = useState<AccountTransaction[]>([]);
+  // --- 3. Dependent Hooks (Ledger & Invitations) ---
+  // These hooks automatically enable/disable based on whether we have a selectedAccount.
+  // They also handle their own permissions via the 'enabled' flag inside the hook.
   
-  // Invite State
-  const [pendingInvites, setPendingInvites] = useState<Invitation[]>([]);
-  const [myInvites, setMyInvites] = useState<Invitation[]>([]);
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [isInviting, setIsInviting] = useState(false);
-  const [showInviteInput, setShowInviteInput] = useState(false);
+  const { 
+    incomingInvites, 
+    outgoingInvites, 
+    sendInvitation, 
+    acceptInvitation, 
+    rejectInvitation,
+    isSending: isInviting,
+    isProcessing: isProcessingInvite
+  } = useInvitations(profile?.email, profile?.uid, selectedAccount?.id);
 
-  // Edit Name State
+  const { 
+    transactions, 
+    isLoading: isLedgerLoading 
+  } = useLedger(selectedAccount?.id, profile?.uid);
+
+  // --- 4. Local UI State ---
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [showInviteInput, setShowInviteInput] = useState(false);
+  
+  // Edit Name UI State
   const [isEditingName, setIsEditingName] = useState(false);
   const [editNameValue, setEditNameValue] = useState("");
-  const [isSavingName, setIsSavingName] = useState(false);
-
-  // Delete State
-  const [isDeleting, setIsDeleting] = useState(false);
+  
+  // Delete Confirmation State
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   // Modals
   const [depositOpen, setDepositOpen] = useState(false);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
 
-  // --- 2. OPTIMIZATION FIX: Efficient Fetching ---
-  // Only re-fetch when the ID changes (switching accounts), not when balance/name updates.
+  // --- 5. Effects ---
+
+  // Sync the edit input whenever the selected account changes
   useEffect(() => {
-    if (!selectedAccount) return;
-    
-    // Sync the edit input whenever the account changes
-    setEditNameValue(selectedAccount.name);
-
-    const fetchData = async () => {
-      try {
-        const [txns, sent] = await Promise.all([
-          getAccountLedger(selectedAccount.id),
-          getAccountPendingInvites(selectedAccount.id)
-        ]);
-        setTransactions(txns);
-        setPendingInvites(sent);
-      } catch (error) {
-        console.error("Failed to fetch account details", error);
-      }
-    };
-
-    fetchData();
-  }, [selectedAccount?.id]); // ✅ Dependency is strictly the ID
-
-  // Fetch "My Invitations"
-  useEffect(() => {
-    if (profile?.email && open) {
-      getUserInvitations(profile.email).then(setMyInvites);
+    if (selectedAccount) {
+      setEditNameValue(selectedAccount.name);
     }
-  }, [profile, open]);
+  }, [selectedAccount?.id]);
 
-  // --- Actions ---
+  // When modal opens, default view to the active account if nothing selected
+  useEffect(() => {
+    if (open && activeAccount && !viewedAccountId) {
+      setViewedAccountId(activeAccount.id);
+    }
+  }, [open, activeAccount]);
+
+  // --- 6. Actions (Using Hooks) ---
 
   const handleUpdateName = async () => {
     if (!selectedAccount || !editNameValue.trim()) return;
-    
-    // UI State for the form only
-    setIsSavingName(true);
-    
     try {
-      await updateAccountName(selectedAccount.id, editNameValue);
-      toast.success("Account name updated");
+      await renameAccount({ accountId: selectedAccount.id, name: editNameValue });
       setIsEditingName(false);
-      // NOTE: We do NOT need to setSelectedAccount manually here.
-      // The Firestore listener in WorkspaceContext will pick up the change
-      // and 'selectedAccount' (the derived memo) will update automatically.
+      // Toast handled by hook
     } catch (e) {
-      console.error(e);
-      toast.error("Failed to update name. Permissions error?");
-    } finally {
-      setIsSavingName(false);
+      // Error handled by hook
     }
   };
 
   const handleDelete = async () => {
     if (!selectedAccount) return;
-    setIsDeleting(true);
     try {
       await deleteAccount(selectedAccount.id);
-      toast.success("Account deleted");
       
-      // Smart Fallback
-      const fallback = availableAccounts.find(a => a.id !== selectedAccount.id);
+      // Smart Fallback after deletion
+      const fallback = accounts.find(a => a.id !== selectedAccount.id);
       if (fallback) {
         setViewedAccountId(fallback.id);
         setShowDeleteConfirm(false);
       } else {
-        onOpenChange(false);
+        onOpenChange(false); // Close if no accounts left
       }
     } catch (e) {
-      console.error(e);
-      toast.error("Failed to delete account");
-    } finally {
-      setIsDeleting(false);
+      // Error handled by hook
     }
   };
 
@@ -162,57 +156,35 @@ export const AccountModal = ({ open, onOpenChange }: AccountModalProps) => {
   };
 
   const handleInvite = async () => {
-    if (!inviteEmail || !selectedAccount || !profile?.uid) return;
+    if (!inviteEmail || !selectedAccount) return;
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(inviteEmail)) {
       toast.error("Please enter a valid email address");
       return;
     }
-    setIsInviting(true);
+    
     try {
-      await sendInvitation(selectedAccount.id, selectedAccount.name, profile.uid, inviteEmail);
-      toast.success(`Invitation sent to ${inviteEmail}`);
+      await sendInvitation({ email: inviteEmail, role: "EDITOR" });
       setInviteEmail("");
       setShowInviteInput(false);
-      // Refresh invites list manually since this isn't in the account object
-      const updated = await getAccountPendingInvites(selectedAccount.id);
-      setPendingInvites(updated);
-    } catch (error: any) {
-      toast.error(error.message || "Failed to send invitation");
-    } finally {
-      setIsInviting(false);
+    } catch (error) {
+       // Error handled by hook
     }
   };
 
   const handleAcceptInvite = async (invitation: Invitation) => {
-    if (!profile?.uid || !profile?.email) return;
     try {
-      await acceptInvitation(profile.uid, profile.email, invitation);
-      toast.success(`Joined ${invitation.accountName}!`);
-      await switchAccount(invitation.accountId);
-      onOpenChange(false);
+      await acceptInvitation(invitation);
+      // Auto-switch to the new account is handled by the hook logic or we can force close
+      onOpenChange(false); 
     } catch (e) {
-      toast.error("Failed to join account.");
+      // Error handled by hook
     }
   };
 
-  const handleRejectInvite = async (id: string, isIncoming: boolean) => {
-    try {
-      await rejectInvitation(id);
-      if (isIncoming) {
-        setMyInvites(prev => prev.filter(i => i.id !== id));
-        toast.info("Invitation declined");
-      } else {
-        setPendingInvites(prev => prev.filter(i => i.id !== id));
-        toast.info("Invitation revoked");
-      }
-    } catch (e) {
-      toast.error("Action failed");
-    }
-  };
-
-  // Safe checks
+  // --- Safe Returns ---
   if (!selectedAccount) return null;
 
+  // --- Formatters ---
   const formatBalance = (val: number) => {
     return val.toLocaleString("en-US", { style: "currency", currency: selectedAccount.currency || "USD" });
   };
@@ -223,7 +195,7 @@ export const AccountModal = ({ open, onOpenChange }: AccountModalProps) => {
     return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   };
 
-  // --- PERMISSIONS CHECK ---
+  // --- Permissions ---
   const accountType = selectedAccount.type || "personal";
   const TypeIcon = accountTypeIcons[accountType] || User;
   const membersList = Object.values(selectedAccount.members || {});
@@ -252,7 +224,7 @@ export const AccountModal = ({ open, onOpenChange }: AccountModalProps) => {
 
               <ScrollArea className="flex-1">
                 <div className="p-3 space-y-2">
-                  {availableAccounts.map((account) => {
+                  {accounts.map((account) => {
                     const type = account.type || "personal";
                     const Icon = accountTypeIcons[type] || User;
                     const isSelected = selectedAccount.id === account.id;
@@ -285,7 +257,6 @@ export const AccountModal = ({ open, onOpenChange }: AccountModalProps) => {
                                 </span>
                               )}
                             </div>
-                            {/* Live Balance Update Check */}
                             <div className={`text-sm font-medium mt-0.5 ${account.balance >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                               {account.balance.toLocaleString("en-US", { style: "currency", currency: account.currency || "USD" })}
                             </div>
@@ -296,15 +267,15 @@ export const AccountModal = ({ open, onOpenChange }: AccountModalProps) => {
                     );
                   })}
 
-                  {/* Incoming Invites */}
-                  {myInvites.length > 0 && (
+                  {/* Incoming Invites (From Hook) */}
+                  {incomingInvites.length > 0 && (
                     <div className="mt-6 pt-4 border-t border-border/50">
                       <div className="px-1 mb-3 flex items-center gap-2">
                         <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
                         <p className="text-xs font-semibold text-primary uppercase tracking-wider">Pending Invites</p>
                       </div>
                       
-                      {myInvites.map((invite) => (
+                      {incomingInvites.map((invite) => (
                         <div key={invite.id} className="p-3 mb-2 rounded-xl bg-background border border-border/50 shadow-sm">
                           <div className="flex items-center gap-2 mb-3">
                             <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
@@ -316,10 +287,10 @@ export const AccountModal = ({ open, onOpenChange }: AccountModalProps) => {
                             </div>
                           </div>
                           <div className="flex gap-2">
-                            <Button size="sm" onClick={() => handleAcceptInvite(invite)} className="h-8 text-xs flex-1 bg-primary hover:bg-primary/90">
+                            <Button size="sm" onClick={() => handleAcceptInvite(invite)} disabled={isProcessingInvite} className="h-8 text-xs flex-1 bg-primary hover:bg-primary/90">
                               <Check weight="bold" className="w-3 h-3 mr-1.5" /> Accept
                             </Button>
-                            <Button size="sm" variant="ghost" onClick={() => handleRejectInvite(invite.id, true)} className="h-8 w-8 p-0 text-muted-foreground hover:text-red-400">
+                            <Button size="sm" variant="ghost" onClick={() => rejectInvitation(invite.id)} disabled={isProcessingInvite} className="h-8 w-8 p-0 text-muted-foreground hover:text-red-400">
                               <X weight="bold" className="w-4 h-4" />
                             </Button>
                           </div>
@@ -331,7 +302,7 @@ export const AccountModal = ({ open, onOpenChange }: AccountModalProps) => {
               </ScrollArea>
 
               <div className="p-3 border-t border-border/50">
-                <Button variant="outline" onClick={() => createNewAccount("New Account")} className="w-full gap-2 bg-secondary/30 border-border/50 hover:bg-secondary/50">
+                <Button variant="outline" onClick={() => createAccount("New Account")} className="w-full gap-2 bg-secondary/30 border-border/50 hover:bg-secondary/50">
                   <Plus weight="bold" className="w-4 h-4" /> <span className="text-sm">Create New Account</span>
                 </Button>
               </div>
@@ -356,8 +327,8 @@ export const AccountModal = ({ open, onOpenChange }: AccountModalProps) => {
                               className="h-8 text-lg font-semibold bg-secondary/30 focus-visible:ring-primary/30"
                               autoFocus
                             />
-                            <Button size="icon" className="h-8 w-8 shrink-0 bg-emerald-500 hover:bg-emerald-600" onClick={handleUpdateName} disabled={isSavingName}>
-                              {isSavingName ? <SpinnerGap className="animate-spin" /> : <Check weight="bold" />}
+                            <Button size="icon" className="h-8 w-8 shrink-0 bg-emerald-500 hover:bg-emerald-600" onClick={handleUpdateName} disabled={isRenaming}>
+                              {isRenaming ? <SpinnerGap className="animate-spin" /> : <Check weight="bold" />}
                             </Button>
                             <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0" onClick={() => { setIsEditingName(false); setEditNameValue(selectedAccount.name); }}>
                               <X weight="bold" />
@@ -418,7 +389,7 @@ export const AccountModal = ({ open, onOpenChange }: AccountModalProps) => {
                     </div>
                   </div>
 
-                  {/* Members Section (Unchanged, Logic is robust) */}
+                  {/* Members Section */}
                   <div>
                     <div className="flex items-center justify-between mb-4">
                       <h4 className="text-sm font-medium text-foreground flex items-center gap-2">
@@ -462,7 +433,9 @@ export const AccountModal = ({ open, onOpenChange }: AccountModalProps) => {
                           <span className="px-2 py-1 rounded-md text-xs bg-secondary border border-border/50 text-muted-foreground capitalize">{member.role.toLowerCase()}</span>
                         </div>
                       ))}
-                      {pendingInvites.map((invite) => (
+                      
+                      {/* Outgoing Invites (From Hook) */}
+                      {outgoingInvites.map((invite) => (
                         <div key={invite.id} className="flex items-center gap-3 p-3 rounded-xl bg-yellow-500/5 border border-yellow-500/20 border-dashed">
                           <div className="h-9 w-9 rounded-full bg-yellow-500/10 flex items-center justify-center border border-yellow-500/20">
                             <Clock weight="fill" className="w-4 h-4 text-yellow-500" />
@@ -472,7 +445,7 @@ export const AccountModal = ({ open, onOpenChange }: AccountModalProps) => {
                             <p className="text-xs text-yellow-600/80 flex items-center gap-1">Invitation Pending</p>
                           </div>
                           {canInvite && (
-                            <Button variant="ghost" size="sm" onClick={() => handleRejectInvite(invite.id, false)} className="text-muted-foreground hover:text-red-400 h-8 w-8 p-0">
+                            <Button variant="ghost" size="sm" onClick={() => rejectInvitation(invite.id)} disabled={isProcessingInvite} className="text-muted-foreground hover:text-red-400 h-8 w-8 p-0">
                               <Trash weight="bold" className="w-4 h-4" />
                             </Button>
                           )}
@@ -481,13 +454,15 @@ export const AccountModal = ({ open, onOpenChange }: AccountModalProps) => {
                     </div>
                   </div>
 
-                  {/* Transactions */}
+                  {/* Transactions (From Hook) */}
                   <div>
                     <h4 className="text-sm font-medium text-foreground flex items-center gap-2 mb-4">
                       <Clock weight="bold" className="w-4 h-4 text-primary" /> Recent Transactions
                     </h4>
                     <div className="space-y-2">
-                      {transactions.length === 0 ? (
+                      {isLedgerLoading ? (
+                        <div className="flex justify-center p-8"><SpinnerGap className="animate-spin text-primary" /></div>
+                      ) : transactions.length === 0 ? (
                         <div className="flex flex-col items-center justify-center py-8 text-center border border-dashed border-border/50 rounded-xl bg-secondary/10">
                           <p className="text-sm text-muted-foreground">No recent transactions found.</p>
                         </div>

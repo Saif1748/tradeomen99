@@ -6,29 +6,15 @@ import {
   setDoc, 
   updateDoc, 
   addDoc,        
-  deleteDoc,     
+  deleteDoc,       
   query, 
   where, 
-  documentId, 
   Timestamp, 
   runTransaction, 
-  arrayUnion, 
-  serverTimestamp
+  arrayUnion
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Account, AccountMember, UserProfile, Invitation } from "@/types/account";
-
-// --- Constants ---
-const FIRESTORE_BATCH_LIMIT = 30; // Firestore 'in' query limit
-
-// --- Helper: Chunk Array for Batching ---
-const chunkArray = <T>(array: T[], size: number): T[][] => {
-  const chunks: T[][] = [];
-  for (let i = 0; i < array.length; i += size) {
-    chunks.push(array.slice(i, i + size));
-  }
-  return chunks;
-};
 
 /**
  * 🔒 Create Account (Robust & Atomic)
@@ -50,8 +36,6 @@ export const createAccount = async (
   const userRef = doc(db, "users", userId);
 
   // 2. Prepare Data Objects
-  // We prepare these *outside* the transaction to keep the lock time short.
-  
   const newMember: AccountMember = {
     uid: userId,
     email: userEmail,
@@ -63,7 +47,7 @@ export const createAccount = async (
     id: accountRef.id,
     name: accountName.trim(),
     ownerId: userId,
-    // ✅ CRITICAL ADDITION: Initialize the memberIds array for fast queries
+    // ✅ CRITICAL: Initialize memberIds for the fast array-contains query
     memberIds: [userId], 
     members: { [userId]: newMember },
     
@@ -79,15 +63,10 @@ export const createAccount = async (
   try {
     // 3. Atomic Transaction
     await runTransaction(db, async (transaction) => {
-      // ---------------------------------------------------------
-      // STEP A: READS (MUST come first in Firestore transactions)
-      // ---------------------------------------------------------
+      // STEP A: READS
       const userDoc = await transaction.get(userRef);
 
-      // ---------------------------------------------------------
       // STEP B: WRITES
-      // ---------------------------------------------------------
-      
       // 1. Create the Account Document
       transaction.set(accountRef, newAccount);
 
@@ -123,7 +102,6 @@ export const createAccount = async (
 /**
  * 🛡️ Provision Default Account (Idempotent)
  * Checks if a user has accounts. If not, creates one.
- * Safe to call multiple times.
  */
 export const provisionDefaultAccount = async (userId: string, userEmail: string) => {
   if (!userId) return;
@@ -144,7 +122,6 @@ export const provisionDefaultAccount = async (userId: string, userEmail: string)
     return await createAccount(userId, userEmail, "Personal Journal", 0, "USD");
   } catch (error) {
     console.error("Provisioning failed:", error);
-    // Don't throw here to avoid crashing the auth flow, just log it.
     return null; 
   }
 };
@@ -163,40 +140,32 @@ export const switchUserAccount = async (userId: string, accountId: string) => {
 };
 
 /**
- * 🚀 Get User Accounts (Scalable)
- * Handles the Firestore limitation of 30 items per 'in' query
- * by chunking requests and running them in parallel.
+ * 🚀 Get User Accounts (Robust & Permission Safe)
+ * CHANGED: Now queries by 'memberIds' instead of document IDs.
+ * WHY: 'IN' queries fail if the user loses access to even ONE account in the list.
+ * 'array-contains' is safe; it automatically filters out accounts you can't see.
  */
-export const getUserAccounts = async (accountIds: string[]) => {
-  if (!accountIds || accountIds.length === 0) return [];
-
-  // Remove duplicates to save reads
-  const uniqueIds = Array.from(new Set(accountIds));
+export const getUserAccounts = async (userId: string) => {
+  if (!userId) return [];
 
   try {
-    // 1. Chunk the IDs (Firestore limit: 30)
-    const idChunks = chunkArray(uniqueIds, FIRESTORE_BATCH_LIMIT);
+    // Query for ALL accounts where this user is listed in the 'memberIds' array.
+    // This perfectly matches your 'hasAccessToAccount' security rule.
+    const q = query(
+      collection(db, "accounts"), 
+      where("memberIds", "array-contains", userId)
+    );
+
+    const snapshot = await getDocs(q);
     
-    // 2. Execute queries in parallel
-    const promises = idChunks.map(chunk => {
-      const q = query(collection(db, "accounts"), where(documentId(), "in", chunk));
-      return getDocs(q);
-    });
+    return snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    } as Account));
 
-    const snapshots = await Promise.all(promises);
-
-    // 3. Flatten results
-    const accounts: Account[] = [];
-    snapshots.forEach(snap => {
-      snap.forEach(doc => {
-        accounts.push(doc.data() as Account);
-      });
-    });
-
-    return accounts;
   } catch (error) {
     console.error("Failed to fetch accounts:", error);
-    return [];
+    return []; 
   }
 };
 
@@ -216,7 +185,7 @@ export const getUserProfile = async (userId: string) => {
 };
 
 /**
- * ✏️ Rename Account (NEW)
+ * ✏️ Rename Account
  */
 export const updateAccountName = async (accountId: string, newName: string) => {
   if (!newName.trim()) throw new Error("Account name cannot be empty");
@@ -229,8 +198,7 @@ export const updateAccountName = async (accountId: string, newName: string) => {
 };
 
 /**
- * 🗑️ Delete Account (NEW)
- * Currently performs a shallow delete of the account document.
+ * 🗑️ Delete Account
  */
 export const deleteAccount = async (accountId: string) => {
   const ref = doc(db, "accounts", accountId);
@@ -340,7 +308,7 @@ export const acceptInvitation = async (userId: string, userEmail: string, invita
     // 5. Writes
     transaction.update(accountRef, { 
       members,
-      // ✅ CRITICAL ADDITION: Sync the Search Array Atomically
+      // ✅ CRITICAL: Sync the Search Array Atomically
       memberIds: arrayUnion(userId) 
     });
     
