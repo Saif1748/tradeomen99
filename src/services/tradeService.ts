@@ -9,15 +9,23 @@ import {
   getDocs, 
   orderBy, 
   getDoc, 
-  increment
+  increment 
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Trade, Execution } from "@/types/trade";
 import { AccountTransaction } from "@/types/account";
-import { runTradeCalculations } from "@/lib/financialMath";
+import { runTradeCalculations, calculateRiskMetrics } from "@/lib/financialMath";
 import { logActivityInTransaction } from "./auditService";
 
 const ROOT_COLLECTION = "trades";
+
+// 🛡️ Helper: Ensure Date is always Firestore Timestamp
+const toTimestamp = (date: any): Timestamp => {
+  if (!date) return Timestamp.now();
+  if (date instanceof Timestamp) return date;
+  if (date instanceof Date) return Timestamp.fromDate(date);
+  return Timestamp.now();
+};
 
 // --- 🔌 PUBLIC API ---
 
@@ -46,8 +54,9 @@ export const createTrade = async (accountId: string, userId: string, tradeData: 
     assetClass: tradeData.assetClass || "STOCK",
     status: "OPEN",
     
-    // Financials (Start at 0, updated by calc loop below)
+    // Financials (Start at 0)
     netQuantity: 0,
+    initialQuantity: 0, // ✅ CRITICAL: Start at 0 for risk calc
     avgEntryPrice: 0,
     avgExitPrice: 0,
     totalExecutions: 0,
@@ -64,30 +73,30 @@ export const createTrade = async (accountId: string, userId: string, tradeData: 
     screenshots: tradeData.screenshots || [],
     notes: tradeData.notes || "",
     source: "MANUAL",
-    entryDate: tradeData.entryDate || Timestamp.now(),
+    entryDate: toTimestamp(tradeData.entryDate),
     createdAt: Timestamp.now(),
     updatedAt: Timestamp.now(),
     
-    // Risk Plan (Optional)
+    // Risk Plan
     initialStopLoss: tradeData.initialStopLoss ? Number(tradeData.initialStopLoss) : undefined,
     takeProfitTarget: tradeData.takeProfitTarget ? Number(tradeData.takeProfitTarget) : undefined,
     strategyId: tradeData.strategyId || null,
   };
 
-  // 2. ⚡ PROCESS INITIAL EXECUTIONS (The Fix)
+  // 2. ⚡ PROCESS INITIAL EXECUTIONS
   // We must calculate the state based on the provided executions immediately.
   const initialExecutions: Execution[] = [];
   
   if (tradeData.executions && Array.isArray(tradeData.executions)) {
       tradeData.executions.forEach((execData: any) => {
           // Create Execution Object
-          const execRef = doc(collection(db, "temp")); // Just generating an ID
+          const execRef = doc(collection(db, "temp")); // Generate ID
           const exec: Execution = {
               id: execRef.id, 
               tradeId,
               userId,
               accountId,
-              date: execData.date || Timestamp.now(),
+              date: toTimestamp(execData.date),
               side: execData.side,
               price: Number(execData.price) || 0,
               quantity: Number(execData.quantity) || 0,
@@ -98,7 +107,7 @@ export const createTrade = async (accountId: string, userId: string, tradeData: 
           initialExecutions.push(exec);
 
           // 🧮 RUN THE MATH ENGINE ITERATIVELY
-          // This updates newTrade state (PnL, Avg Price) step-by-step for every initial execution
+          // This updates PnL, Avg Price, and initialQuantity
           const updates = runTradeCalculations(newTrade, exec);
           newTrade = { ...newTrade, ...updates };
       });
@@ -107,7 +116,7 @@ export const createTrade = async (accountId: string, userId: string, tradeData: 
   // 3. Atomic Write (Trade + Executions + Balance + Ledger + Audit)
   try {
     await runTransaction(db, async (transaction) => {
-      // A. Write Trade Doc (With calculated metrics)
+      // A. Write Trade Doc
       transaction.set(tradeRef, newTrade);
 
       // B. Write Execution Sub-Docs
@@ -117,8 +126,6 @@ export const createTrade = async (accountId: string, userId: string, tradeData: 
       });
       
       // C. Update Account Balance (If PnL/Fees exist)
-      // Note: netPnl = Gross - Fees. 
-      // For OPEN trades, Realized PnL is 0, so this usually just deducts fees.
       const cashImpact = (newTrade.netPnl || 0); 
 
       if (Math.abs(cashImpact) > 0) {
@@ -180,7 +187,7 @@ export const addExecution = async (tradeId: string, userId: string, execData: Pa
       tradeId,
       userId,
       accountId,
-      date: execData.date || Timestamp.now(),
+      date: toTimestamp(execData.date),
       side: execData.side || "BUY",
       price: Number(execData.price) || 0,
       quantity: Number(execData.quantity) || 0,
@@ -189,8 +196,7 @@ export const addExecution = async (tradeId: string, userId: string, execData: Pa
       ...execData
     };
 
-    // 3. 🧮 RUN CALCULATIONS (The Brain)
-    // This returns the *entire* new state of the trade
+    // 3. 🧮 RUN CALCULATIONS
     const updates = runTradeCalculations(currentTrade, newExec);
 
     // 4. Write Updates
@@ -198,6 +204,7 @@ export const addExecution = async (tradeId: string, userId: string, execData: Pa
     transaction.update(tradeRef, {
         ...updates,
         updatedBy: userId,
+        updatedAt: serverTimestamp()
     });
 
     // 5. 💰 Account Sync Logic
@@ -257,6 +264,7 @@ export const getTrades = async (accountId: string) => {
 
 /**
  * 🟡 Update Trade Metadata
+ * 🔥 NOW RECALCULATES RISK METRICS IF PLAN CHANGES
  */
 export const updateTrade = async (
   tradeId: string, 
@@ -266,12 +274,31 @@ export const updateTrade = async (
   updates: Partial<Trade>
 ) => {
   const ref = doc(db, ROOT_COLLECTION, tradeId);
+  
+  // 🛡️ Recalculate Risk Metrics if SL/TP changes
+  let riskUpdates = {};
+  if (updates.initialStopLoss || updates.takeProfitTarget) {
+     const mergedTrade = { ...oldTrade, ...updates };
+     
+     // Re-run JUST the risk calc part using existing PnL/Qty
+     riskUpdates = calculateRiskMetrics(
+       mergedTrade, 
+       mergedTrade.netPnl || 0, 
+       mergedTrade.initialQuantity || 0, // Use the persisted Max Size
+       mergedTrade.avgEntryPrice || 0
+     );
+  }
+
+  const finalUpdates = {
+     ...updates,
+     ...riskUpdates,
+     updatedBy: userId, 
+     updatedAt: serverTimestamp() 
+  };
+
   await runTransaction(db, async (t) => {
-     t.update(ref, { 
-       ...updates, 
-       updatedBy: userId, 
-       updatedAt: serverTimestamp() 
-     });
+     t.update(ref, finalUpdates);
+     
      logActivityInTransaction(
        t, accountId, userId, "UPDATE", "TRADE", tradeId, 
        `Updated plan for ${oldTrade.symbol}`, updates
@@ -281,20 +308,48 @@ export const updateTrade = async (
 
 /**
  * 🔴 Delete Trade
+ * 🔥 NOW REVERSES BALANCE IMPACT
  */
 export const deleteTrade = async (trade: Trade, userId: string) => {
   const tradeRef = doc(db, ROOT_COLLECTION, trade.id);
+  const accountId = trade.accountId;
   
-  // Note: Fetching outside transaction as queries are limited inside
+  // Fetch sub-collections first
   const execsRef = collection(db, ROOT_COLLECTION, trade.id, "executions");
   const execsSnap = await getDocs(execsRef);
 
   await runTransaction(db, async (transaction) => {
+    // 1. Delete Trade & Executions
     transaction.delete(tradeRef);
     execsSnap.docs.forEach(doc => transaction.delete(doc.ref));
 
+    // 2. 💰 REVERSE BALANCE IMPACT
+    const reverseAmount = (trade.netPnl || 0) * -1; // Invert PnL
+    
+    if (Math.abs(reverseAmount) > 0.001) {
+       const accountRef = doc(db, "accounts", accountId);
+       const ledgerRef = doc(collection(db, "accounts", accountId, "ledger"));
+       
+       transaction.update(accountRef, {
+           balance: increment(reverseAmount),
+           updatedAt: serverTimestamp()
+       });
+       
+       // Log Reversal in Ledger
+       transaction.set(ledgerRef, {
+           id: ledgerRef.id,
+           accountId,
+           userId,
+           type: reverseAmount > 0 ? "PROFIT" : "LOSS", // Logic: if I lost -100, reversal is +100 (Profit)
+           amount: Math.abs(reverseAmount),
+           description: `Reversal: Trade ${trade.symbol} Deleted`,
+           date: Timestamp.now()
+       });
+    }
+
+    // 3. Audit
     logActivityInTransaction(
-        transaction, trade.accountId, userId, "DELETE", "TRADE", trade.id, 
+        transaction, accountId, userId, "DELETE", "TRADE", trade.id, 
         `Deleted trade ${trade.symbol}`
     );
   });

@@ -2,12 +2,12 @@ import {
   collection, 
   doc, 
   getDocs, 
+  getDoc, // ✅ Added missing import
   deleteDoc, 
   query, 
   where, 
   orderBy, 
   serverTimestamp, 
-  Timestamp, 
   updateDoc, 
   addDoc
 } from "firebase/firestore";
@@ -18,7 +18,7 @@ import {
   DEFAULT_RULE_GROUPS, 
   StrategyStatus 
 } from "@/types/strategy";
-import { logActivity } from "./auditService"; // ✅ Import Audit Service
+import { logActivity } from "./auditService";
 
 const COLLECTION_NAME = "strategies";
 
@@ -40,6 +40,8 @@ export const createStrategy = async (
   // Random color generator for badges (SaaS Polish)
   const randomColor = "#" + Math.floor(Math.random()*16777215).toString(16);
 
+  // We use 'any' briefly here because serverTimestamp() returns a FieldValue, 
+  // which technically conflicts with the Timestamp type in the Strategy interface until saved.
   const newStrategy: any = {
     // --- Identity & Access ---
     accountId, 
@@ -73,20 +75,25 @@ export const createStrategy = async (
     updatedAt: serverTimestamp(),
   };
 
-  // Use addDoc to let Firestore generate the ID automatically
-  const docRef = await addDoc(collectionRef, newStrategy);
-  
-  // 📝 Log Activity
-  await logActivity(
-    accountId, 
-    userId, 
-    "CREATE", 
-    "STRATEGY", 
-    docRef.id, 
-    `Created strategy: ${newStrategy.name}`
-  );
-  
-  return { id: docRef.id, ...newStrategy };
+  try {
+    // Use addDoc to let Firestore generate the ID automatically
+    const docRef = await addDoc(collectionRef, newStrategy);
+    
+    // 📝 Log Activity
+    await logActivity(
+      accountId, 
+      userId, 
+      "CREATE", 
+      "STRATEGY", 
+      docRef.id, 
+      `Created strategy: ${newStrategy.name}`
+    );
+    
+    return { id: docRef.id, ...newStrategy };
+  } catch (error) {
+    console.error("Error creating strategy:", error);
+    throw error;
+  }
 };
 
 /**
@@ -110,7 +117,24 @@ export const getStrategies = async (accountId: string) => {
     } as Strategy));
   } catch (error) {
     console.error("Error fetching strategies:", error);
+    // Return empty array to prevent UI crashes, but log the error
     return [];
+  }
+};
+
+/**
+ * 🔎 Get Single Strategy by ID (The Missing Function)
+ * Used by TradeDetailSheet to resolve strategy names.
+ */
+export const getStrategyById = async (strategyId: string) => {
+  if (!strategyId) return null;
+  try {
+    const docRef = doc(db, COLLECTION_NAME, strategyId);
+    const snap = await getDoc(docRef);
+    return snap.exists() ? ({ id: snap.id, ...snap.data() } as Strategy) : null;
+  } catch (error) {
+    console.error(`Error fetching strategy ${strategyId}:`, error);
+    return null;
   }
 };
 
@@ -123,26 +147,31 @@ export const updateStrategy = async (
   userId: string, // ✅ Track who is editing
   updates: Partial<Strategy>
 ) => {
-  if (!strategyId) return;
-  const docRef = doc(db, COLLECTION_NAME, strategyId);
+  if (!strategyId) throw new Error("Strategy ID required for update");
   
-  await updateDoc(docRef, {
-    ...updates,
-    updatedBy: userId, // ✅ Audit Field
-    updatedAt: serverTimestamp()
-  });
+  try {
+    const docRef = doc(db, COLLECTION_NAME, strategyId);
+    
+    await updateDoc(docRef, {
+      ...updates,
+      updatedBy: userId, // ✅ Audit Field
+      updatedAt: serverTimestamp()
+    });
 
-  // 📝 Log Activity
-  // We log a generic update here. For highly detailed logs, we'd compare old vs new.
-  await logActivity(
-    accountId, 
-    userId, 
-    "UPDATE", 
-    "STRATEGY", 
-    strategyId, 
-    "Updated strategy configuration",
-    updates
-  );
+    // 📝 Log Activity
+    await logActivity(
+      accountId, 
+      userId, 
+      "UPDATE", 
+      "STRATEGY", 
+      strategyId, 
+      "Updated strategy configuration",
+      updates
+    );
+  } catch (error) {
+    console.error("Error updating strategy:", error);
+    throw error;
+  }
 };
 
 /**
@@ -151,16 +180,21 @@ export const updateStrategy = async (
 export const deleteStrategy = async (strategy: Strategy, userId: string) => {
   if (!strategy?.id) return;
   
-  const docRef = doc(db, COLLECTION_NAME, strategy.id);
-  await deleteDoc(docRef);
+  try {
+    const docRef = doc(db, COLLECTION_NAME, strategy.id);
+    await deleteDoc(docRef);
 
-  // 📝 Log Activity
-  await logActivity(
-    strategy.accountId, 
-    userId, 
-    "DELETE", 
-    "STRATEGY", 
-    strategy.id, 
-    `Deleted strategy: ${strategy.name}`
-  );
+    // 📝 Log Activity
+    await logActivity(
+      strategy.accountId, 
+      userId, 
+      "DELETE", 
+      "STRATEGY", 
+      strategy.id, 
+      `Deleted strategy: ${strategy.name}`
+    );
+  } catch (error) {
+    console.error("Error deleting strategy:", error);
+    throw error;
+  }
 };

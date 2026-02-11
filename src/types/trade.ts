@@ -53,7 +53,13 @@ export interface Trade {
   
   // --- 3. Live Aggregates (The "State") ---
   // Updated atomically via Transaction. Allows O(1) reads.
-  netQuantity: number;     // Remaining open size. (0 = Closed)
+  netQuantity: number;     // Remaining open size. (Decreases on sell. 0 = Closed)
+  
+  // 🆕 THE FIX: "High Water Mark" for position size
+  // Accumulates all ENTRY quantities. Never decreases on Exit.
+  // CRITICAL for accurate Risk Amount (R) calculation when scaling out.
+  initialQuantity: number; 
+
   avgEntryPrice: number;   // Weighted Average Price of ALL entry fills
   avgExitPrice?: number;   // Weighted Average Price of ALL exit fills
   totalExecutions: number; // Count of child docs
@@ -69,7 +75,8 @@ export interface Trade {
   initialStopLoss?: number;
   takeProfitTarget?: number;
   
-  riskAmount?: number;     // $ Amount risked (Entry - SL) * Qty
+  // Calculated using: abs(AvgEntry - SL) * initialQuantity
+  riskAmount?: number;     
   plannedRR?: number;      // Planned Risk:Reward Ratio
   riskMultiple?: number;   // Realized R-Multiple (Net PnL / Risk Amount)
   

@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { Plus, MagnifyingGlass, Funnel, Sword, ArrowClockwise, FolderOpen } from "@phosphor-icons/react";
 import { useDashboard } from "@/components/dashboard/DashboardLayout";
 import PageHeader from "@/components/dashboard/PageHeader";
@@ -26,13 +26,13 @@ import StrategyCard from "@/components/strategies/StrategyCard";
 import CreateStrategyModal from "@/components/strategies/CreateStrategyModal";
 import EditStrategyModal from "@/components/strategies/EditStrategyModal";
 import StrategyDetail from "@/components/strategies/StrategyDetail";
-import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
+import { toast } from "sonner";
 
 // --- Industry Grade Imports ---
 import { auth } from "@/lib/firebase";
 import { useWorkspace } from "@/contexts/WorkspaceContext"; 
-import { getStrategies, deleteStrategy, createStrategy, updateStrategy } from "@/services/strategyService";
+import { useStrategies } from "@/hooks/useStrategies"; // ✅ Use the Hook
 import { Strategy, TradingStyle } from "@/types/strategy";
 
 // Constants
@@ -40,15 +40,21 @@ const STRATEGY_STYLES: TradingStyle[] = ["SCALP", "DAY_TRADE", "SWING", "POSITIO
 
 const Strategies = () => {
   const { onMobileMenuOpen } = useDashboard();
+  const { activeAccount } = useWorkspace();
+  const userId = auth.currentUser?.uid;
   
-  // ✅ 1. Consume Workspace Context
-  const { activeAccount, isLoading: isWorkspaceLoading } = useWorkspace();
+  // ✅ 1. HOOK INTEGRATION: Replaces manual fetch/state
+  const { 
+    strategies, 
+    isLoading, 
+    createStrategy, 
+    updateStrategy, 
+    deleteStrategy,
+    refetch 
+  } = useStrategies(activeAccount?.id, userId);
   
-  const [strategies, setStrategies] = useState<Strategy[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  // UI State
   const [selectedStrategy, setSelectedStrategy] = useState<Strategy | null>(null);
-  
-  // Modals
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -57,29 +63,7 @@ const Strategies = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [styleFilter, setStyleFilter] = useState("all");
 
-  // --- 2. Fetch Logic (Scoped to Active Account) ---
-  const fetchStrategies = async () => {
-    // Wait for workspace to be ready
-    if (!activeAccount?.id) return;
-    
-    try {
-      setIsLoading(true);
-      const data = await getStrategies(activeAccount.id);
-      setStrategies(data);
-    } catch (error) {
-      console.error("Fetch error:", error);
-      toast.error("Failed to load strategies");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Re-fetch when the active account changes
-  useEffect(() => {
-    fetchStrategies();
-  }, [activeAccount?.id]); 
-
-  // --- 3. Stats Calculation (Client Side) ---
+  // --- 2. Stats Calculation (Memoized from Hook Data) ---
   const stats = useMemo(() => {
     const totalStrategies = strategies.length;
     const combinedTrades = strategies.reduce((acc, s) => acc + (s.metrics?.totalTrades || 0), 0);
@@ -93,7 +77,7 @@ const Strategies = () => {
     return { totalStrategies, combinedTrades, totalPnl, avgWinRate };
   }, [strategies]);
 
-  // --- 4. Filter Logic ---
+  // --- 3. Filter Logic ---
   const filteredStrategies = useMemo(() => {
     return strategies.filter(s => {
       const matchesSearch = s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -105,54 +89,40 @@ const Strategies = () => {
     });
   }, [strategies, searchQuery, styleFilter]);
 
-  // --- 5. Handlers ---
+  // --- 4. Handlers ---
 
   const handleCreateStrategy = async (newStrategyData: any) => {
-    if (!auth.currentUser || !activeAccount) return;
     try {
-      // ✅ Create Scoped Strategy with Audit
-      await createStrategy(activeAccount.id, auth.currentUser.uid, newStrategyData);
-      toast.success("Strategy created successfully");
-      fetchStrategies(); 
+      // Hook handles API call + Cache Injection + Toast
+      await createStrategy(newStrategyData);
       setCreateModalOpen(false);
     } catch (error) {
-      toast.error("Failed to create strategy");
+      // Error handling (toasts) is done in the hook, 
+      // we catch here just to prevent modal closing if needed.
     }
   };
 
   const handleUpdateStrategy = async (updatedData: Partial<Strategy>) => {
-    if (!selectedStrategy || !activeAccount || !auth.currentUser) return;
+    if (!selectedStrategy) return;
     try {
-      // ✅ Update with Audit: Pass activeAccount.id AND userId
-      await updateStrategy(
-        selectedStrategy.id, 
-        activeAccount.id, 
-        auth.currentUser.uid, 
-        updatedData
-      );
+      await updateStrategy({ id: selectedStrategy.id, updates: updatedData });
       
-      toast.success("Strategy updated successfully");
-      fetchStrategies();
+      // Update local selection so the Detail View reflects changes instantly
       setSelectedStrategy(prev => prev ? { ...prev, ...updatedData } : null);
       setEditModalOpen(false);
     } catch (error) {
       console.error(error);
-      toast.error("Failed to update strategy");
     }
   };
 
   const handleDeleteStrategy = async () => {
-    if (!selectedStrategy || !auth.currentUser) return;
+    if (!selectedStrategy) return;
     try {
-      // ✅ Delete with Audit: Pass the strategy object (for logs) and userId
-      await deleteStrategy(selectedStrategy, auth.currentUser.uid);
-      
-      toast.success("Strategy deleted");
-      fetchStrategies();
+      await deleteStrategy(selectedStrategy);
       setSelectedStrategy(null);
       setDeleteDialogOpen(false);
     } catch (error) {
-      toast.error("Failed to delete strategy");
+      console.error(error);
     }
   };
 
@@ -165,7 +135,7 @@ const Strategies = () => {
           icon={<Sword weight="duotone" className="w-6 h-6 text-primary" />}
           onMobileMenuOpen={onMobileMenuOpen}
         />
-        <div className="px-4 sm:px-6 lg:px-8 pb-6 pt-4">
+        <div className="px-4 sm:px-6 lg:px-8 pb-6 pt-4 animate-in fade-in zoom-in-95 duration-200">
           <StrategyDetail
             strategy={selectedStrategy}
             onBack={() => setSelectedStrategy(null)}
@@ -214,12 +184,18 @@ const Strategies = () => {
         onMobileMenuOpen={onMobileMenuOpen}
       >
         <div className="flex gap-2">
-           <Button variant="outline" size="sm" onClick={fetchStrategies} disabled={isLoading || isWorkspaceLoading}>
+           <Button 
+             variant="outline" 
+             size="sm" 
+             onClick={() => refetch()} 
+             disabled={isLoading || !activeAccount}
+             className="bg-secondary/50 border-border/50"
+           >
              <ArrowClockwise className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
            </Button>
            <Button 
              onClick={() => setCreateModalOpen(true)} 
-             disabled={isWorkspaceLoading || !activeAccount}
+             disabled={isLoading || !activeAccount}
              className="glow-button gap-2 text-white"
            >
              <Plus weight="bold" className="w-4 h-4" />
@@ -232,7 +208,7 @@ const Strategies = () => {
       <div className="px-4 sm:px-6 lg:px-8 pb-6 pt-4 space-y-4 sm:space-y-6">
         
         {/* Loading Skeleton for Stats */}
-        {isLoading || isWorkspaceLoading ? (
+        {isLoading ? (
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                {[1,2,3,4].map(i => <Skeleton key={i} className="h-24 w-full rounded-xl" />)}
             </div>
@@ -271,12 +247,12 @@ const Strategies = () => {
         </div>
 
         {/* Strategy Cards Grid */}
-        {isLoading || isWorkspaceLoading ? (
+        {isLoading ? (
            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
               {[1, 2, 3].map(i => <Skeleton key={i} className="h-[200px] w-full rounded-xl" />)}
            </div>
         ) : filteredStrategies.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
             {filteredStrategies.map(strategy => (
               <StrategyCard
                 key={strategy.id}
@@ -286,17 +262,18 @@ const Strategies = () => {
             ))}
           </div>
         ) : (
-          <div className="glass-card p-8 sm:p-12 rounded-2xl text-center flex flex-col items-center">
+          <div className="glass-card p-12 rounded-2xl text-center flex flex-col items-center border border-dashed border-border/60">
             <div className="w-16 h-16 bg-secondary/50 rounded-full flex items-center justify-center mb-4">
                 <FolderOpen className="w-8 h-8 text-muted-foreground" />
             </div>
-            <p className="text-muted-foreground mb-4">
+            <h3 className="text-lg font-medium text-foreground mb-1">No strategies found</h3>
+            <p className="text-muted-foreground mb-6 max-w-sm">
               {searchQuery || styleFilter !== "all"
-                ? "No strategies match your search."
-                : "No strategies yet in this workspace."}
+                ? "Try adjusting your search or filters."
+                : "Create your first strategy to start tracking your edge."}
             </p>
             {!searchQuery && styleFilter === "all" && activeAccount && (
-               <Button onClick={() => setCreateModalOpen(true)}>
+               <Button onClick={() => setCreateModalOpen(true)} className="glow-button text-white">
                  Create Strategy
                </Button>
             )}

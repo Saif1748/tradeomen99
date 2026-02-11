@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect } from "react";
-import { Plus, X, Image, Upload, Clipboard, SpinnerGap } from "@phosphor-icons/react";
+import { Plus, X, Image, Upload, Clipboard, SpinnerGap, Trash, WarningCircle } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,30 +24,23 @@ import { motion, AnimatePresence } from "framer-motion";
 import { format } from "date-fns";
 import { v4 as uuidv4 } from "uuid";
 
-// --- Industry Grade Imports ---
-import { auth } from "@/lib/firebase"; 
-import { uploadTradeImage } from "@/services/storageService"; 
+// --- Services & Types ---
+import { auth } from "@/lib/firebase";
+import { uploadTradeImage } from "@/services/storageService";
 import { AssetClass, TradeDirection } from "@/types/trade";
 import { Strategy } from "@/types/strategy";
 import { getStrategies } from "@/services/strategyService";
 
-// Constants
+// --- Constants ---
 const ASSET_CLASSES: AssetClass[] = ["STOCK", "CRYPTO", "FOREX", "FUTURES", "OPTIONS", "INDEX"];
 const DEFAULT_TAGS = ["Impulse", "Breakout", "Reversal", "Trend Following", "Scalp", "News", "Earnings"];
 const MAX_FILE_SIZE_MB = 10;
 
-// Local state for instant previews
+// --- Interfaces ---
 interface PendingImage {
   id: string;
   file: File;
   previewUrl: string;
-}
-
-interface AddTradeModalProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  accountId?: string;
-  onSubmit: (data: any) => Promise<void>;
 }
 
 interface ExecutionInput {
@@ -59,32 +52,56 @@ interface ExecutionInput {
   fee: string;
 }
 
+// Strictly typed payload to ensure industry-grade type safety
+export interface TradeSubmissionPayload {
+  symbol: string;
+  assetClass: AssetClass;
+  direction: TradeDirection;
+  initialStopLoss: number;
+  takeProfitTarget: number;
+  strategyId: string | null;
+  tags: string[];
+  notes: string;
+  screenshots: string[];
+  executions: {
+    side: "BUY" | "SELL";
+    price: number;
+    quantity: number;
+    date: Date;
+    fees: number;
+    notes: string;
+  }[];
+  entryDate: Date;
+}
+
+interface AddTradeModalProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  accountId?: string;
+  onSubmit: (data: TradeSubmissionPayload) => Promise<void>;
+}
+
+// Helper for safe number parsing
+const safeFloat = (val: string) => {
+  const parsed = parseFloat(val);
+  return isFinite(parsed) ? parsed : 0;
+};
+
 const AddTradeModal: React.FC<AddTradeModalProps> = ({ 
   open, 
   onOpenChange, 
   accountId, 
   onSubmit 
 }) => {
+  // --- UI State ---
   const [activeTab, setActiveTab] = useState<"trade" | "journal" | "media">("trade");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  // --- Data Loading ---
+  // --- Data State ---
   const [availableStrategies, setAvailableStrategies] = useState<Strategy[]>([]);
-
-  useEffect(() => {
-    const loadStrategies = async () => {
-        if (accountId && open) {
-            try {
-                const data = await getStrategies(accountId);
-                setAvailableStrategies(data);
-            } catch (err) {
-                console.error("Failed to load strategies", err);
-            }
-        }
-    };
-    loadStrategies();
-  }, [accountId, open]);
+  const [loadingStrategies, setLoadingStrategies] = useState(false);
 
   // --- Form State ---
   const [assetClass, setAssetClass] = useState<AssetClass>("STOCK");
@@ -98,29 +115,50 @@ const AddTradeModal: React.FC<AddTradeModalProps> = ({
   const [tagInput, setTagInput] = useState("");
   const [notes, setNotes] = useState("");
   
-  // ✅ Optimized Image State (No Base64 lag)
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
 
-  // Executions
-  const createNewExecution = (): ExecutionInput => ({
+  // Initialize executions
+  const createNewExecution = useCallback((): ExecutionInput => ({
     id: uuidv4(),
     side: direction === "LONG" ? "BUY" : "SELL",
     price: "",
     quantity: "",
     datetime: format(new Date(), "yyyy-MM-dd'T'HH:mm"),
-    fee: "0"
-  });
+    fee: ""
+  }), [direction]);
 
-  const [executions, setExecutions] = useState<ExecutionInput[]>([createNewExecution()]);
+  const [executions, setExecutions] = useState<ExecutionInput[]>([]);
 
-  // Sync side with direction
+  // Initialize executions on mount
   useEffect(() => {
-    if (executions.length === 1 && !executions[0].price && !executions[0].quantity) {
-        setExecutions([{ ...executions[0], side: direction === "LONG" ? "BUY" : "SELL" }]);
+    if (executions.length === 0) setExecutions([createNewExecution()]);
+  }, [createNewExecution]);
+
+  // --- Load Strategies ---
+  useEffect(() => {
+    if (accountId && open) {
+      setLoadingStrategies(true);
+      getStrategies(accountId)
+        .then(setAvailableStrategies)
+        .catch(err => console.error("Strategy fetch failed", err))
+        .finally(() => setLoadingStrategies(false));
     }
+  }, [accountId, open]);
+
+  // --- Auto-Sync Side with Direction ---
+  useEffect(() => {
+    // Only update empty executions to be helpful, don't overwrite user data
+    setExecutions(prev => prev.map(e => {
+      // If user hasn't typed price/qty yet, flip the side to match direction
+      if (!e.price && !e.quantity) {
+        return { ...e, side: direction === "LONG" ? "BUY" : "SELL" };
+      }
+      return e;
+    }));
   }, [direction]);
 
-  const resetForm = () => {
+  // --- Reset Form ---
+  const resetForm = useCallback(() => {
     setActiveTab("trade");
     setAssetClass("STOCK");
     setDirection("LONG");
@@ -132,192 +170,234 @@ const AddTradeModal: React.FC<AddTradeModalProps> = ({
     setTagInput("");
     setNotes("");
     setPendingImages([]);
-    setExecutions([createNewExecution()]);
+    setExecutions([{
+      id: uuidv4(),
+      side: "BUY",
+      price: "",
+      quantity: "",
+      datetime: format(new Date(), "yyyy-MM-dd'T'HH:mm"),
+      fee: ""
+    }]);
     setIsSubmitting(false);
-  };
+  }, []);
 
-  // Handlers
-  const addExecution = () => setExecutions([...executions, createNewExecution()]);
+  // --- Handlers ---
+  const addExecution = useCallback(() => {
+    setExecutions(prev => [...prev, {
+      id: uuidv4(),
+      side: direction === "LONG" ? "BUY" : "SELL",
+      price: "",
+      quantity: "",
+      datetime: format(new Date(), "yyyy-MM-dd'T'HH:mm"),
+      fee: ""
+    }]);
+  }, [direction]);
   
-  const removeExecution = (id: string) => {
-    if (executions.length > 1) setExecutions(executions.filter((e) => e.id !== id));
-  };
+  const removeExecution = useCallback((id: string) => {
+    setExecutions(prev => prev.length > 1 ? prev.filter((e) => e.id !== id) : prev);
+  }, []);
 
-  const updateExecution = (id: string, field: keyof ExecutionInput, value: string) => {
-    setExecutions(executions.map((e) => e.id === id ? { ...e, [field]: value } : e));
-  };
+  const updateExecution = useCallback((id: string, field: keyof ExecutionInput, value: string) => {
+    setExecutions(prev => prev.map((e) => e.id === id ? { ...e, [field]: value } : e));
+  }, []);
 
-  const handleAddTag = () => {
-    if (tagInput && !selectedTags.includes(tagInput)) {
-      setSelectedTags([...selectedTags, tagInput]);
+  const handleAddTag = useCallback(() => {
+    const trimmed = tagInput.trim();
+    if (trimmed && !selectedTags.includes(trimmed)) {
+      setSelectedTags(prev => [...prev, trimmed]);
       setTagInput("");
     }
-  };
+  }, [tagInput, selectedTags]);
 
-  const handleRemoveTag = (tag: string) => {
-    setSelectedTags(selectedTags.filter((t) => t !== tag));
-  };
+  const handleRemoveTag = useCallback((tag: string) => {
+    setSelectedTags(prev => prev.filter((t) => t !== tag));
+  }, []);
 
-  // --- 🚀 Optimized Image Handling ---
-  
+  // --- Image Handling ---
   const handleFileUpload = useCallback((files: FileList | null) => {
     if (!files) return;
     
     const newImages: PendingImage[] = [];
-
     Array.from(files).forEach((file) => {
-      // 1. Validation
       if (!file.type.startsWith("image/")) {
         toast.error(`"${file.name}" is not an image.`);
         return;
       }
       if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
-        toast.error(`"${file.name}" is too large (Max ${MAX_FILE_SIZE_MB}MB).`);
+        toast.error(`"${file.name}" exceeds ${MAX_FILE_SIZE_MB}MB limit.`);
         return;
       }
-
-      // 2. Instant Preview (0 Lag, no Base64 conversion)
-      const previewUrl = URL.createObjectURL(file);
-      newImages.push({ id: uuidv4(), file, previewUrl });
+      newImages.push({ 
+        id: uuidv4(), 
+        file, 
+        previewUrl: URL.createObjectURL(file) 
+      });
     });
 
     setPendingImages(prev => [...prev, ...newImages]);
+    if (newImages.length > 0) {
+      toast.success(`${newImages.length} image(s) added`);
+      setActiveTab("media");
+    }
   }, []);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
     handleFileUpload(e.dataTransfer.files);
   }, [handleFileUpload]);
 
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isDragging) setIsDragging(true);
+  }, [isDragging]);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  }, []);
+
   const handlePaste = useCallback((e: React.ClipboardEvent) => {
     const items = e.clipboardData.items;
+    let foundImage = false;
+    const files: File[] = [];
+
     for (const item of items) {
       if (item.type.startsWith("image/")) {
         const file = item.getAsFile();
         if (file) {
-          const dt = new DataTransfer();
-          dt.items.add(file);
-          handleFileUpload(dt.files);
+          files.push(file);
+          foundImage = true;
         }
       }
     }
+
+    if (foundImage) {
+      // Create a FileList-like object
+      const dt = new DataTransfer();
+      files.forEach(f => dt.items.add(f));
+      handleFileUpload(dt.files);
+    }
   }, [handleFileUpload]);
 
-  const removeScreenshot = (id: string) => {
-    setPendingImages(prev => {
-        const item = prev.find(i => i.id === id);
-        if (item) URL.revokeObjectURL(item.previewUrl); // Cleanup memory immediately
-        return prev.filter((s) => s.id !== id);
-    });
+  // Cleanup memory
+  useEffect(() => {
+    return () => {
+      pendingImages.forEach(img => URL.revokeObjectURL(img.previewUrl));
+    };
+  }, [pendingImages]);
+
+  // --- Validation ---
+  const validateForm = (): string | null => {
+    if (!symbol.trim()) return "Symbol is required.";
+    const validExecs = executions.filter(e => e.price && e.quantity && e.datetime);
+    if (validExecs.length === 0) return "At least one valid execution (Price, Qty, Date) is required.";
+    return null;
   };
 
-  // Cleanup URLs on unmount to prevent memory leaks
-  useEffect(() => {
-      return () => {
-          pendingImages.forEach(img => URL.revokeObjectURL(img.previewUrl));
-      };
-  }, []);
-
   const canSubmit = useMemo(() => {
-    if (!symbol.trim()) return false;
-    if (executions.length === 0) return false;
-    return executions.some(e => e.price && e.quantity && e.datetime);
+    return !!symbol.trim() && executions.some(e => e.price && e.quantity && e.datetime);
   }, [symbol, executions]);
 
-  // --- Submit Handler ---
+  // --- Submit ---
   const handleSubmit = async () => {
-    if (!canSubmit) {
-      toast.error("Please fill in symbol and at least one execution");
+    const error = validateForm();
+    if (error) {
+      toast.error(error);
       return;
     }
 
     const userId = auth.currentUser?.uid;
     if (!userId) {
-        toast.error("User not authenticated");
-        return;
+      toast.error("Authentication session missing. Please log in again.");
+      return;
     }
 
     setIsSubmitting(true);
 
     try {
-        // 1. 🚀 Upload Images Parallelly
-        // Convert local Files -> Secure HTTPS URLs
-        const uploadPromises = pendingImages.map(img => 
-            uploadTradeImage(userId, img.file) // ✅ Fixed: Correct signature
-        );
-        
-        const uploadedUrls = await Promise.all(uploadPromises);
+      // 1. Upload Images concurrently
+      const uploadPromises = pendingImages.map(img => 
+        uploadTradeImage(userId, img.file)
+      );
+      
+      const uploadedUrls = await Promise.all(uploadPromises);
 
-        // 2. Prepare Executions
-        const validExecutions = executions
+      // 2. Format Executions
+      // Sort by date to ensure entryDate is correct
+      const formattedExecutions = executions
         .filter(e => e.price && e.quantity && e.datetime)
         .map(e => ({
-            side: e.side,
-            price: parseFloat(e.price) || 0,
-            quantity: parseFloat(e.quantity) || 0,
-            date: new Date(e.datetime),
-            fees: parseFloat(e.fee) || 0,
-            notes: ""
-        }));
+          side: e.side,
+          price: safeFloat(e.price),
+          quantity: safeFloat(e.quantity),
+          date: new Date(e.datetime),
+          fees: safeFloat(e.fee),
+          notes: ""
+        }))
+        .sort((a, b) => a.date.getTime() - b.date.getTime());
 
-        if (validExecutions.length === 0) throw new Error("Invalid execution data");
+      if (formattedExecutions.length === 0) throw new Error("No valid executions found.");
 
-        // 3. Construct Payload with URLs
-        const payload = {
-            symbol: symbol.toUpperCase(),
-            assetClass,
-            direction,
-            initialStopLoss: parseFloat(stopLoss) || 0,
-            takeProfitTarget: parseFloat(target) || 0,
-            strategyId: selectedStrategyId || null,
-            tags: selectedTags,
-            notes,
-            screenshots: uploadedUrls, // ✅ Saving lightweight URLs
-            executions: validExecutions,
-            entryDate: validExecutions[0].date
-        };
+      // 3. Create Payload
+      const payload: TradeSubmissionPayload = {
+        symbol: symbol.toUpperCase().trim(),
+        assetClass,
+        direction,
+        initialStopLoss: safeFloat(stopLoss),
+        takeProfitTarget: safeFloat(target),
+        strategyId: selectedStrategyId || null,
+        tags: selectedTags,
+        notes: notes.trim(),
+        screenshots: uploadedUrls,
+        executions: formattedExecutions,
+        entryDate: formattedExecutions[0].date // Earliest execution
+      };
 
-        await onSubmit(payload);
-        resetForm();
+      await onSubmit(payload);
+      resetForm();
+      onOpenChange(false);
+      
     } catch (error) {
-        console.error(error);
-        toast.error("Failed to save trade");
+      console.error("Submission error:", error);
+      toast.error("Failed to save trade. Please check your connection.");
     } finally {
-        setIsSubmitting(false);
+      setIsSubmitting(false);
     }
   };
 
-  const tabs = [
-    { id: "trade" as const, label: "Trade" },
-    { id: "journal" as const, label: "Journal" },
-    { id: "media" as const, label: "Media" },
-  ];
-
   return (
-    <Dialog open={open} onOpenChange={(val) => {
-        if (!isSubmitting) onOpenChange(val);
-    }}>
+    <Dialog open={open} onOpenChange={(val) => !isSubmitting && onOpenChange(val)}>
       <DialogContent 
-        className="max-w-2xl p-0 gap-0 bg-card border-border overflow-hidden max-h-[90vh] rounded-2xl"
+        className="max-w-2xl p-0 gap-0 bg-card border-border overflow-hidden max-h-[90vh] rounded-2xl shadow-2xl"
         onPaste={handlePaste}
       >
         <DialogHeader className="sr-only">
           <DialogTitle>Log Trade</DialogTitle>
-          <DialogDescription>Form to enter trade details</DialogDescription>
+          <DialogDescription>Enter trade details, strategy, and upload screenshots.</DialogDescription>
         </DialogHeader>
 
-        {/* Header with pill tabs */}
-        <div className="p-6 pb-0 space-y-5">
+        {/* --- Header --- */}
+        <div className="p-6 pb-0 space-y-5 bg-card z-10">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-foreground tracking-tight">Log Trade</h2>
-            {isSubmitting && <SpinnerGap className="animate-spin text-muted-foreground" />}
+            <h2 className="text-xl font-semibold text-foreground tracking-tight flex items-center gap-2">
+              Log Trade
+              {isSubmitting && <SpinnerGap className="animate-spin text-muted-foreground w-4 h-4" />}
+            </h2>
           </div>
           
-          <div className="flex gap-1 p-1 bg-secondary/40 rounded-xl w-fit border border-white/5">
-            {tabs.map((tab) => (
+          <div className="flex gap-1 p-1 bg-secondary/30 rounded-xl w-fit border border-white/5">
+            {[
+              { id: "trade", label: "Trade" },
+              { id: "journal", label: "Journal" },
+              { id: "media", label: "Media" }
+            ].map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => setActiveTab(tab.id as any)}
                 className={`px-5 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${
                   activeTab === tab.id
                     ? "bg-primary text-primary-foreground shadow-sm"
@@ -326,15 +406,20 @@ const AddTradeModal: React.FC<AddTradeModalProps> = ({
               >
                 {tab.label}
                 {tab.id === "media" && pendingImages.length > 0 && (
-                  <span className="ml-1.5 text-xs opacity-75">({pendingImages.length})</span>
+                  <span className="ml-1.5 text-xs bg-white/20 px-1.5 py-0.5 rounded-full">
+                    {pendingImages.length}
+                  </span>
                 )}
               </button>
             ))}
           </div>
         </div>
 
-        <div className="overflow-y-auto max-h-[calc(90vh-200px)] custom-scrollbar">
+        {/* --- Scrollable Content --- */}
+        <div className="overflow-y-auto max-h-[calc(90vh-180px)] custom-scrollbar">
           <AnimatePresence mode="wait">
+            
+            {/* 1. TRADE TAB */}
             {activeTab === "trade" && (
               <motion.div
                 key="trade"
@@ -344,170 +429,145 @@ const AddTradeModal: React.FC<AddTradeModalProps> = ({
                 transition={{ duration: 0.15 }}
                 className="p-6 pt-6 space-y-7"
               >
-                {/* Trade Info - Grid */}
                 <div className="grid grid-cols-2 gap-5">
-                  <div className="col-span-2 sm:col-span-1 space-y-2.5">
-                    <Label className="text-sm text-muted-foreground font-normal">Symbol *</Label>
+                  <div className="col-span-2 sm:col-span-1 space-y-2">
+                    <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Symbol</Label>
                     <Input
-                      placeholder="AAPL"
+                      placeholder="e.g. AAPL"
                       value={symbol}
                       onChange={(e) => setSymbol(e.target.value.toUpperCase())}
-                      className="h-12 bg-secondary/30 border-border/40 rounded-xl text-base font-medium uppercase placeholder:font-normal placeholder:normal-case"
+                      className="h-11 bg-secondary/20 border-border/40 font-semibold uppercase tracking-wide"
+                      autoFocus
                     />
                   </div>
 
-                  <div className="col-span-2 sm:col-span-1 space-y-2.5">
-                    <Label className="text-sm text-muted-foreground font-normal">Asset Class</Label>
+                  <div className="col-span-2 sm:col-span-1 space-y-2">
+                    <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Asset Class</Label>
                     <Select value={assetClass} onValueChange={(v) => setAssetClass(v as AssetClass)}>
-                      <SelectTrigger className="h-12 bg-secondary/30 border-border/40 rounded-xl text-base">
+                      <SelectTrigger className="h-11 bg-secondary/20 border-border/40">
                         <SelectValue />
                       </SelectTrigger>
-                      <SelectContent className="bg-card border-border rounded-xl">
+                      <SelectContent>
                         {ASSET_CLASSES.map((t) => (
-                          <SelectItem key={t} value={t} className="text-sm rounded-lg cursor-pointer">{t}</SelectItem>
+                          <SelectItem key={t} value={t}>{t}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
 
-                  <div className="col-span-2 space-y-2.5">
-                      <Label className="text-sm text-muted-foreground font-normal">Direction</Label>
-                      <div className="flex gap-2 p-1 bg-secondary/30 rounded-xl border border-white/5">
-                        {["LONG", "SHORT"].map((dir) => (
-                            <button
-                                key={dir}
-                                onClick={() => setDirection(dir as TradeDirection)}
-                                className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${
-                                    direction === dir 
-                                    ? (dir === "LONG" ? "bg-emerald-500/20 text-emerald-500" : "bg-rose-500/20 text-rose-500") 
-                                    : "text-muted-foreground hover:bg-white/5"
-                                }`}
-                            >
-                                {dir}
-                            </button>
-                        ))}
-                      </div>
+                  <div className="col-span-2 space-y-2">
+                    <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Direction</Label>
+                    <div className="flex gap-3">
+                      {(["LONG", "SHORT"] as const).map((dir) => (
+                        <button
+                          key={dir}
+                          onClick={() => setDirection(dir)}
+                          className={`flex-1 py-2.5 rounded-xl text-sm font-bold border transition-all ${
+                            direction === dir 
+                              ? (dir === "LONG" 
+                                ? "bg-emerald-500/10 border-emerald-500/50 text-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.1)]" 
+                                : "bg-rose-500/10 border-rose-500/50 text-rose-500 shadow-[0_0_15px_rgba(244,63,94,0.1)]")
+                              : "bg-secondary/20 border-transparent text-muted-foreground hover:bg-secondary/40"
+                          }`}
+                        >
+                          {dir}
+                        </button>
+                      ))}
+                    </div>
                   </div>
 
-                  <div className="space-y-2.5">
-                    <Label className="text-sm text-muted-foreground font-normal">Target</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      placeholder="0.00"
-                      value={target}
-                      onChange={(e) => setTarget(e.target.value)}
-                      className="h-12 bg-secondary/30 border-border/40 rounded-xl text-base"
-                    />
+                  <div className="space-y-2">
+                    <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Take Profit</Label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">$</span>
+                      <Input
+                        type="number"
+                        placeholder="0.00"
+                        value={target}
+                        onChange={(e) => setTarget(e.target.value)}
+                        className="h-11 pl-6 bg-secondary/20 border-border/40 tabular-nums"
+                      />
+                    </div>
                   </div>
 
-                  <div className="space-y-2.5">
-                    <Label className="text-sm text-muted-foreground font-normal">Stop Loss</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      placeholder="0.00"
-                      value={stopLoss}
-                      onChange={(e) => setStopLoss(e.target.value)}
-                      className="h-12 bg-secondary/30 border-border/40 rounded-xl text-base"
-                    />
+                  <div className="space-y-2">
+                    <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Stop Loss</Label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">$</span>
+                      <Input
+                        type="number"
+                        placeholder="0.00"
+                        value={stopLoss}
+                        onChange={(e) => setStopLoss(e.target.value)}
+                        className="h-11 pl-6 bg-secondary/20 border-border/40 tabular-nums"
+                      />
+                    </div>
                   </div>
                 </div>
 
-                {/* Executions Section */}
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-medium text-foreground">Executions</h3>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={addExecution}
-                      className="h-8 px-3 text-primary hover:text-primary hover:bg-primary/10 rounded-lg gap-1.5"
-                    >
-                      <Plus weight="bold" className="w-4 h-4" />
-                      Add
+                <div className="space-y-4 pt-2">
+                  <div className="flex items-center justify-between border-b border-border/30 pb-2">
+                    <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                      Executions
+                      <span className="bg-secondary/50 text-xs px-2 py-0.5 rounded-full text-muted-foreground">{executions.length}</span>
+                    </h3>
+                    <Button variant="ghost" size="sm" onClick={addExecution} className="h-8 text-primary hover:bg-primary/10">
+                      <Plus className="w-4 h-4 mr-1" /> Add
                     </Button>
                   </div>
 
                   <div className="space-y-3">
-                    <AnimatePresence>
-                      {executions.map((exec) => (
+                    <AnimatePresence initial={false}>
+                      {executions.map((exec, index) => (
                         <motion.div
                           key={exec.id}
-                          initial={{ opacity: 0, y: -10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: -10 }}
-                          transition={{ duration: 0.2 }}
-                          className="bg-secondary/20 border border-border/30 rounded-xl p-4 space-y-3"
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: "auto" }}
+                          exit={{ opacity: 0, height: 0 }}
+                          className="bg-secondary/10 border border-border/30 rounded-xl p-4 space-y-3"
                         >
                           <div className="flex items-center gap-3">
                             <button
                               onClick={() => updateExecution(exec.id, "side", exec.side === "BUY" ? "SELL" : "BUY")}
-                              className={`h-10 px-4 min-w-[80px] rounded-lg text-sm font-bold transition-all ${
+                              className={`h-9 px-3 rounded-lg text-xs font-bold border transition-colors ${
                                 exec.side === "BUY"
-                                  ? "bg-emerald-500/20 text-emerald-500 border border-emerald-500/30 hover:bg-emerald-500/30"
-                                  : "bg-rose-500/20 text-rose-500 border border-rose-500/30 hover:bg-rose-500/30"
+                                  ? "border-emerald-500/30 text-emerald-500 bg-emerald-500/5 hover:bg-emerald-500/10"
+                                  : "border-rose-500/30 text-rose-500 bg-rose-500/5 hover:bg-rose-500/10"
                               }`}
                             >
                               {exec.side}
                             </button>
-
-                            <div className="flex-1 relative">
-                              <Input
-                                type="datetime-local"
-                                value={exec.datetime}
-                                onChange={(e) => updateExecution(exec.id, "datetime", e.target.value)}
-                                className="h-10 bg-background/50 border-border/30 rounded-lg text-sm pl-3"
-                              />
-                            </div>
-
-                            <button
+                            <Input
+                              type="datetime-local"
+                              value={exec.datetime}
+                              onChange={(e) => updateExecution(exec.id, "datetime", e.target.value)}
+                              className="h-9 text-xs bg-background/50 flex-1"
+                            />
+                            <button 
                               onClick={() => removeExecution(exec.id)}
-                              className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${
-                                executions.length > 1 
-                                  ? "bg-rose-500/10 text-rose-400 hover:bg-rose-500/20" 
-                                  : "bg-muted/20 text-muted-foreground/50 cursor-not-allowed"
-                              }`}
-                              disabled={executions.length <= 1}
+                              disabled={executions.length === 1}
+                              className="w-9 h-9 flex items-center justify-center text-muted-foreground hover:text-rose-500 disabled:opacity-30 disabled:hover:text-muted-foreground transition-colors"
                             >
-                              <X weight="bold" className="w-4 h-4" />
+                              <Trash className="w-4 h-4" />
                             </button>
                           </div>
-
+                          
                           <div className="grid grid-cols-3 gap-3">
-                            <div className="space-y-1.5">
-                              <span className="text-xs text-muted-foreground ml-1">Quantity</span>
-                              <Input
-                                type="number"
-                                step="any"
-                                placeholder="Qty"
-                                value={exec.quantity}
-                                onChange={(e) => updateExecution(exec.id, "quantity", e.target.value)}
-                                className="h-10 bg-background/50 border-border/30 rounded-lg text-sm"
-                              />
-                            </div>
-                            <div className="space-y-1.5">
-                              <span className="text-xs text-muted-foreground ml-1">Price</span>
-                              <Input
-                                type="number"
-                                step="any"
-                                placeholder="Price"
-                                value={exec.price}
-                                onChange={(e) => updateExecution(exec.id, "price", e.target.value)}
-                                className="h-10 bg-background/50 border-border/30 rounded-lg text-sm"
-                              />
-                            </div>
-                            <div className="space-y-1.5">
-                              <span className="text-xs text-muted-foreground ml-1">Fee</span>
-                              <Input
-                                type="number"
-                                step="0.01"
-                                placeholder="0.00"
-                                value={exec.fee}
-                                onChange={(e) => updateExecution(exec.id, "fee", e.target.value)}
-                                className="h-10 bg-background/50 border-border/30 rounded-lg text-sm"
-                              />
-                            </div>
+                            <Input
+                              type="number" placeholder="Qty" value={exec.quantity}
+                              onChange={(e) => updateExecution(exec.id, "quantity", e.target.value)}
+                              className="h-9 text-xs bg-background/50 tabular-nums"
+                            />
+                            <Input
+                              type="number" placeholder="Price" value={exec.price}
+                              onChange={(e) => updateExecution(exec.id, "price", e.target.value)}
+                              className="h-9 text-xs bg-background/50 tabular-nums"
+                            />
+                            <Input
+                              type="number" placeholder="Fees" value={exec.fee}
+                              onChange={(e) => updateExecution(exec.id, "fee", e.target.value)}
+                              className="h-9 text-xs bg-background/50 tabular-nums"
+                            />
                           </div>
                         </motion.div>
                       ))}
@@ -517,6 +577,7 @@ const AddTradeModal: React.FC<AddTradeModalProps> = ({
               </motion.div>
             )}
 
+            {/* 2. JOURNAL TAB */}
             {activeTab === "journal" && (
               <motion.div
                 key="journal"
@@ -526,68 +587,62 @@ const AddTradeModal: React.FC<AddTradeModalProps> = ({
                 transition={{ duration: 0.15 }}
                 className="p-6 pt-6 space-y-7"
               >
-                <div className="space-y-2.5">
-                  <Label className="text-sm text-muted-foreground font-normal">Strategy</Label>
+                <div className="space-y-2">
+                  <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Strategy</Label>
                   <Select value={selectedStrategyId} onValueChange={setSelectedStrategyId}>
-                    <SelectTrigger className="h-12 bg-secondary/30 border-border/40 rounded-xl text-base">
-                      <SelectValue placeholder="Select a strategy..." />
+                    <SelectTrigger className="h-11 bg-secondary/20 border-border/40">
+                      <SelectValue placeholder="Select strategy..." />
                     </SelectTrigger>
-                    <SelectContent className="bg-card border-border rounded-xl">
-                      {availableStrategies.length > 0 ? (
-                          availableStrategies.map((s) => (
-                            <SelectItem key={s.id} value={s.id} className="cursor-pointer">{s.name}</SelectItem>
-                          ))
+                    <SelectContent>
+                      {loadingStrategies ? (
+                        <div className="p-2 text-xs text-center text-muted-foreground">Loading...</div>
+                      ) : availableStrategies.length > 0 ? (
+                        availableStrategies.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)
                       ) : (
-                          <div className="p-3 text-sm text-muted-foreground text-center">No strategies found</div>
+                        <div className="p-2 text-xs text-center text-muted-foreground">No strategies found</div>
                       )}
                     </SelectContent>
                   </Select>
                 </div>
 
                 <div className="space-y-4">
-                  <Label className="text-sm text-muted-foreground font-normal">Tags</Label>
+                  <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Tags</Label>
                   <div className="flex gap-2">
                     <Input
-                      placeholder="Add a tag..."
+                      placeholder="Add tag..."
                       value={tagInput}
                       onChange={(e) => setTagInput(e.target.value)}
                       onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), handleAddTag())}
-                      className="h-11 bg-secondary/30 border-border/40 rounded-xl"
+                      className="h-10 bg-secondary/20 border-border/40"
                     />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={handleAddTag}
-                      className="h-11 px-4 rounded-xl border-border/40 bg-secondary/30 hover:bg-secondary/50"
-                    >
-                      <Plus weight="bold" className="w-4 h-4" />
+                    <Button onClick={handleAddTag} variant="outline" className="h-10 w-10 p-0 border-border/40">
+                      <Plus className="w-4 h-4" />
                     </Button>
                   </div>
                   
-                  {selectedTags.length > 0 && (
-                    <div className="flex flex-wrap gap-2">
-                      {selectedTags.map((tag) => (
-                        <Badge key={tag} variant="outline" className="border-primary/30 bg-primary/10 text-primary pl-3 pr-1.5 py-1.5 rounded-lg text-sm">
-                          {tag}
-                          <button onClick={() => handleRemoveTag(tag)} className="ml-1.5 hover:text-primary/70">
-                            <X weight="bold" className="w-3.5 h-3.5" />
-                          </button>
-                        </Badge>
-                      ))}
-                    </div>
-                  )}
+                  <div className="flex flex-wrap gap-2 min-h-[30px]">
+                    {selectedTags.map(tag => (
+                      <Badge key={tag} variant="outline" className="h-7 pl-2.5 pr-1 gap-1 border-primary/20 bg-primary/5 text-primary hover:bg-primary/10 transition-colors cursor-default">
+                        {tag}
+                        <button onClick={() => handleRemoveTag(tag)} className="hover:bg-primary/20 rounded-full p-0.5">
+                          <X className="w-3 h-3" />
+                        </button>
+                      </Badge>
+                    ))}
+                    {selectedTags.length === 0 && <span className="text-xs text-muted-foreground italic">No tags selected</span>}
+                  </div>
 
-                  <div className="space-y-2">
-                    <span className="text-xs text-muted-foreground">Quick add</span>
+                  <div className="pt-2 border-t border-border/30">
+                    <span className="text-[10px] text-muted-foreground uppercase tracking-wider mb-2 block">Quick Select</span>
                     <div className="flex flex-wrap gap-1.5">
-                      {DEFAULT_TAGS.map((tag) => (
+                      {DEFAULT_TAGS.map(tag => (
                         <button
                           key={tag}
                           onClick={() => !selectedTags.includes(tag) && setSelectedTags([...selectedTags, tag])}
-                          className={`text-xs px-3 py-1.5 rounded-lg transition-colors border ${
-                            selectedTags.includes(tag)
-                              ? "bg-primary/20 text-primary border-primary/20"
-                              : "bg-secondary/20 border-white/5 text-muted-foreground hover:text-foreground hover:bg-secondary/40"
+                          className={`text-xs px-2.5 py-1 rounded-md border transition-all ${
+                            selectedTags.includes(tag) 
+                              ? "bg-primary/10 border-primary/20 text-primary opacity-50 cursor-not-allowed" 
+                              : "bg-secondary/20 border-transparent text-muted-foreground hover:text-foreground hover:bg-secondary/40"
                           }`}
                         >
                           {tag}
@@ -597,18 +652,19 @@ const AddTradeModal: React.FC<AddTradeModalProps> = ({
                   </div>
                 </div>
 
-                <div className="space-y-2.5">
-                  <Label className="text-sm text-muted-foreground font-normal">Notes</Label>
+                <div className="space-y-2">
+                  <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Notes</Label>
                   <Textarea
-                    placeholder="What went well? What could improve? Market conditions..."
+                    placeholder="Execution thoughts, mistakes, market context..."
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
-                    className="min-h-[140px] bg-secondary/30 border-border/40 rounded-xl resize-none text-base"
+                    className="min-h-[160px] bg-secondary/20 border-border/40 resize-none text-sm leading-relaxed"
                   />
                 </div>
               </motion.div>
             )}
 
+            {/* 3. MEDIA TAB */}
             {activeTab === "media" && (
               <motion.div
                 key="media"
@@ -620,9 +676,14 @@ const AddTradeModal: React.FC<AddTradeModalProps> = ({
               >
                 <div
                   onDrop={handleDrop}
-                  onDragOver={(e) => e.preventDefault()}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
                   onClick={() => fileInputRef.current?.click()}
-                  className="border-2 border-dashed border-border/40 rounded-xl p-8 text-center cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-colors"
+                  className={`border-2 border-dashed rounded-2xl p-10 text-center cursor-pointer transition-all duration-200 ${
+                    isDragging 
+                      ? "border-primary bg-primary/5 scale-[0.99]" 
+                      : "border-border/40 hover:border-primary/40 hover:bg-secondary/20"
+                  }`}
                 >
                   <input
                     ref={fileInputRef}
@@ -632,52 +693,43 @@ const AddTradeModal: React.FC<AddTradeModalProps> = ({
                     className="hidden"
                     onChange={(e) => handleFileUpload(e.target.files)}
                   />
-                  
-                  <div className="flex flex-col items-center gap-3">
-                    <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center">
-                      <Upload weight="regular" className="w-7 h-7 text-primary" />
+                  <div className="flex flex-col items-center gap-4">
+                    <div className={`w-16 h-16 rounded-full flex items-center justify-center transition-colors ${
+                      isDragging ? "bg-primary/20" : "bg-secondary/50"
+                    }`}>
+                      <Upload weight="fill" className={`w-8 h-8 ${isDragging ? "text-primary" : "text-muted-foreground"}`} />
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-foreground">
-                        Drop images here or click to upload
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        PNG, JPG, GIF up to 10MB
-                      </p>
+                      <p className="font-medium text-foreground">Click or drop images</p>
+                      <p className="text-xs text-muted-foreground mt-1">Supports PNG, JPG (Max 10MB)</p>
                     </div>
                   </div>
                 </div>
 
-                <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
-                  <Clipboard weight="regular" className="w-4 h-4" />
-                  <span>Or paste from clipboard (Cmd/Ctrl+V)</span>
+                {/* Paste Hint */}
+                <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground opacity-70">
+                  <Clipboard className="w-3.5 h-3.5" />
+                  <span>Pro tip: Paste screenshots directly (Cmd/Ctrl+V)</span>
                 </div>
 
                 {pendingImages.length > 0 && (
-                  <div className="space-y-3">
-                    <h4 className="text-sm font-medium text-foreground">
-                      Uploaded ({pendingImages.length})
-                    </h4>
+                  <div className="space-y-3 pt-2">
+                    <h4 className="text-xs font-semibold text-foreground uppercase tracking-wide">Attached ({pendingImages.length})</h4>
                     <div className="grid grid-cols-3 gap-3">
                       {pendingImages.map((img) => (
-                        <div key={img.id} className="relative aspect-video rounded-lg overflow-hidden border border-white/10">
-                          <img src={img.previewUrl} className="w-full h-full object-cover" />
-                          <button
-                            onClick={() => removeScreenshot(img.id)}
-                            className="absolute top-1 right-1 bg-black/60 p-1 rounded-full text-white hover:bg-black/80"
-                          >
-                            <X size={12}/>
-                          </button>
+                        <div key={img.id} className="relative aspect-video rounded-xl overflow-hidden border border-border/30 group">
+                          <img src={img.previewUrl} alt="Preview" className="w-full h-full object-cover transition-transform group-hover:scale-105" />
+                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setPendingImages(p => p.filter(i => i.id !== img.id)); }}
+                              className="bg-rose-500 text-white p-2 rounded-full hover:bg-rose-600 transition-colors transform hover:scale-110"
+                            >
+                              <Trash className="w-4 h-4" />
+                            </button>
+                          </div>
                         </div>
                       ))}
                     </div>
-                  </div>
-                )}
-
-                {pendingImages.length === 0 && (
-                  <div className="flex flex-col items-center gap-2 py-6 text-muted-foreground">
-                    <Image weight="regular" className="w-10 h-10 opacity-50" />
-                    <p className="text-sm">No screenshots yet</p>
                   </div>
                 )}
               </motion.div>
@@ -685,21 +737,28 @@ const AddTradeModal: React.FC<AddTradeModalProps> = ({
           </AnimatePresence>
         </div>
 
-        <div className="p-6 pt-4 border-t border-border/30 flex justify-end gap-3 bg-card">
+        {/* --- Footer --- */}
+        <div className="p-6 pt-4 border-t border-border/30 flex justify-end gap-3 bg-card z-10">
           <Button
             variant="ghost"
             onClick={() => onOpenChange(false)}
             disabled={isSubmitting}
-            className="h-11 px-6 rounded-xl text-muted-foreground hover:text-foreground"
+            className="h-11 px-6 rounded-xl hover:bg-secondary/50"
           >
             Cancel
           </Button>
           <Button
             onClick={handleSubmit}
             disabled={!canSubmit || isSubmitting}
-            className="h-11 px-8 rounded-xl glow-button text-primary-foreground font-medium disabled:opacity-50 min-w-[120px]"
+            className="h-11 px-8 rounded-xl glow-button text-white font-medium min-w-[140px] shadow-lg shadow-primary/10"
           >
-            {isSubmitting ? <SpinnerGap className="animate-spin w-5 h-5" /> : "Save Trade"}
+            {isSubmitting ? (
+              <span className="flex items-center gap-2">
+                <SpinnerGap className="animate-spin w-5 h-5" /> Saving...
+              </span>
+            ) : (
+              "Save Trade"
+            )}
           </Button>
         </div>
       </DialogContent>
