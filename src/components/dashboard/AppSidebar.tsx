@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
+import { signOut } from "firebase/auth"; // ✅ Added
+import { auth } from "@/lib/firebase";   // ✅ Added
 import {
   House,
   ChartLine,
@@ -20,10 +22,11 @@ import {
 import logo from "@/assets/tradeomen-logo.png";
 import icon from "@/assets/tradeomen-icon.png";
 import SettingsModal from "@/components/settings/SettingsModal";
-import { useSettings } from "@/contexts/SettingsContext";
-import { useWorkspace } from "@/contexts/WorkspaceContext"; 
+// import { useSettings } from "@/contexts/SettingsContext"; // ❌ Deleted
+import { useUser } from "@/contexts/UserContext"; // ✅ New Source of Truth
+import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { AccountModal } from "@/components/accounts/AccountModal";
-import { Skeleton } from "@/components/ui/skeleton"; // Ensure you have this or use a simple div
+// import { Skeleton } from "@/components/ui/skeleton"; // Uncomment if you have this component
 
 const navItems = [
   { title: "Dashboard", path: "/dashboard", icon: House },
@@ -67,8 +70,8 @@ const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [accountModalOpen, setAccountModalOpen] = useState(false);
   
-  const { profile, logout } = useSettings();
-  // ✅ FIX 1: Consume isLoading to prevent UI jumps
+  // ✅ FIX 1: Use the new UserContext hook
+  const { profile } = useUser();
   const { activeAccount, isLoading: isWorkspaceLoading } = useWorkspace(); 
 
   // ✅ FIX 2: Safely handle profile data (fallback to "FREE" if profile not loaded yet)
@@ -76,12 +79,10 @@ const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
   const currentPlan = PLAN_STYLES[userTier as keyof typeof PLAN_STYLES] || PLAN_STYLES.FREE;
   const PlanIcon = currentPlan.icon;
 
-  // ✅ FIX 3: Robust Name Handling (Firebase uses displayName, not firstName/lastName usually)
+  // ✅ FIX 3: Robust Name Handling
   const getDisplayName = () => {
     if (!profile) return "Trader";
-    // Check for standard display name first
     if (profile.displayName) return profile.displayName;
-    // Fallback to email username
     if (profile.email) return profile.email.split('@')[0];
     return "Trader";
   };
@@ -91,23 +92,25 @@ const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
     return name.slice(0, 2).toUpperCase();
   };
 
+  // ✅ FIX 4: Direct Logout implementation
   const handleLogout = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (logout) {
-      await logout();
+    try {
+      await signOut(auth);
       navigate("/auth");
+    } catch (error) {
+      console.error("Logout failed", error);
     }
   };
 
   const formatBalance = (balance: number) => {
-    const isNegative = balance < 0;
     const formatted = Math.abs(balance).toLocaleString("en-US", {
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
       style: 'currency',
       currency: activeAccount?.currency || 'USD'
     });
-    return formatted; // currency style handles negative sign usually, but explicit handling is fine too
+    return formatted; 
   };
 
   return (
@@ -160,11 +163,10 @@ const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
           </AnimatePresence>
         </div>
 
-        {/* ✅ FIX 4: Account Selector with Loading State */}
+        {/* Account Selector */}
         <div className={`px-3 pt-2 pb-4 ${collapsed ? "px-2" : ""}`}>
           {isWorkspaceLoading ? (
-             // Skeleton Loader prevents "Pop-in"
-             <div className="w-full h-[60px] rounded-xl bg-secondary/30 animate-pulse border border-transparent" />
+            <div className="w-full h-[60px] rounded-xl bg-secondary/30 animate-pulse border border-transparent" />
           ) : activeAccount ? (
             <motion.button
               onClick={() => setAccountModalOpen(true)}
@@ -202,7 +204,6 @@ const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
               </div>
             </motion.button>
           ) : (
-            // Fallback if no account (Rare, because we auto-provision)
             <div className="w-full h-[60px] rounded-xl bg-destructive/10 border border-destructive/20 flex items-center justify-center">
                 <span className="text-xs text-destructive">No Account</span>
             </div>

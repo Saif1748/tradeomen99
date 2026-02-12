@@ -1,74 +1,84 @@
 import { Timestamp } from "firebase/firestore";
 
-// 🧱 1. Account Lifecycle States (New)
+// 🧱 1. Enums & Unions
+export type UserRole = "user" | "admin" | "moderator";
 export type UserStatus = "PENDING" | "VERIFIED" | "ACTIVE" | "SUSPENDED" | "DELETED";
+export type PlanTier = "FREE" | "PRO" | "PREMIUM";
+export type ThemeOption = "light" | "dark" | "system";
 
-// 🧾 9. Audit Log Entry Structure (New)
-export interface AuditLogEntry {
-  action: "LOGIN" | "SIGNUP" | "PASSWORD_RESET" | "EMAIL_CHANGE" | "PROFILE_UPDATE";
-  timestamp: Timestamp;
-  ipAddress?: string; 
-  userAgent?: string;
-  details?: string;
-  status: "SUCCESS" | "FAILURE";
+// ⚙️ 2. SaaS Limits & Usage (Concurrency Safe Counters)
+export interface UserUsage {
+  aiChatQuotaUsed: number;      // Reset daily/monthly
+  dailyChatCount: number;       // Anti-abuse limit
+  monthlyAiTokensUsed: number;  // Cost tracking
+  monthlyImportCount: number;   // Feature limiting
+  totalTradesCount: number;     // Lifetime stats
+  storageUsedBytes: number;     // File upload limit (e.g. screenshots)
 }
 
+// 💳 3. Subscription Data
+export interface UserPlan {
+  tier: PlanTier;
+  activePlanId: string;         // Internal Plan ID or Stripe Price ID
+  stripeCustomerId: string | null;
+  subscriptionStatus: "active" | "past_due" | "canceled" | "trialing" | "unpaid" | null;
+  currentPeriodEnd: Timestamp | null;
+  cancelAtPeriodEnd: boolean;   // To show "Plan expires on..." vs "Renews on..."
+}
+
+// 🎨 4. User Preferences
 export interface UserPreferences {
-  theme?: "light" | "dark" | "system";
-  notifications?: boolean;
-  betaFeatures?: boolean;
-  // Trading specific preferences
-  timezone?: string;
-  riskLevel?: number;
-  showWeekends?: boolean;
-  autoCalculateFees?: boolean;
+  theme: ThemeOption;
+  timezone: string;
+  notifications: {
+    email: boolean;
+    push: boolean;
+    marketing: boolean;
+    tradeAlerts: boolean;
+  };
+  // Trading specific
+  riskLevel: "low" | "medium" | "high";
+  showWeekends: boolean;
+  autoCalculateFees: boolean;
 }
 
+// 👤 5. The Master User Document
 export interface UserDocument {
   // --- Identity ---
-  uid: string;              
-  email: string;            
-  displayName: string;      
-  photoURL: string | null;  
-  role: "user" | "admin";   
+  uid: string;
+  email: string;
+  displayName: string;
+  photoURL: string | null;
+  role: UserRole;
+  
+  // --- 🏢 Workspace Context (Critical for Multi-Tenancy) ---
+  activeAccountId: string | null; // ID of the currently selected workspace
+  joinedAccountIds: string[];     // List of workspaces this user belongs to
 
-  // --- 🔐 Security & Lifecycle (New Critical Fields) ---
-  status: UserStatus;           // Tracks if user is Active vs Suspended
-  emailVerified: boolean;       // Critical for authorization checks
-  lastLoginAt: Timestamp;       // For security auditing
-  failedLoginCount: number;     // For rate limiting/locking
+  // --- 🔐 Security & Lifecycle ---
+  status: UserStatus;
+  emailVerified: boolean;
+  lastLoginAt: Timestamp;
+  failedLoginCount: number;       // For rate limiting/locking
 
-  // --- Settings & Preferences ---
+  // --- ⚙️ Settings ---
   settings: {
-    currency: string;       
-    region: string;         
-    consentAiTraining: boolean; 
-    preferences: UserPreferences; 
+    currency: string;
+    region: string;
+    consentAiTraining: boolean;
+    preferences: UserPreferences;
   };
 
-  // --- Subscription & Billing ---
-  plan: {
-    tier: "FREE" | "PRO" | "PREMIUM"; 
-    activePlanId: string;   
-    stripeCustomerId: string | null; 
-    currentPeriodEnd: Timestamp | null; 
-  };
+  // --- 📦 SaaS Modules ---
+  plan: UserPlan;
+  usage: UserUsage;
 
-  // --- Usage & Quotas ---
-  usage: {
-    aiChatQuotaUsed: number;      
-    monthlyAiTokensUsed: number;  
-    monthlyImportCount: number;   
-    dailyChatCount: number;       
-    totalTradesCount: number;     
-  };
-
-  // --- System Timestamps ---
+  // --- 🕒 Metadata ---
   timestamps: {
-    createdAt: Timestamp;         
-    updatedAt: Timestamp;         
-    lastActiveAt: Timestamp;      
-    quotaResetAt: Timestamp | null;    
-    lastChatResetAt: Timestamp | null; 
+    createdAt: Timestamp;
+    updatedAt: Timestamp;
+    lastActiveAt: Timestamp;
+    quotaResetAt: Timestamp | null;
+    lastChatResetAt: Timestamp | null;
   };
 }

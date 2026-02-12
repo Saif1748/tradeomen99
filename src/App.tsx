@@ -4,16 +4,16 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { SettingsProvider } from "@/contexts/SettingsContext";
-import { WorkspaceProvider } from "@/contexts/WorkspaceContext"; // ✅ 1. Import WorkspaceProvider
+import { UserProvider } from "@/contexts/UserContext"; // ✅ Core Auth
+import { WorkspaceProvider } from "@/contexts/WorkspaceContext"; // ✅ Workspace Logic
 import DashboardLayout from "@/components/dashboard/DashboardLayout"; 
 import { ProtectedRoute } from "@/components/ProtectedRoute"; 
 
-// Preload images for caching
+// Preload images
 import "@/assets/tradeomen-logo.png";
 import "@/assets/tradeomen-icon.png";
 
-// Lazy load pages for better caching
+// Lazy load pages
 const Index = lazy(() => import("./pages/Index"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Auth = lazy(() => import("./pages/Auth"));
@@ -26,9 +26,15 @@ const Markets = lazy(() => import("./pages/Markets"));
 const AIChat = lazy(() => import("./pages/AIChat"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 1,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 
-// Minimal loading fallback
 const PageLoader = () => (
   <div className="min-h-screen bg-background flex items-center justify-center">
     <div className="h-8 w-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
@@ -37,8 +43,12 @@ const PageLoader = () => (
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <SettingsProvider>
-      {/* ✅ 2. Wrap the app with WorkspaceProvider */}
+    {/* 👑 PROVIDER HIERARCHY (Critical):
+      1. UserProvider: Initializes Auth & Profile.
+      2. WorkspaceProvider: Depends on User, fetches Accounts.
+      3. Tooltip/UI Providers: Visual components.
+    */}
+    <UserProvider>
       <WorkspaceProvider> 
         <TooltipProvider>
           <Toaster />
@@ -46,20 +56,14 @@ const App = () => (
           <BrowserRouter>
             <Suspense fallback={<PageLoader />}>
               <Routes>
-                {/* --- 1. Public Routes --- */}
+                {/* --- Public Routes --- */}
                 <Route path="/" element={<Index />} />
                 <Route path="/auth" element={<Auth />} />
-                
-                {/* --- 2. Verification Route --- */}
                 <Route path="/verify-email" element={<VerifyEmail />} />
 
-                {/* --- 3. Protected Area --- */}
+                {/* --- Protected Routes --- */}
                 <Route element={<ProtectedRoute />}>
-                  
-                  {/* Level 2: Layout Wrapper (Sidebar + Header) */}
                   <Route element={<DashboardLayout />}>
-                    
-                    {/* Level 3: The Actual Pages */}
                     <Route path="/dashboard" element={<Dashboard />} />
                     <Route path="/trades" element={<Trades />} />
                     <Route path="/strategies" element={<Strategies />} />
@@ -67,18 +71,16 @@ const App = () => (
                     <Route path="/reports" element={<Reports />} />
                     <Route path="/markets" element={<Markets />} />
                     <Route path="/ai-chat" element={<AIChat />} />
-                    
                   </Route>
                 </Route>
 
-                {/* Catch-all */}
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </Suspense>
           </BrowserRouter>
         </TooltipProvider>
       </WorkspaceProvider>
-    </SettingsProvider>
+    </UserProvider>
   </QueryClientProvider>
 );
 

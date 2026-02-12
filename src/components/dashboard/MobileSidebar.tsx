@@ -12,10 +12,13 @@ import {
   X,
   Lightning,
   Gear,
+  Sparkle,
+  Crown,
 } from "@phosphor-icons/react";
 import logo from "@/assets/tradeomen-logo.png";
 import SettingsModal from "@/components/settings/SettingsModal";
-import { useSettings } from "@/contexts/SettingsContext";
+// ✅ FIXED: Use the new UserContext
+import { useUser } from "@/contexts/UserContext";
 
 const navItems = [
   { title: "Dashboard", path: "/dashboard", icon: House },
@@ -27,6 +30,28 @@ const navItems = [
   { title: "AI Chat", path: "/ai-chat", icon: Robot },
 ];
 
+// Consistent Plan Styles with Desktop Sidebar
+const PLAN_STYLES = {
+  FREE: {
+    label: "Starter Plan",
+    icon: Sparkle,
+    className: "bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800/50 dark:text-slate-400 dark:border-slate-700",
+    iconColor: "text-slate-500",
+  },
+  PRO: {
+    label: "Pro Plan",
+    icon: Lightning,
+    className: "bg-primary/10 text-primary border-primary/20",
+    iconColor: "text-primary",
+  },
+  PREMIUM: {
+    label: "Premium Plan",
+    icon: Crown,
+    className: "bg-amber-500/10 text-amber-600 border-amber-500/20 dark:text-amber-400",
+    iconColor: "text-amber-500",
+  },
+};
+
 interface MobileSidebarProps {
   open: boolean;
   onClose: () => void;
@@ -35,15 +60,29 @@ interface MobileSidebarProps {
 const MobileSidebar = ({ open, onClose }: MobileSidebarProps) => {
   const location = useLocation();
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const { profile } = useSettings();
+  
+  // ✅ FIX 1: Access profile data through the new core hook
+  const { profile } = useUser();
+
+  // ✅ FIX 2: Dynamic Plan Logic
+  const userTier = profile?.plan?.tier || "FREE";
+  const currentPlan = PLAN_STYLES[userTier as keyof typeof PLAN_STYLES] || PLAN_STYLES.FREE;
+  const PlanIcon = currentPlan.icon;
 
   const handleOpenSettings = () => {
     onClose();
     setSettingsOpen(true);
   };
 
+  // ✅ FIX 3: Industry Grade Initials & Display Name handling
+  const getDisplayName = () => {
+    if (!profile) return "Trader";
+    return profile.displayName || profile.email.split('@')[0];
+  };
+
   const getInitials = () => {
-    return `${profile.firstName.charAt(0)}${profile.lastName.charAt(0)}`;
+    const name = getDisplayName();
+    return name.slice(0, 2).toUpperCase();
   };
 
   return (
@@ -79,11 +118,11 @@ const MobileSidebar = ({ open, onClose }: MobileSidebarProps) => {
                 </button>
               </div>
 
-              {/* Plan Badge */}
+              {/* Dynamic Plan Badge */}
               <div className="flex justify-center px-4 py-4">
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/20 border border-primary/30 text-xs font-normal text-primary">
-                  <Lightning weight="fill" className="w-3 h-3" />
-                  Pro Plan
+                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-medium transition-colors ${currentPlan.className}`}>
+                  <PlanIcon weight="fill" className={`w-3 h-3 ${currentPlan.iconColor}`} />
+                  {currentPlan.label}
                 </span>
               </div>
 
@@ -116,37 +155,35 @@ const MobileSidebar = ({ open, onClose }: MobileSidebarProps) => {
                 })}
               </nav>
 
-              {/* User Section - Clickable for Settings */}
+              {/* User Section - Footer */}
               <div className="p-4 mt-auto border-t border-border">
-                <button
-                  onClick={handleOpenSettings}
-                  className="w-full group flex items-center gap-3 p-3 rounded-xl bg-secondary/30 transition-all duration-300 hover:bg-secondary/50 cursor-pointer relative overflow-hidden"
-                  style={{
-                    boxShadow: "0 0 0 0 rgba(139, 92, 246, 0)",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.boxShadow = "0 0 20px 2px rgba(139, 92, 246, 0.3)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.boxShadow = "0 0 0 0 rgba(139, 92, 246, 0)";
-                  }}
-                >
-                  {/* Glow overlay */}
-                  <div className="absolute inset-0 bg-gradient-to-r from-primary/0 via-primary/10 to-primary/0 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                  
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-glow-primary to-glow-secondary flex items-center justify-center text-primary-foreground text-sm font-normal flex-shrink-0 relative z-10">
-                    {getInitials()}
-                  </div>
-                  <div className="flex-1 min-w-0 text-left relative z-10">
-                    <p className="text-sm font-normal text-foreground truncate">
-                      {profile.firstName} {profile.lastName}
-                    </p>
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-normal bg-primary/20 text-primary mt-0.5">
-                      Pro
-                    </span>
-                  </div>
-                  <Gear weight="regular" className="w-5 h-5 text-muted-foreground group-hover:text-foreground transition-colors relative z-10" />
-                </button>
+                {profile ? (
+                  <button
+                    onClick={handleOpenSettings}
+                    className="w-full group flex items-center gap-3 p-3 rounded-xl bg-secondary/30 transition-all duration-300 hover:bg-secondary/50 cursor-pointer relative overflow-hidden"
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-r from-primary/0 via-primary/10 to-primary/0 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                    
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-glow-primary to-glow-secondary flex items-center justify-center text-primary-foreground text-sm font-normal flex-shrink-0 relative z-10">
+                      {profile.photoURL ? (
+                        <img src={profile.photoURL} alt="User" className="w-full h-full rounded-full object-cover" />
+                      ) : (
+                        getInitials()
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0 text-left relative z-10">
+                      <p className="text-sm font-normal text-foreground truncate">
+                        {getDisplayName()}
+                      </p>
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-normal bg-primary/20 text-primary mt-0.5">
+                        {userTier === "FREE" ? "Free" : userTier}
+                      </span>
+                    </div>
+                    <Gear weight="regular" className="w-5 h-5 text-muted-foreground group-hover:text-foreground transition-colors relative z-10" />
+                  </button>
+                ) : (
+                  <div className="w-full h-12 rounded-xl bg-secondary/30 animate-pulse" />
+                )}
               </div>
             </motion.aside>
           </>

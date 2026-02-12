@@ -6,115 +6,153 @@ import {
   serverTimestamp, 
   Timestamp, 
   collection, 
-  addDoc 
+  addDoc,
+  onSnapshot,
+  increment,
+  Unsubscribe
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { UserDocument, UserStatus } from "@/types/user";
+import { UserDocument, UserStatus, UserPreferences } from "@/types/user";
 import { User } from "firebase/auth";
 
+// --- 📊 AUDIT LOGGING ---
+
 /**
- * 🧾 Audit Logging Helper
- * Writes a tamper-resistant log to a user's subcollection.
- * This is critical for security compliance.
+ * 🧾 Writes a tamper-resistant log to a user's subcollection.
+ * Critical for security compliance and debugging user flows.
  */
 export const logAuditEvent = async (
   userId: string, 
-  action: "LOGIN" | "SIGNUP" | "PROFILE_UPDATE", 
+  action: "LOGIN" | "SIGNUP" | "PROFILE_UPDATE" | "PLAN_CHANGE", 
   status: "SUCCESS" | "FAILURE",
   details?: string
 ) => {
   try {
-    // Stores logs in /users/{userId}/audit_logs/{logId}
     const logsRef = collection(db, "users", userId, "audit_logs");
     await addDoc(logsRef, {
       action,
       status,
-      // ✅ FIX: Convert undefined to null to prevent Firestore crash
-      // Firestore throws "Unsupported field value: undefined" otherwise.
       details: details ?? null, 
       timestamp: serverTimestamp(),
-      userAgent: navigator.userAgent ?? "Unknown", // Robust fallback
+      userAgent: navigator.userAgent ?? "Unknown",
     });
   } catch (error) {
-    // Fail silently so we don't block the user if logging fails
     console.warn("Audit log failed (Non-critical):", error); 
   }
 };
 
+// --- 🎧 REAL-TIME SUBSCRIPTIONS ---
+
 /**
- * Syncs the Firebase Auth user with the Firestore User Document.
- * Handles Lifecycle (Pending -> Active) and Security fields.
+ * ⚡ Subscribes to the User Document.
+ * Used by the useAuth hook to keep the UI instantly in sync 
+ * when Plan, Settings, or Usage changes.
+ */
+export const subscribeToUser = (
+  userId: string, 
+  onUpdate: (user: UserDocument | null) => void
+): Unsubscribe => {
+  const userRef = doc(db, "users", userId);
+  
+  return onSnapshot(userRef, (docSnap) => {
+    if (docSnap.exists()) {
+      onUpdate(docSnap.data() as UserDocument);
+    } else {
+      onUpdate(null);
+    }
+  }, (error) => {
+    console.error("🔥 User Sync Error:", error);
+  });
+};
+
+// --- 🔐 AUTH LIFECYCLE SYNC ---
+
+/**
+ * 🔄 Syncs Firebase Auth -> Firestore DB.
+ * - Handles New User Creation (Provisioning)
+ * - Handles Returning User Updates (Last Login, Verification Status)
  */
 export const syncUserWithFirestore = async (authUser: User): Promise<UserDocument> => {
   if (!authUser?.uid) throw new Error("Invalid User object provided to sync.");
 
   const userRef = doc(db, "users", authUser.uid);
   const userSnap = await getDoc(userRef);
+  const now = serverTimestamp() as Timestamp;
 
-  // 1. Determine Account Status based on verification
-  // If they used Google, they are usually verified immediately.
+  // Determine status (Google Sign-In usually verifies email instantly)
   const currentStatus: UserStatus = authUser.emailVerified ? "ACTIVE" : "PENDING";
 
   if (userSnap.exists()) {
-    // === EXISTING USER (LOGIN) ===
-    
-    // We update security fields on every login
+    // === 🟢 EXISTING USER (LOGIN) ===
     await updateDoc(userRef, {
-      "timestamps.lastActiveAt": serverTimestamp(),
-      "lastLoginAt": serverTimestamp(),
-      "emailVerified": authUser.emailVerified, // Keep this in sync
-      "status": currentStatus,                 // Auto-activate if they verified email
-      "failedLoginCount": 0,                   // Reset failed attempts on success
+      "timestamps.lastActiveAt": now,
+      "lastLoginAt": now,
+      "emailVerified": authUser.emailVerified,
+      "failedLoginCount": 0,
+      // If they were pending and just verified email, activate them
+      ...(userSnap.data().status === "PENDING" && authUser.emailVerified ? { status: "ACTIVE" } : {})
     });
 
-    // 🧾 Log the Login Event (Non-blocking)
-    logAuditEvent(authUser.uid, "LOGIN", "SUCCESS").catch(e => console.warn(e));
-
+    logAuditEvent(authUser.uid, "LOGIN", "SUCCESS").catch(console.warn);
     return userSnap.data() as UserDocument;
   } else {
-    // === NEW USER (SIGNUP) ===
+    // === 🔵 NEW USER (SIGNUP) ===
+    // Initialize with "SaaS Defaults" matching types/user.ts
     
     const newUser: UserDocument = {
-      // --- Identity ---
+      // Identity
       uid: authUser.uid,
-      // ✅ Robustness: Ensure strictly string or null, never undefined
       email: authUser.email || "", 
       displayName: authUser.displayName || "New Trader",
       photoURL: authUser.photoURL || null,
       role: "user",
 
-      // --- 🔐 Security & Lifecycle ---
+      // Workspace Context (Start empty, WorkspaceProvider handles creation)
+      activeAccountId: null,
+      joinedAccountIds: [],
+
+      // Security
       status: currentStatus,
       emailVerified: authUser.emailVerified,
       lastLoginAt: Timestamp.now(),
       failedLoginCount: 0,
 
-      // --- Settings ---
+      // Settings
       settings: {
         currency: "USD",
         region: "US",
         consentAiTraining: false,
-        preferences: {},
+        preferences: {
+          theme: "system",
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          notifications: { email: true, push: true, marketing: false, tradeAlerts: true },
+          riskLevel: "medium",
+          showWeekends: false,
+          autoCalculateFees: true
+        }
       },
 
-      // --- Subscription ---
+      // Subscription (Default: Free)
       plan: {
         tier: "FREE",
-        activePlanId: "FREE",
+        activePlanId: "price_free_tier",
         stripeCustomerId: null,
+        subscriptionStatus: "active", // Free tier is always "active"
         currentPeriodEnd: null,
+        cancelAtPeriodEnd: false
       },
 
-      // --- Usage ---
+      // Usage (Start at 0)
       usage: {
         aiChatQuotaUsed: 0,
+        dailyChatCount: 0,
         monthlyAiTokensUsed: 0,
         monthlyImportCount: 0,
-        dailyChatCount: 0,
         totalTradesCount: 0,
+        storageUsedBytes: 0
       },
 
-      // --- Timestamps ---
+      // Timestamps
       timestamps: {
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now(),
@@ -124,12 +162,50 @@ export const syncUserWithFirestore = async (authUser: User): Promise<UserDocumen
       },
     };
 
-    // Save the new user document
     await setDoc(userRef, newUser);
-    
-    // 🧾 Log the Signup Event
-    logAuditEvent(authUser.uid, "SIGNUP", "SUCCESS", "Via Email/Google").catch(e => console.warn(e));
+    logAuditEvent(authUser.uid, "SIGNUP", "SUCCESS", "Provisioned new account").catch(console.warn);
 
     return newUser;
   }
+};
+
+// --- 🛠️ SAAS UTILITIES ---
+
+/**
+ * ⚡ Atomically increments usage counters.
+ * Safe for high-concurrency (e.g., user spamming the Chat button).
+ */
+export const incrementUsage = async (
+  userId: string, 
+  metric: keyof UserDocument["usage"], 
+  amount: number = 1
+) => {
+  const userRef = doc(db, "users", userId);
+  await updateDoc(userRef, {
+    [`usage.${metric}`]: increment(amount),
+    "timestamps.updatedAt": serverTimestamp()
+  });
+};
+
+/**
+ * 🎨 Optimistic-ready preference updater.
+ * Updates nested settings fields without overwriting the whole object.
+ */
+export const updateUserPreferences = async (
+  userId: string, 
+  updates: Partial<UserPreferences>
+) => {
+  const userRef = doc(db, "users", userId);
+  
+  // Create dot-notation updates for nested fields
+  // e.g. "settings.preferences.theme": "dark"
+  const flattenUpdates: Record<string, any> = {};
+  
+  Object.entries(updates).forEach(([key, value]) => {
+    flattenUpdates[`settings.preferences.${key}`] = value;
+  });
+  
+  flattenUpdates["timestamps.updatedAt"] = serverTimestamp();
+
+  await updateDoc(userRef, flattenUpdates);
 };

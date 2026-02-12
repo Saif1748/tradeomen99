@@ -1,25 +1,21 @@
-import { useEffect, useState } from "react";
-import { Navigate, Outlet, useLocation } from "react-router-dom"; // 1. Added useLocation
-import { onAuthStateChanged, User } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import { Navigate, Outlet, useLocation } from "react-router-dom";
+import { useUser } from "@/contexts/UserContext";
 
+/**
+ * 🛡️ ProtectedRoute (The Gatekeeper)
+ * * Logic Flow:
+ * 1. Is the Auth/Profile still loading? -> Show Industry-Grade Spinner.
+ * 2. Is the user authenticated? -> If no, redirect to /auth (save attempt path).
+ * 3. Is the email verified? -> If no, redirect to /verify-email.
+ * 4. All good? -> Render requested page (Outlet).
+ */
 export const ProtectedRoute = () => {
-  const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState<User | null>(null);
-  const location = useLocation(); // 2. Get current path
+  // ✅ FIX: Consume the centralized auth state instead of creating a new listener
+  const { isAuthenticated, isEmailVerified, isLoading } = useUser();
+  const location = useLocation();
 
-  useEffect(() => {
-    // 3. Real-time listener for Auth State
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, []);
-
-  if (loading) {
-    // 4. Loading State (prevents flash of content)
+  if (isLoading) {
+    // Industry-Grade Loading State (Prevents UI flicker)
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
@@ -30,18 +26,19 @@ export const ProtectedRoute = () => {
     );
   }
 
-  // 5. Security Check 1: Is the user logged in?
-  if (!user) {
-    return <Navigate to="/auth" replace />;
+  // 🛡️ Security Check 1: Authentication
+  if (!isAuthenticated) {
+    // We pass the current location to 'state' so the user can be 
+    // redirected back to this exact page after they log in.
+    return <Navigate to="/auth" state={{ from: location }} replace />;
   }
 
-  // 6. Security Check 2: Is the email verified?
-  // If not verified, kick them to the verification page
-  // (We add a check to ensure we aren't already there to prevent infinite loops)
-  if (!user.emailVerified && location.pathname !== "/verify-email") {
+  // 🛡️ Security Check 2: Email Verification
+  // We ensure they aren't stuck in a loop by checking the current path
+  if (!isEmailVerified && location.pathname !== "/verify-email") {
     return <Navigate to="/verify-email" replace />;
   }
 
-  // 7. All checks passed -> Render the protected page
+  // ✅ Authorization Granted
   return <Outlet />;
 };

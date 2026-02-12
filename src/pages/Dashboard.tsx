@@ -1,14 +1,15 @@
 import { Wallet } from "@phosphor-icons/react";
-import { useDashboard } from "@/components/dashboard/DashboardLayout"; // 1. Import the hook
+import { useDashboard } from "@/components/dashboard/DashboardLayout";
 import DashboardHeader from "@/components/dashboard/DashboardHeader";
 import MetricCard from "@/components/dashboard/MetricCard";
 import GaugeMetric from "@/components/dashboard/GaugeMetric";
 import ChartCard from "@/components/dashboard/ChartCard";
 import RecentTrades from "@/components/dashboard/RecentTrades";
 import MiniCalendar from "@/components/dashboard/MiniCalendar";
-import { useSettings } from "@/contexts/SettingsContext";
+import { useUser } from "@/contexts/UserContext"; // ✅ Added
+import { useWorkspace } from "@/contexts/WorkspaceContext"; // ✅ Added
 
-// Sample data
+// Mock data (This remains until your logic hooks are fully wired to the DB)
 const areaChartData = [
   { date: "Dec 1", value: 0 },
   { date: "Dec 5", value: 120 },
@@ -37,42 +38,55 @@ const radarChartData = [
 ];
 
 const Dashboard = () => {
-  // 2. Use the hook to get the mobile menu trigger from the parent layout
   const { onMobileMenuOpen } = useDashboard();
-  const { formatCurrency, getCurrencySymbol } = useSettings();
+  
+  // ✅ FIX 1: Access the new core hooks
+  const { profile } = useUser();
+  const { activeAccount } = useWorkspace();
 
-  // Sample data - would come from API
-  const netPnL = 2486.50;
+  // ✅ FIX 2: Industry-Grade Currency Formatting
+  const formatCurrency = (amount: number) => {
+    const currency = activeAccount?.currency || profile?.settings?.currency || "USD";
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: currency,
+      minimumFractionDigits: 2,
+    }).format(amount);
+  };
+
+  // ✅ FIX 3: Dynamic Data logic (Fallback to 0 if not loaded)
+  const netPnL = activeAccount?.balance || 0; 
   const isPositive = netPnL >= 0;
 
   return (
     <>
-      {/* 3. Pass the context function to the header */}
       <DashboardHeader onMobileMenuOpen={onMobileMenuOpen} />
 
       {/* Subtitle */}
       <div className="px-4 sm:px-6 lg:px-8 pb-2">
-        <p className="text-sm text-muted-foreground">Welcome back! Here's your trading overview.</p>
+        <p className="text-sm text-muted-foreground">
+          Welcome back, {profile?.displayName || 'Trader'}! Here's your trading overview.
+        </p>
       </div>
 
       <div className="px-4 sm:px-6 lg:px-8 pb-6 pt-4 space-y-4 sm:space-y-6">
-        {/* Metrics Row - All same height */}
+        {/* Metrics Row */}
         <div className="grid grid-cols-2 xl:grid-cols-5 gap-2 sm:gap-3 lg:gap-4">
           <div className="h-[120px] sm:h-[130px]">
             <MetricCard
               title="Net P&L"
-              value={`${isPositive ? '+' : ''}${getCurrencySymbol()}${Math.abs(netPnL).toLocaleString()}`}
-              subtitle="12 trades this month"
+              value={formatCurrency(netPnL)}
+              subtitle="Current Account Balance"
               icon={<Wallet weight="fill" className="w-4 h-4 sm:w-5 sm:h-5" />}
-              trend="up"
-              trendValue="12.4%"
+              trend={isPositive ? "up" : "down"}
+              trendValue={isPositive ? "Active" : "Negative"}
               variant={isPositive ? "positive" : "negative"}
             />
           </div>
           <div className="h-[120px] sm:h-[130px]">
             <MetricCard
-              title="Trade Expectancy"
-              value={`${getCurrencySymbol()}248.78`}
+              title="Expectancy"
+              value={formatCurrency(248.78)} // Example calculation
               subtitle="Per trade average"
               trend="up"
               trendValue="8.2%"

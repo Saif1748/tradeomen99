@@ -1,21 +1,18 @@
-import { createContext, useContext, useEffect, useState, useRef, ReactNode } from "react";
-import { onAuthStateChanged } from "firebase/auth";
+import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { 
-  doc, 
-  onSnapshot, 
   collection, 
   query, 
   where, 
+  onSnapshot,
   Unsubscribe
 } from "firebase/firestore";
-import { auth, db } from "@/lib/firebase";
-import { Account, UserProfile } from "@/types/account";
+import { db } from "@/lib/firebase";
+import { Account } from "@/types/account";
 import { 
   createAccount, 
   switchUserAccount, 
-  provisionDefaultAccount 
 } from "@/services/accountService";
-import { repairAccountSchema } from "@/services/migrationService"; // ✅ Import Migration Service
+import { useUser } from "@/contexts/UserContext"; // ✅ Consume UserContext
 import { toast } from "sonner";
 
 // --- Context Type Definition ---
@@ -27,152 +24,97 @@ interface WorkspaceContextType {
   createNewAccount: (name: string) => Promise<void>;
 }
 
-// Create Context
 const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefined);
 
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
+  // ✅ 1. Get User State from our Industry-Grade Hook
+  const { user, profile } = useUser();
+  
   // --- State ---
   const [activeAccount, setActiveAccount] = useState<Account | null>(null);
   const [availableAccounts, setAvailableAccounts] = useState<Account[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  
-  // Internal state to track user's preferred workspace from their profile
-  const [preferredAccountId, setPreferredAccountId] = useState<string | null>(null);
 
-  // Refs to track subscriptions
-  const userProfileUnsub = useRef<Unsubscribe | null>(null);
-  const accountsUnsub = useRef<Unsubscribe | null>(null);
-
-  // --- 1. Main Auth & Data Listener ---
+  // --- 2. Accounts Listener ---
   useEffect(() => {
-    const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
-      // Cleanup previous listeners on auth change
-      if (userProfileUnsub.current) userProfileUnsub.current();
-      if (accountsUnsub.current) accountsUnsub.current();
+    // If no user, reset state
+    if (!user) {
+      setAvailableAccounts([]);
+      setActiveAccount(null);
+      setIsLoading(false);
+      return;
+    }
 
-      if (!firebaseUser) {
-        setActiveAccount(null);
-        setAvailableAccounts([]);
-        setPreferredAccountId(null);
-        setIsLoading(false);
-        return;
-      }
+    setIsLoading(true);
 
-      // 🛠️ TRIGGER MIGRATION (Background Process)
-      // This runs silently. If the user has old data (missing 'memberIds'),
-      // this fixes it. Once fixed, the Firestore listener below (LISTENER B)
-      // automatically receives the data update and shows the accounts.
-      repairAccountSchema(firebaseUser.uid);
+    // 📡 Real-time Listener for Accounts
+    // Queries only accounts where the user is a member
+    const q = query(
+      collection(db, "accounts"), 
+      where("memberIds", "array-contains", user.uid)
+    );
 
-      // ----------------------------------------------------------------
-      // LISTENER A: User Profile (Preferences & Auto-Provisioning)
-      // ----------------------------------------------------------------
-      const userRef = doc(db, "users", firebaseUser.uid);
-      
-      userProfileUnsub.current = onSnapshot(userRef, async (docSnap) => {
-        // Handle Missing Profile (Auto-Provisioning)
-        if (!docSnap.exists()) {
-          try {
-            await provisionDefaultAccount(firebaseUser.uid, firebaseUser.email!);
-          } catch (err) {
-            console.error("Auto-provisioning failed", err);
-          }
-          return;
-        }
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const accounts = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as Account));
 
-        const profile = docSnap.data() as UserProfile;
-        
-        // Sync the preference. The 'Effect' below will handle the actual switching.
-        if (profile.activeAccountId) {
-            setPreferredAccountId(profile.activeAccountId);
-        }
-      });
-
-      // ----------------------------------------------------------------
-      // LISTENER B: Accounts (The Source of Truth)
-      // ✅ Robust Query using 'memberIds' array
-      // This query never fails due to permissions because it only requests
-      // docs where the user is EXPLICITLY listed in the array.
-      // ----------------------------------------------------------------
-      const q = query(
-        collection(db, "accounts"), 
-        where("memberIds", "array-contains", firebaseUser.uid)
-      );
-
-      accountsUnsub.current = onSnapshot(q, (querySnapshot) => {
-        const fetchedAccounts = querySnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        } as Account));
-
-        setAvailableAccounts(fetchedAccounts);
-        setIsLoading(false); // We have data, safe to render
-      }, (error) => {
-        console.error("Error listening to accounts:", error);
-        // ✅ Self-Healing: Stop loading even on error so UI doesn't freeze
-        setIsLoading(false); 
-      });
+      setAvailableAccounts(accounts);
+      setIsLoading(false);
+    }, (error) => {
+      console.error("Workspace sync error:", error);
+      setIsLoading(false); 
     });
 
-    return () => {
-      unsubscribeAuth();
-      if (userProfileUnsub.current) userProfileUnsub.current();
-      if (accountsUnsub.current) accountsUnsub.current();
-    };
-  }, []);
+    return () => unsubscribe();
+  }, [user?.uid]); // Re-run only if user changes
 
-  // --- 2. Derived State: Active Account Sync ---
-  // This ensures we select the correct account whenever:
-  // A) The list of accounts changes (Listener B)
-  // B) The user's preference changes (Listener A)
+  // --- 3. Active Account Logic ---
+  // Syncs the "Active" account based on User Profile preference + Available Accounts
   useEffect(() => {
     if (availableAccounts.length === 0) {
-        setActiveAccount(null);
-        return;
+      setActiveAccount(null);
+      return;
     }
 
-    // 1. Try to match the user's last active preference
-    let target = availableAccounts.find(a => a.id === preferredAccountId);
-
-    // 2. Fallback: If preference is invalid/missing, pick the first available one
-    if (!target) {
-        target = availableAccounts[0];
-    }
-
-    // Only update if actually different to prevent re-renders
-    setActiveAccount(prev => (prev?.id !== target.id ? target : prev));
+    // A. User has a preferred account in their profile?
+    const preferredId = profile?.activeAccountId;
     
-  }, [availableAccounts, preferredAccountId]);
+    // B. Find that account in the loaded list
+    let target = availableAccounts.find(a => a.id === preferredId);
 
-  // --- 3. Action Handlers ---
+    // C. Fallback: If preference is invalid or missing, default to the first one
+    if (!target) {
+      target = availableAccounts[0];
+    }
+
+    setActiveAccount(target);
+    
+  }, [availableAccounts, profile?.activeAccountId]);
+
+  // --- 4. Action Handlers ---
 
   const handleSwitch = async (accountId: string) => {
-    if (!auth.currentUser) return;
+    if (!user) return;
     
-    // Optimistic UI Update (Instant feedback)
-    const target = availableAccounts.find(a => a.id === accountId);
-    if (target) {
-        setActiveAccount(target);
-        setPreferredAccountId(accountId); // Update local state immediately
-    }
-
+    // Optimistic UI Update handled by local state in components usually,
+    // but here we wait for the server to confirm the profile update.
     try {
-      await switchUserAccount(auth.currentUser.uid, accountId);
-      toast.success(`Switched to ${target?.name}`);
+      await switchUserAccount(user.uid, accountId);
+      const targetName = availableAccounts.find(a => a.id === accountId)?.name;
+      toast.success(`Switched to ${targetName}`);
     } catch (error) {
       console.error(error);
-      toast.error("Failed to switch account");
-      // Revert is handled automatically by the snapshot listener if write fails
+      toast.error("Failed to switch workspace");
     }
   };
 
   const handleCreate = async (name: string) => {
-    if (!auth.currentUser) return;
+    if (!user || !user.email) return;
     try {
-      await createAccount(auth.currentUser.uid, auth.currentUser.email!, name);
+      await createAccount(user.uid, user.email, name);
       toast.success("New workspace created");
-      // The snapshot listeners will automatically pick up the new account 
-      // and the activeAccountId change from the backend transaction.
     } catch (error) {
       console.error(error);
       toast.error("Failed to create workspace");

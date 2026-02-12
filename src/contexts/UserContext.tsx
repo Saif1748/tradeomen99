@@ -1,61 +1,39 @@
-import { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, useContext, ReactNode } from "react";
+import { useAuth } from "@/hooks/useAuth";
 
-export type UserPlan = 'free' | 'pro' | 'premium';
-export type UserRole = 'user' | 'tester' | 'founder';
+// 1. ⚡ AUTO-INFERENCE: Automatically matches the return type of your hook.
+// This ensures the Context is ALWAYS in sync with the hook logic.
+type UserContextType = ReturnType<typeof useAuth>;
 
-interface UserContextType {
-  plan: UserPlan;
-  role: UserRole;
-  name: string;
-  email: string;
-  setPlan: (plan: UserPlan) => void;
-  setRole: (role: UserRole) => void;
-  setName: (name: string) => void;
-  setEmail: (email: string) => void;
-  isPremiumFeature: (requiredPlan: UserPlan) => boolean;
-}
-
-const planHierarchy: Record<UserPlan, number> = {
-  free: 0,
-  pro: 1,
-  premium: 2,
-};
-
+// Create Context with undefined initial state (enforced by the hook below)
 const UserContext = createContext<UserContextType | undefined>(undefined);
 
+/**
+ * 🛡️ The Global User Provider
+ * Wraps the app and initializes the Auth "Brain" (useAuth).
+ */
 export function UserProvider({ children }: { children: ReactNode }) {
-  const [plan, setPlan] = useState<UserPlan>('free');
-  const [role, setRole] = useState<UserRole>('user');
-  const [name, setName] = useState('John Trader');
-  const [email, setEmail] = useState('john@tradeomen.com');
-
-  const isPremiumFeature = (requiredPlan: UserPlan): boolean => {
-    return planHierarchy[plan] >= planHierarchy[requiredPlan];
-  };
+  // Initialize the hook once at the root level
+  const authState = useAuth();
 
   return (
-    <UserContext.Provider
-      value={{
-        plan,
-        role,
-        name,
-        email,
-        setPlan,
-        setRole,
-        setName,
-        setEmail,
-        isPremiumFeature,
-      }}
-    >
+    <UserContext.Provider value={authState}>
       {children}
     </UserContext.Provider>
   );
 }
 
+/**
+ * 🪝 The Consumer Hook
+ * usage: const { user, profile, isPro } = useUser();
+ */
 export function useUser() {
   const context = useContext(UserContext);
+  
+  // 🛡️ Fail-Fast Check: Prevents usage outside the provider
   if (context === undefined) {
-    throw new Error('useUser must be used within a UserProvider');
+    throw new Error("useUser must be used within a UserProvider. Wrap your app in <UserProvider />.");
   }
+  
   return context;
 }

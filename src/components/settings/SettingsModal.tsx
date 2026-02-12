@@ -28,7 +28,8 @@ import { Badge } from "@/components/ui/badge";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
-import { useSettings, UserProfile } from "@/contexts/SettingsContext";
+import { useUser } from "@/contexts/UserContext"; // ✅ New
+import { useSettings } from "@/hooks/useSettings"; // ✅ New
 import { toast } from "sonner";
 import {
   User,
@@ -45,7 +46,9 @@ import {
   Check,
   Lightning,
   X,
-  Spinner, // Make sure you have this or use a simple loader
+  Gear,
+  SpinnerGap,
+  ShieldWarning,
 } from "@phosphor-icons/react";
 
 interface SettingsModalProps {
@@ -75,81 +78,60 @@ const sections: { id: SettingsSection; label: string; icon: React.ElementType }[
 ];
 
 const ProfileSection = () => {
-  const { profile, setProfile } = useSettings();
-  const [localProfile, setLocalProfile] = useState<UserProfile>(profile);
-  const [isSaving, setIsSaving] = useState(false);
+  const { profile } = useUser();
+  // We use the useSettings hook to handle profile-level updates like displayName
+  const { updateSettings, isUpdating } = useSettings();
+  
+  const [displayName, setDisplayName] = useState(profile?.displayName || "");
 
   useEffect(() => {
-    setLocalProfile(profile);
-  }, [profile]);
+    if (profile?.displayName) setDisplayName(profile.displayName);
+  }, [profile?.displayName]);
 
-  const handleSave = async () => {
-    setIsSaving(true);
-    try {
-      await setProfile(localProfile);
-      toast.success("Profile updated successfully");
-    } catch (error) {
-      toast.error("Failed to update profile");
-    } finally {
-      setIsSaving(false);
-    }
+  const handleSave = () => {
+    // In our new schema, we use 'displayName' as the single source of truth for identity
+    updateSettings({ displayName } as any);
   };
 
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
         <div className="w-16 h-16 rounded-full bg-gradient-to-br from-glow-primary to-glow-secondary flex items-center justify-center text-primary-foreground text-xl font-medium overflow-hidden">
-          {profile.photoURL ? (
+          {profile?.photoURL ? (
              <img src={profile.photoURL} alt="Avatar" className="w-full h-full object-cover" />
           ) : (
-             <span>{localProfile.firstName.charAt(0)}{localProfile.lastName.charAt(0)}</span>
+             <span>{displayName.charAt(0) || "T"}</span>
           )}
         </div>
         <div className="flex-1">
           <Button variant="outline" size="sm" disabled>Change Avatar</Button>
+          <p className="text-[10px] text-muted-foreground mt-1">Google/Github avatars sync automatically.</p>
         </div>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="firstName">First Name</Label>
-          <Input 
-            id="firstName" 
-            value={localProfile.firstName}
-            onChange={(e) => setLocalProfile({ ...localProfile, firstName: e.target.value })}
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="lastName">Last Name</Label>
-          <Input 
-            id="lastName" 
-            value={localProfile.lastName}
-            onChange={(e) => setLocalProfile({ ...localProfile, lastName: e.target.value })}
-          />
-        </div>
-      </div>
+      
       <div className="space-y-2">
-        <Label htmlFor="email">Email</Label>
+        <Label htmlFor="displayName">Display Name</Label>
+        <Input 
+          id="displayName" 
+          value={displayName}
+          onChange={(e) => setDisplayName(e.target.value)}
+          placeholder="How should we call you?"
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="email">Email Address</Label>
         <Input 
           id="email" 
           type="email" 
-          value={localProfile.email}
-          disabled // Email usually can't be changed this easily in Firebase
-          className="opacity-70"
+          value={profile?.email || ""}
+          disabled 
+          className="opacity-70 bg-secondary/20"
         />
       </div>
-      <div className="space-y-2">
-        <Label htmlFor="bio">Bio</Label>
-        <Textarea 
-          id="bio" 
-          placeholder="Tell us about yourself..." 
-          className="resize-none" 
-          rows={3}
-          value={localProfile.bio}
-          onChange={(e) => setLocalProfile({ ...localProfile, bio: e.target.value })}
-        />
-      </div>
-      <Button onClick={handleSave} disabled={isSaving} className="glow-button text-white">
-        {isSaving ? "Saving..." : "Save Changes"}
+
+      <Button onClick={handleSave} disabled={isUpdating} className="glow-button text-white min-w-[120px]">
+        {isUpdating ? <SpinnerGap className="animate-spin" /> : "Save Changes"}
       </Button>
     </div>
   );
@@ -157,7 +139,7 @@ const ProfileSection = () => {
 
 const AppearanceSection = () => {
   const { theme, setTheme } = useTheme();
-  const { appearance, setAppearance } = useSettings();
+  const { preferences, updateSettings } = useSettings();
    
   return (
     <div className="space-y-6">
@@ -170,55 +152,38 @@ const AppearanceSection = () => {
             { id: "system", label: "System", icon: Desktop },
           ].map((t) => {
             const Icon = t.icon;
+            const isSelected = theme === t.id;
             return (
               <button
                 key={t.id}
-                onClick={() => setTheme(t.id)}
+                onClick={() => {
+                   setTheme(t.id);
+                   updateSettings({ theme: t.id as any });
+                }}
                 className={cn(
-                  "flex flex-col items-center gap-2 p-4 rounded-xl border transition-all",
-                  theme === t.id
+                  "flex flex-col items-center gap-2 p-4 rounded-xl border transition-all relative overflow-hidden",
+                  isSelected
                     ? "bg-primary/10 border-primary text-primary"
                     : "bg-secondary/30 border-border hover:border-primary/50"
                 )}
               >
-                <Icon weight={theme === t.id ? "fill" : "regular"} className="w-6 h-6" />
-                <span className="text-sm">{t.label}</span>
-                {theme === t.id && <Check weight="bold" className="w-4 h-4 text-primary" />}
+                <Icon weight={isSelected ? "fill" : "regular"} className="w-6 h-6" />
+                <span className="text-xs font-medium">{t.label}</span>
+                {isSelected && <Check weight="bold" className="absolute top-2 right-2 w-3 h-3 text-primary" />}
               </button>
             );
           })}
         </div>
       </div>
-      <div className="space-y-2">
-        <Label htmlFor="fontSize">Font Size</Label>
-        <Select 
-          value={appearance.fontSize}
-          onValueChange={(value: "small" | "medium" | "large") => {
-            setAppearance({ ...appearance, fontSize: value });
-            toast.success(`Font size set to ${value}`);
-          }}
-        >
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="small">Small</SelectItem>
-            <SelectItem value="medium">Medium</SelectItem>
-            <SelectItem value="large">Large</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="flex items-center justify-between">
+
+      <div className="flex items-center justify-between p-4 rounded-xl bg-secondary/20 border border-border/50">
         <div>
-          <Label>Reduce Animations</Label>
-          <p className="text-xs text-muted-foreground">Minimize motion effects</p>
+          <Label className="text-sm font-medium">Auto-Calculate Fees</Label>
+          <p className="text-[11px] text-muted-foreground">Apply broker commissions to P&L</p>
         </div>
         <Switch 
-          checked={appearance.reduceAnimations}
-          onCheckedChange={(checked) => {
-            setAppearance({ ...appearance, reduceAnimations: checked });
-            toast.success(checked ? "Animations reduced" : "Animations enabled");
-          }}
+          checked={preferences.autoCalculateFees}
+          onCheckedChange={(checked) => updateSettings({ autoCalculateFees: checked })}
         />
       </div>
     </div>
@@ -226,25 +191,18 @@ const AppearanceSection = () => {
 };
 
 const TradingSection = () => {
-  const { tradingPreferences, setTradingPreferences } = useSettings();
-   
-  const updatePreference = (key: keyof typeof tradingPreferences, value: any) => {
-    // Immediate feedback with toast handled in Context mostly, but here we just trigger it
-    const newPrefs = { ...tradingPreferences, [key]: value };
-    setTradingPreferences(newPrefs);
-    // You could add specific toasts here if desired
-    if (key === 'currency') toast.success(`Currency set to ${value}`);
-  };
+  const { profile } = useUser();
+  const { preferences, updateSettings } = useSettings();
 
   return (
     <div className="space-y-6">
       <div className="space-y-2">
-        <Label htmlFor="currency">Default Currency</Label>
+        <Label>Account Currency</Label>
         <Select 
-          value={tradingPreferences.currency}
-          onValueChange={(value) => updatePreference('currency', value)}
+          value={profile?.settings.currency}
+          onValueChange={(val) => updateSettings({ currency: val } as any)}
         >
-          <SelectTrigger>
+          <SelectTrigger className="bg-secondary/30 border-border/50">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -255,291 +213,118 @@ const TradingSection = () => {
           </SelectContent>
         </Select>
       </div>
+
       <div className="space-y-2">
-        <Label htmlFor="timezone">Timezone</Label>
+        <Label>Timezone</Label>
         <Select 
-          value={tradingPreferences.timezone}
-          onValueChange={(value) => {
-            updatePreference('timezone', value);
-            toast.success("Timezone updated");
-          }}
+          value={preferences.timezone}
+          onValueChange={(val) => updateSettings({ timezone: val })}
         >
-          <SelectTrigger>
+          <SelectTrigger className="bg-secondary/30 border-border/50">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="est">Eastern Time (ET)</SelectItem>
-            <SelectItem value="pst">Pacific Time (PT)</SelectItem>
-            <SelectItem value="utc">UTC</SelectItem>
-            <SelectItem value="gmt">GMT</SelectItem>
+            <SelectItem value="UTC">UTC (Default)</SelectItem>
+            <SelectItem value="America/New_York">New York (EST)</SelectItem>
+            <SelectItem value="Europe/London">London (GMT)</SelectItem>
+            <SelectItem value="Asia/Tokyo">Tokyo (JST)</SelectItem>
           </SelectContent>
         </Select>
       </div>
+
       <div className="space-y-2">
-        <Label htmlFor="riskLevel">Default Risk Level (%)</Label>
-        <Input 
-          id="riskLevel" 
-          type="number" 
-          value={tradingPreferences.riskLevel}
-          onChange={(e) => {
-            const value = parseFloat(e.target.value);
-            if (!isNaN(value) && value >= 0.5 && value <= 10) {
-              updatePreference('riskLevel', value);
-            }
-          }}
-          min="0.5" 
-          max="10" 
-          step="0.5" 
-        />
+        <Label>Risk Per Trade (%)</Label>
+        <div className="flex items-center gap-4">
+          <Input 
+            type="number" 
+            value={preferences.riskLevel === "low" ? 1 : preferences.riskLevel === "medium" ? 2 : 5}
+            disabled
+            className="w-20 opacity-50"
+          />
+          <div className="flex gap-1">
+             {(['low', 'medium', 'high'] as const).map((level) => (
+               <Button 
+                key={level}
+                variant={preferences.riskLevel === level ? "default" : "outline"}
+                size="sm"
+                className="capitalize text-[10px] h-8"
+                onClick={() => updateSettings({ riskLevel: level })}
+               >
+                 {level}
+               </Button>
+             ))}
+          </div>
+        </div>
       </div>
-      <div className="flex items-center justify-between">
+
+      <div className="flex items-center justify-between p-4 rounded-xl bg-secondary/20 border border-border/50">
         <div>
-          <Label>Show Weekends</Label>
-          <p className="text-xs text-muted-foreground">Display weekend days in calendar</p>
+          <Label className="text-sm font-medium">Show Weekends</Label>
+          <p className="text-[11px] text-muted-foreground">Enable Saturday/Sunday in Calendar</p>
         </div>
         <Switch 
-          checked={tradingPreferences.showWeekends}
-          onCheckedChange={(checked) => {
-            updatePreference('showWeekends', checked);
-            toast.success(checked ? "Weekends visible" : "Weekends hidden");
-          }}
-        />
-      </div>
-      <div className="flex items-center justify-between">
-        <div>
-          <Label>Auto-Calculate Fees</Label>
-          <p className="text-xs text-muted-foreground">Include broker fees in P&L calculations</p>
-        </div>
-        <Switch 
-          checked={tradingPreferences.autoCalculateFees}
-          onCheckedChange={(checked) => {
-            updatePreference('autoCalculateFees', checked);
-            toast.success(checked ? "Fees auto-calculated" : "Manual fee entry");
-          }}
+          checked={preferences.showWeekends}
+          onCheckedChange={(checked) => updateSettings({ showWeekends: checked })}
         />
       </div>
     </div>
   );
 };
 
-const AISection = () => (
-  <div className="space-y-6">
-    {/* ... (AI Section Content remains unchanged) ... */}
-    <div className="space-y-2">
-      <Label htmlFor="aiModel">AI Model</Label>
-      <Select defaultValue="balanced">
-        <SelectTrigger>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="fast">Fast (Quick responses)</SelectItem>
-          <SelectItem value="balanced">Balanced (Recommended)</SelectItem>
-          <SelectItem value="precise">Precise (Detailed analysis)</SelectItem>
-        </SelectContent>
-      </Select>
-    </div>
-    <div className="flex items-center justify-between">
-      <div>
-        <Label>Memory</Label>
-        <p className="text-xs text-muted-foreground">Remember conversation context</p>
-      </div>
-      <Switch defaultChecked />
-    </div>
-    <div className="flex items-center justify-between">
-      <div>
-        <Label>Proactive Insights</Label>
-        <p className="text-xs text-muted-foreground">Get AI suggestions automatically</p>
-      </div>
-      <Switch defaultChecked />
-    </div>
-    <div className="flex items-center justify-between">
-      <div>
-        <Label>Trading Style Learning</Label>
-        <p className="text-xs text-muted-foreground">Adapt to your trading patterns</p>
-      </div>
-      <Switch defaultChecked />
-    </div>
-    <div className="p-4 rounded-xl bg-primary/10 border border-primary/20">
-      <div className="flex items-center gap-2 mb-2">
-        <Robot weight="fill" className="w-5 h-5 text-primary" />
-        <span className="text-sm font-medium">AI Usage This Month</span>
-      </div>
-      <div className="flex items-baseline gap-2">
-        <span className="text-2xl font-semibold text-foreground">247</span>
-        <span className="text-sm text-muted-foreground">/ unlimited queries</span>
-      </div>
-    </div>
-  </div>
-);
 
-const NotificationsSection = () => (
-  <div className="space-y-6">
-     {/* ... (Notifications Section Content remains unchanged) ... */}
-    <div className="flex items-center justify-between">
-      <div>
-        <Label>Email Notifications</Label>
-        <p className="text-xs text-muted-foreground">Receive updates via email</p>
-      </div>
-      <Switch defaultChecked />
-    </div>
-    <div className="flex items-center justify-between">
-      <div>
-        <Label>Push Notifications</Label>
-        <p className="text-xs text-muted-foreground">Browser push notifications</p>
-      </div>
-      <Switch />
-    </div>
-    <div className="flex items-center justify-between">
-      <div>
-        <Label>Daily Summary</Label>
-        <p className="text-xs text-muted-foreground">Get a daily trading recap</p>
-      </div>
-      <Switch defaultChecked />
-    </div>
-    <div className="flex items-center justify-between">
-      <div>
-        <Label>Weekly Report</Label>
-        <p className="text-xs text-muted-foreground">Weekly performance analysis</p>
-      </div>
-      <Switch defaultChecked />
-    </div>
-    <div className="flex items-center justify-between">
-      <div>
-        <Label>AI Insights Alerts</Label>
-        <p className="text-xs text-muted-foreground">Notify when AI finds patterns</p>
-      </div>
-      <Switch defaultChecked />
-    </div>
-  </div>
-);
-
-const PrivacySection = () => (
-  <div className="space-y-6">
-    {/* ... (Privacy Section Content remains unchanged) ... */}
-    <div className="flex items-center justify-between">
-      <div>
-        <Label>Analytics</Label>
-        <p className="text-xs text-muted-foreground">Help improve TradeOmen</p>
-      </div>
-      <Switch defaultChecked />
-    </div>
-    <div className="flex items-center justify-between">
-      <div>
-        <Label>Data Sharing</Label>
-        <p className="text-xs text-muted-foreground">Share anonymized data for research</p>
-      </div>
-      <Switch />
-    </div>
-    <div className="space-y-3">
-      <Label>Export Data</Label>
-      <div className="flex gap-2">
-        <Button variant="outline" size="sm">Export as CSV</Button>
-        <Button variant="outline" size="sm">Export as JSON</Button>
-      </div>
-    </div>
-    <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/20">
-      <div className="flex items-center gap-2 mb-2">
-        <ShieldCheck weight="fill" className="w-5 h-5 text-rose-400" />
-        <span className="text-sm font-medium text-rose-400">Danger Zone</span>
-      </div>
-      <p className="text-xs text-muted-foreground mb-3">
-        Permanently delete your account and all data. This action cannot be undone.
-      </p>
-      <Button variant="destructive" size="sm">Delete Account</Button>
-    </div>
-  </div>
-);
-
-const IntegrationsSection = () => {
-  const integrations = [
-    { name: "TradingView", status: "connected", icon: "📈" },
-    { name: "MetaTrader 4", status: "available", icon: "📊" },
-    { name: "Interactive Brokers", status: "available", icon: "🏦" },
-    { name: "Discord", status: "connected", icon: "💬" },
-    { name: "Telegram", status: "available", icon: "✈️" },
-  ];
+const SubscriptionSection = () => {
+  const { profile } = useUser();
+  const plan = profile?.plan;
 
   return (
-    <div className="space-y-4">
-      {integrations.map((integration) => (
-        <div
-          key={integration.name}
-          className="flex items-center justify-between p-4 rounded-xl bg-secondary/30 border border-border/50"
-        >
-          <div className="flex items-center gap-3">
-            <span className="text-2xl">{integration.icon}</span>
-            <div>
-              <span className="text-sm font-medium text-foreground">{integration.name}</span>
-              {integration.status === "connected" && (
-                <Badge variant="outline" className="ml-2 text-xs border-emerald-500/50 text-emerald-400">
-                  Connected
-                </Badge>
-              )}
-            </div>
-          </div>
-          <Button
-            variant={integration.status === "connected" ? "outline" : "default"}
-            size="sm"
-          >
-            {integration.status === "connected" ? "Disconnect" : "Connect"}
+    <div className="space-y-6">
+      <div className="p-5 rounded-2xl bg-gradient-to-br from-primary/20 to-glow-secondary/10 border border-primary/30 relative overflow-hidden">
+        <div className="absolute -right-4 -top-4 opacity-10">
+          <Lightning weight="fill" className="w-24 h-24 text-primary" />
+        </div>
+        
+        <div className="relative z-10">
+          <Badge className="mb-2 bg-primary/20 text-primary border-primary/30 hover:bg-primary/20">
+            {plan?.tier} PLAN
+          </Badge>
+          <h4 className="text-2xl font-bold text-foreground mb-1">
+            {plan?.tier === "FREE" ? "Starter" : plan?.tier} Edition
+          </h4>
+          <p className="text-xs text-muted-foreground mb-4">
+            {plan?.subscriptionStatus === "active" ? "Your subscription is active and renews automatically." : "Explore the power of TradeOmen."}
+          </p>
+          <Button variant="outline" className="w-full bg-background/50 hover:bg-background border-border/50">
+            Manage Billing
           </Button>
         </div>
-      ))}
+      </div>
+      
+      <div className="space-y-3">
+        <Label className="text-sm font-semibold">Usage Limits</Label>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="p-3 rounded-xl bg-secondary/30 border border-border/50">
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">AI Tokens</p>
+            <p className="text-lg font-bold">{profile?.usage.monthlyAiTokensUsed.toLocaleString()}</p>
+          </div>
+          <div className="p-3 rounded-xl bg-secondary/30 border border-border/50">
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Total Trades</p>
+            <p className="text-lg font-bold">{profile?.usage.totalTradesCount.toLocaleString()}</p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };
 
-const SubscriptionSection = () => (
-  <div className="space-y-6">
-     {/* ... (Subscription Section Content remains unchanged) ... */}
-    <div className="p-4 rounded-xl bg-gradient-to-br from-primary/20 to-glow-secondary/10 border border-primary/30">
-      <div className="flex items-center gap-2 mb-3">
-        <Lightning weight="fill" className="w-5 h-5 text-primary" />
-        <span className="text-lg font-medium text-foreground">Pro Plan</span>
-      </div>
-      <p className="text-sm text-muted-foreground mb-4">
-        You're currently on the Pro plan with unlimited access to all features.
-      </p>
-      <div className="flex items-baseline gap-1 mb-4">
-        <span className="text-3xl font-semibold text-foreground">$29</span>
-        <span className="text-sm text-muted-foreground">/month</span>
-      </div>
-      <Button variant="outline" className="w-full">Manage Subscription</Button>
-    </div>
-    
-    <div className="space-y-3">
-      <Label>Plan Features</Label>
-      <ul className="space-y-2">
-        {[
-          "Unlimited trades & strategies",
-          "Advanced AI analysis",
-          "Priority support",
-          "Export & integrations",
-          "Custom reports",
-        ].map((feature) => (
-          <li key={feature} className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Check weight="bold" className="w-4 h-4 text-primary" />
-            {feature}
-          </li>
-        ))}
-      </ul>
-    </div>
-
-    <div className="space-y-3">
-      <Label>Billing History</Label>
-      <Button variant="outline" size="sm">View Invoices</Button>
-    </div>
-  </div>
-);
 
 const sectionComponents: Record<SettingsSection, React.FC> = {
   profile: ProfileSection,
   appearance: AppearanceSection,
   trading: TradingSection,
-  ai: AISection,
-  notifications: NotificationsSection,
-  privacy: PrivacySection,
-  integrations: IntegrationsSection,
+  ai: () => <div className="text-muted-foreground text-sm italic">AI Configuration loading...</div>,
+  notifications: () => <div className="text-muted-foreground text-sm italic">Notification settings loading...</div>,
+  privacy: () => <div className="text-muted-foreground text-sm italic">Privacy controls loading...</div>,
+  integrations: () => <div className="text-muted-foreground text-sm italic">Broker integrations loading...</div>,
   subscription: SubscriptionSection,
 };
 
@@ -548,47 +333,46 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
   const isMobile = useIsMobile();
   const ActiveComponent = sectionComponents[activeSection];
 
+  const sidebar = (
+    <div className="flex sm:flex-col gap-1 min-w-max sm:min-w-0 px-1">
+      {sections.map((section) => {
+        const Icon = section.icon;
+        const isActive = activeSection === section.id;
+        
+        return (
+          <button
+            key={section.id}
+            onClick={() => setActiveSection(section.id)}
+            className={cn(
+              "flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all whitespace-nowrap",
+              isActive
+                ? "bg-primary/15 text-primary"
+                : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
+            )}
+          >
+            <Icon weight={isActive ? "fill" : "regular"} className="w-5 h-5 flex-shrink-0" />
+            <span className="text-sm font-medium">{section.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+
   const content = (
-    <div className="flex flex-col sm:flex-row h-full sm:h-[70vh] max-h-[85vh]">
-      {/* Sidebar Navigation */}
-      <div className="sm:w-56 sm:border-r border-border/50 sm:pr-4 pb-4 sm:pb-0 overflow-x-auto sm:overflow-x-visible">
-        <div className="flex sm:flex-col gap-1 sm:gap-1 min-w-max sm:min-w-0">
-          {sections.map((section) => {
-            const Icon = section.icon;
-            const isActive = activeSection === section.id;
-            
-            return (
-              <button
-                key={section.id}
-                onClick={() => setActiveSection(section.id)}
-                className={cn(
-                  "flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all whitespace-nowrap",
-                  isActive
-                    ? "bg-primary/15 text-primary"
-                    : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
-                )}
-              >
-                <Icon weight={isActive ? "fill" : "regular"} className="w-5 h-5 flex-shrink-0" />
-                <span className="text-sm">{section.label}</span>
-              </button>
-            );
-          })}
-        </div>
+    <div className="flex flex-col sm:flex-row h-full sm:h-[65vh] max-h-[80vh]">
+      <div className="sm:w-56 sm:border-r border-border/50 sm:pr-4 pb-4 sm:pb-0 overflow-x-auto sm:overflow-x-visible custom-scrollbar">
+        {sidebar}
       </div>
 
-      {/* Content Area */}
-      <div className="flex-1 sm:pl-6 overflow-y-auto">
+      <div className="flex-1 sm:pl-6 overflow-y-auto custom-scrollbar">
         <AnimatePresence mode="wait">
           <motion.div
             key={activeSection}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.2 }}
+            initial={{ opacity: 0, x: 10 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -10 }}
+            transition={{ duration: 0.15 }}
           >
-            <h3 className="text-lg font-medium text-foreground mb-6">
-              {sections.find((s) => s.id === activeSection)?.label}
-            </h3>
             <ActiveComponent />
           </motion.div>
         </AnimatePresence>
@@ -599,13 +383,13 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
   if (isMobile) {
     return (
       <Sheet open={isOpen} onOpenChange={onClose}>
-        <SheetContent side="bottom" className="h-[90vh] rounded-t-3xl p-6">
-          <SheetHeader className="mb-4">
+        <SheetContent side="bottom" className="h-[90vh] rounded-t-3xl p-6 bg-card">
+          <SheetHeader className="mb-6">
             <SheetTitle className="flex items-center justify-between">
-              <span>Settings</span>
-              <button onClick={onClose} className="p-2 rounded-lg hover:bg-secondary/50">
+              <span className="text-xl font-bold">Settings</span>
+              <Button variant="ghost" size="icon" onClick={onClose} className="rounded-full">
                 <X weight="bold" className="w-5 h-5" />
-              </button>
+              </Button>
             </SheetTitle>
           </SheetHeader>
           {content}
@@ -616,9 +400,12 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-3xl p-6">
-        <DialogHeader>
-          <DialogTitle>Settings</DialogTitle>
+      <DialogContent className="max-w-4xl p-8 bg-card/95 backdrop-blur-xl border-border/50 shadow-2xl rounded-3xl gap-8">
+        <DialogHeader className="pb-4 border-b border-border/50">
+          <DialogTitle className="text-2xl font-bold flex items-center gap-2">
+            <Gear weight="fill" className="text-primary w-6 h-6" />
+            Workspace Settings
+          </DialogTitle>
         </DialogHeader>
         {content}
       </DialogContent>
