@@ -3,14 +3,12 @@ import { motion } from "framer-motion";
 import { Outlet, useOutletContext } from "react-router-dom";
 import AppSidebar from "./AppSidebar";
 import MobileSidebar from "./MobileSidebar";
+import { GlobalHeader } from "@/components/header/GlobalHeader";
 
-// 1. Define the context type that child pages will use
 export type DashboardContextType = {
   onMobileMenuOpen: () => void;
 };
 
-// 2. Export a custom hook so child pages can easily access the context
-// Usage in child page: const { onMobileMenuOpen } = useDashboard();
 export const useDashboard = () => {
   return useOutletContext<DashboardContextType>();
 };
@@ -30,29 +28,36 @@ const DashboardLayout = () => {
   }, []);
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Sidebar is rendered once here and stays persistent */}
+    <div className="min-h-screen bg-background text-foreground">
+      {/* 🟢 1. GLOBAL HEADER (Fixed Top, Full Width) */}
+      <div className="fixed top-0 left-0 right-0 z-50 h-16">
+        <GlobalHeader onMobileMenuOpen={() => setMobileMenuOpen(true)} />
+      </div>
+
+      {/* 🟢 2. SIDEBAR (Fixed Left, Below Header) */}
       <AppSidebar
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
       />
       
+      {/* Mobile Overlay Sidebar */}
       <MobileSidebar 
         open={mobileMenuOpen} 
         onClose={() => setMobileMenuOpen(false)} 
       />
 
+      {/* 🟢 3. MAIN CONTENT */}
       <motion.main
         initial={false}
         animate={{
           marginLeft: isMobile ? 0 : (sidebarCollapsed ? 72 : 240),
         }}
         transition={{ duration: 0.3, ease: [0.25, 0.46, 0.45, 0.94] }}
-        className="min-h-screen"
+        className="min-h-screen pt-16" // ✅ pt-16 pushes content below header
       >
-        {/* 3. The Outlet renders the current child route (Dashboard, Trades, etc.) */}
-        {/* We pass the mobile menu trigger via context */}
-        <Outlet context={{ onMobileMenuOpen: () => setMobileMenuOpen(true) } satisfies DashboardContextType} />
+        <div className="p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto">
+          <Outlet context={{ onMobileMenuOpen: () => setMobileMenuOpen(true) } satisfies DashboardContextType} />
+        </div>
       </motion.main>
     </div>
   );

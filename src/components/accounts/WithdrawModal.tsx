@@ -12,31 +12,30 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { auth } from "@/lib/firebase"; // ✅ Import Auth
-import { recordCashMovement } from "@/services/ledgerService"; // ✅ Import Service
 
 interface WithdrawModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   accountName: string;
-  accountId: string; // ✅ Added ID to know where to withdraw from
   currentBalance: number;
+  // ✅ CHANGED: Logic is now delegated to parent for Optimistic Caching
+  onSubmit: (amount: number, note: string) => Promise<void>; 
+  isLoading: boolean; 
 }
 
 export const WithdrawModal = ({
   open,
   onOpenChange,
   accountName,
-  accountId,
   currentBalance,
+  onSubmit,
+  isLoading,
 }: WithdrawModalProps) => {
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
 
   const parsedAmount = parseFloat(amount) || 0;
   const willGoNegative = currentBalance - parsedAmount < 0;
-  const newBalance = currentBalance - parsedAmount;
 
   const handleWithdraw = async () => {
     // 1. Validation
@@ -45,33 +44,12 @@ export const WithdrawModal = ({
       return;
     }
 
-    if (!auth.currentUser) {
-      toast.error("You must be logged in");
-      return;
-    }
-
-    setIsLoading(true);
-
-    try {
-      // 2. Real Backend Call
-      await recordCashMovement(accountId, auth.currentUser.uid, {
-        type: "WITHDRAWAL",
-        amount: parsedAmount,
-        description: note || "Manual Withdrawal",
-      });
-
-      // 3. Success UI
-      toast.success(`$${parsedAmount.toLocaleString()} withdrawn successfully`);
-      setAmount("");
-      setNote("");
-      onOpenChange(false);
-
-    } catch (error) {
-      console.error(error);
-      toast.error("Withdrawal failed. Please try again.");
-    } finally {
-      setIsLoading(false);
-    }
+    // 2. Delegate to Parent (uses useLedger hook for instant update)
+    await onSubmit(parsedAmount, note);
+    
+    // 3. Reset form
+    setAmount("");
+    setNote("");
   };
 
   const formatBalance = (balance: number) => {
@@ -95,8 +73,8 @@ export const WithdrawModal = ({
             </div>
             <div>
               <DialogTitle className="text-xl">Withdraw Funds</DialogTitle>
-              <DialogDescription className="text-sm">
-                Withdraw from {accountName}
+              <DialogDescription className="text-sm text-muted-foreground">
+                Withdraw from <strong>{accountName}</strong>
               </DialogDescription>
             </div>
           </div>
@@ -104,11 +82,21 @@ export const WithdrawModal = ({
 
         <div className="space-y-5 mt-4">
           {/* Current Balance */}
-          <div className="p-4 rounded-xl bg-secondary/30 border border-border/50">
-            <p className="text-xs text-muted-foreground mb-1">Available Balance</p>
-            <p className={`text-2xl font-semibold ${currentBalance >= 0 ? "text-foreground" : "text-red-400"}`}>
-              {formatBalance(currentBalance)}
-            </p>
+          <div className="p-4 rounded-xl bg-secondary/30 border border-border/50 flex justify-between items-center">
+            <div>
+              <p className="text-xs text-muted-foreground mb-1">Available Balance</p>
+              <p className={`text-2xl font-semibold ${currentBalance >= 0 ? "text-foreground" : "text-red-400"}`}>
+                {formatBalance(currentBalance)}
+              </p>
+            </div>
+            {parsedAmount > 0 && (
+               <div className="text-right">
+                 <p className="text-xs text-muted-foreground mb-1">New Balance</p>
+                 <p className={`text-lg font-bold ${willGoNegative ? "text-red-500" : "text-foreground"}`}>
+                   {formatBalance(currentBalance - parsedAmount)}
+                 </p>
+               </div>
+            )}
           </div>
 
           {/* Amount Input */}
@@ -163,7 +151,7 @@ export const WithdrawModal = ({
                 <p className="text-sm font-medium text-yellow-400">Balance Warning</p>
                 <p className="text-xs text-yellow-400/80 mt-1">
                   This withdrawal will result in a negative balance of{" "}
-                  <span className="font-semibold">{formatBalance(newBalance)}</span>
+                  <span className="font-semibold">{formatBalance(currentBalance - parsedAmount)}</span>
                 </p>
               </div>
             </motion.div>

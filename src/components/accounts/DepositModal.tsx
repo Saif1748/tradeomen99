@@ -12,14 +12,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { auth } from "@/lib/firebase"; // ✅ Import Auth
-import { recordCashMovement } from "@/services/ledgerService"; // ✅ Import Service
 
 interface DepositModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   accountName: string;
-  accountId: string; // ✅ Added ID to know where to deposit
+  // ✅ Changed: Pass handler instead of IDs to allow parent to manage Optimistic UI
+  onSubmit: (amount: number, note: string) => Promise<void>; 
+  isLoading: boolean;
 }
 
 const quickAmounts = [1000, 5000, 10000, 25000];
@@ -28,46 +28,27 @@ export const DepositModal = ({
   open,
   onOpenChange,
   accountName,
-  accountId,
+  onSubmit,
+  isLoading,
 }: DepositModalProps) => {
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
 
-  const handleDeposit = async () => {
+  const handleSubmit = async () => {
+    const val = parseFloat(amount);
+    
     // 1. Validation
-    if (!amount || parseFloat(amount) <= 0) {
+    if (!amount || val <= 0) {
       toast.error("Please enter a valid amount");
       return;
     }
-
-    if (!auth.currentUser) {
-      toast.error("You must be logged in");
-      return;
-    }
-
-    setIsLoading(true);
     
-    try {
-      // 2. Real Backend Call
-      await recordCashMovement(accountId, auth.currentUser.uid, {
-        type: "DEPOSIT",
-        amount: parseFloat(amount),
-        description: note || "Manual Deposit",
-      });
-
-      // 3. Success UI
-      toast.success(`$${parseFloat(amount).toLocaleString()} deposited successfully`);
-      setAmount("");
-      setNote("");
-      onOpenChange(false);
-      
-    } catch (error) {
-      console.error(error);
-      toast.error("Failed to deposit funds. Please try again.");
-    } finally {
-      setIsLoading(false);
-    }
+    // 2. Delegate to Parent (AccountModal -> useLedger)
+    await onSubmit(val, note);
+    
+    // 3. Reset form
+    setAmount("");
+    setNote("");
   };
 
   return (
@@ -80,8 +61,9 @@ export const DepositModal = ({
             </div>
             <div>
               <DialogTitle className="text-xl">Deposit Funds</DialogTitle>
-              <DialogDescription className="text-sm">
-                Add funds to {accountName}
+              {/* ✅ Fixed: Added Description for Accessibility Warning */}
+              <DialogDescription className="text-sm text-muted-foreground">
+                Add funds to your <strong>{accountName}</strong> portfolio.
               </DialogDescription>
             </div>
           </div>
@@ -104,6 +86,7 @@ export const DepositModal = ({
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 className="pl-10 h-12 text-lg bg-secondary/50 border-border/50 focus:border-emerald-500/50 focus:ring-emerald-500/20"
+                autoFocus
               />
             </div>
 
@@ -115,10 +98,10 @@ export const DepositModal = ({
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                   onClick={() => setAmount(quickAmount.toString())}
-                  className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
+                  className={`flex-1 py-2 rounded-lg text-xs font-medium border transition-all ${
                     amount === quickAmount.toString()
-                      ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-                      : "bg-secondary/50 text-muted-foreground border border-border/50 hover:bg-secondary/80 hover:text-foreground"
+                      ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
+                      : "bg-secondary/50 text-muted-foreground border-border/50 hover:bg-secondary/80 hover:text-foreground"
                   }`}
                 >
                   ${quickAmount.toLocaleString()}
@@ -134,7 +117,7 @@ export const DepositModal = ({
               Note (optional)
             </label>
             <Textarea
-              placeholder="Add a note for this deposit..."
+              placeholder="e.g. Monthly top-up"
               value={note}
               onChange={(e) => setNote(e.target.value)}
               className="bg-secondary/50 border-border/50 resize-none h-20"
@@ -143,9 +126,9 @@ export const DepositModal = ({
 
           {/* Submit */}
           <Button
-            onClick={handleDeposit}
+            onClick={handleSubmit}
             disabled={isLoading || !amount}
-            className="w-full h-12 gap-2 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white border-0"
+            className="w-full h-12 gap-2 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white border-0 shadow-lg shadow-emerald-500/20"
           >
             {isLoading ? (
               <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
