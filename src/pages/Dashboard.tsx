@@ -1,144 +1,95 @@
-import { Wallet } from "@phosphor-icons/react";
-import { useDashboard } from "@/components/dashboard/DashboardLayout";
-import DashboardHeader from "@/components/dashboard/DashboardHeader";
-import MetricCard from "@/components/dashboard/MetricCard";
-import GaugeMetric from "@/components/dashboard/GaugeMetric";
-import ChartCard from "@/components/dashboard/ChartCard";
-import RecentTrades from "@/components/dashboard/RecentTrades";
-import MiniCalendar from "@/components/dashboard/MiniCalendar";
-import { useUser } from "@/contexts/UserContext"; // ✅ Added
-import { useWorkspace } from "@/contexts/WorkspaceContext"; // ✅ Added
-
-// Mock data (This remains until your logic hooks are fully wired to the DB)
-const areaChartData = [
-  { date: "Dec 1", value: 0 },
-  { date: "Dec 5", value: 120 },
-  { date: "Dec 9", value: 80 },
-  { date: "Dec 13", value: 200 },
-  { date: "Dec 17", value: -50 },
-  { date: "Dec 21", value: 150 },
-  { date: "Dec 23", value: 248 },
-];
-
-const barChartData = [
-  { date: "Dec 18", positive: 120, negative: 0 },
-  { date: "Dec 19", positive: 0, negative: -42 },
-  { date: "Dec 20", positive: 156, negative: 0 },
-  { date: "Dec 21", positive: 0, negative: -85 },
-  { date: "Dec 22", positive: 248, negative: 0 },
-  { date: "Dec 23", positive: 85, negative: 0 },
-];
-
-const radarChartData = [
-  { metric: "Win %", value: 68 },
-  { metric: "Profit Factor", value: 78 },
-  { metric: "Avg Win/Loss", value: 85 },
-  { metric: "Consistency", value: 72 },
-  { metric: "Risk Mgmt", value: 80 },
-];
+import { Copy } from "@phosphor-icons/react";
+import { MetricCard } from "@/components/dashboard/MetricCard";
+import { ProfitFactorGauge } from "@/components/dashboard/ProfitFactorGauge";
+import { WinRateDonut } from "@/components/dashboard/WinRateDonut";
+import { AvgWinLossBar } from "@/components/dashboard/AvgWinLossBar";
+import { PerformanceCharts } from "@/components/dashboard/PerformanceChart";
+import { RecentTrades } from "@/components/dashboard/RecentTrades";
+import { MiniCalendar } from "@/components/dashboard/MiniCalendar";
+import { useDashboardStats } from "@/hooks/useDashboardStats";
+import { useSettings } from "@/contexts/SettingsContext"; // ✅ 1. Import Settings
 
 const Dashboard = () => {
-  const { onMobileMenuOpen } = useDashboard();
-  
-  // ✅ FIX 1: Access the new core hooks
-  const { profile } = useUser();
-  const { activeAccount } = useWorkspace();
+  // 🔥 FETCH REAL DATA (Default to 1 Month view)
+  const { stats, isLoading } = useDashboardStats({ dateRange: "1M" });
 
-  // ✅ FIX 2: Industry-Grade Currency Formatting
-  const formatCurrency = (amount: number) => {
-    const currency = activeAccount?.currency || profile?.settings?.currency || "USD";
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: currency,
-      minimumFractionDigits: 2,
-    }).format(amount);
-  };
+  // ✅ 2. Use the Global Formatter (Handles conversion & symbols)
+  const { formatCurrency } = useSettings();
 
-  // ✅ FIX 3: Dynamic Data logic (Fallback to 0 if not loaded)
-  const netPnL = activeAccount?.balance || 0; 
-  const isPositive = netPnL >= 0;
+  if (isLoading) return <div className="p-8 text-center text-muted-foreground animate-pulse">Loading Dashboard...</div>;
 
   return (
-    <>
-      <DashboardHeader onMobileMenuOpen={onMobileMenuOpen} />
+    <div className="p-6 lg:p-8">
 
-      {/* Subtitle */}
-      <div className="px-4 sm:px-6 lg:px-8 pb-2">
-        <p className="text-sm text-muted-foreground">
-          Welcome back, {profile?.displayName || 'Trader'}! Here's your trading overview.
-        </p>
+      {/* Metrics Grid */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+        
+        {/* 1. Net P&L (Currency Converted) */}
+        <MetricCard
+          title="Net P&L"
+          value={formatCurrency(stats.netPnl)} 
+          trend={{ 
+            value: `${Math.abs(stats.periodChangePercent).toFixed(1)}%`, 
+            positive: stats.periodChangePercent >= 0 
+          }}
+          variant={stats.netPnl >= 0 ? "positive" : "negative"}
+          icon={
+            <div className="w-8 h-8 rounded-lg bg-secondary flex items-center justify-center">
+              <Copy weight="light" className="w-4 h-4 text-muted-foreground" />
+            </div>
+          }
+        />
+
+        {/* 2. Trade Expectancy (Currency Converted) */}
+        <MetricCard
+          title="Trade Expectancy"
+          value={formatCurrency(stats.expectancy)}
+          subtitle="Per trade"
+          trend={{ 
+            value: `${Math.abs(stats.expectancyChange).toFixed(1)}%`, 
+            positive: stats.expectancyChange >= 0 
+          }}
+          variant={stats.expectancy >= 0 ? "positive" : "negative"}
+        />
+
+        {/* 3. Profit Factor (Ratio - No Currency) */}
+        <MetricCard
+          title="Profit Factor"
+          value={stats.profitFactor.toFixed(2)}
+          subtitle="Quality indicator"
+        >
+          <ProfitFactorGauge value={stats.profitFactor} />
+        </MetricCard>
+
+        {/* 4. Win Rate (Percentage) */}
+        <MetricCard
+          title="Win Rate"
+          value={`${stats.winRate.toFixed(1)}%`}
+          subtitle={`${stats.winningTrades} wins / ${stats.losingTrades} losses`}
+        >
+          <WinRateDonut wins={stats.winningTrades} losses={stats.losingTrades} />
+        </MetricCard>
+
+        {/* 5. Avg Win/Loss (Ratio - No Currency needed for main value) */}
+        <MetricCard
+          title="Avg Win/Loss"
+          value={stats.avgWinLossRatio.toFixed(2)}
+          subtitle="Risk/reward ratio"
+        >
+          {/* Note: We pass raw numbers here. The Bar chart itself should handle formatting internally if it shows tooltips */}
+          <AvgWinLossBar avgWin={stats.avgWin} avgLoss={stats.avgLoss} />
+        </MetricCard>
       </div>
 
-      <div className="px-4 sm:px-6 lg:px-8 pb-6 pt-4 space-y-4 sm:space-y-6">
-        {/* Metrics Row */}
-        <div className="grid grid-cols-2 xl:grid-cols-5 gap-2 sm:gap-3 lg:gap-4">
-          <div className="h-[120px] sm:h-[130px]">
-            <MetricCard
-              title="Net P&L"
-              value={formatCurrency(netPnL)}
-              subtitle="Current Account Balance"
-              icon={<Wallet weight="fill" className="w-4 h-4 sm:w-5 sm:h-5" />}
-              trend={isPositive ? "up" : "down"}
-              trendValue={isPositive ? "Active" : "Negative"}
-              variant={isPositive ? "positive" : "negative"}
-            />
-          </div>
-          <div className="h-[120px] sm:h-[130px]">
-            <MetricCard
-              title="Expectancy"
-              value={formatCurrency(248.78)} // Example calculation
-              subtitle="Per trade average"
-              trend="up"
-              trendValue="8.2%"
-              variant="positive"
-            />
-          </div>
-          <div className="hidden xl:block h-[120px] sm:h-[130px]">
-            <GaugeMetric title="Profit Factor" value={1.82} type="arc" />
-          </div>
-          <div className="hidden xl:block h-[120px] sm:h-[130px]">
-            <GaugeMetric title="Win Rate" value={68.5} type="donut" />
-          </div>
-          <div className="hidden xl:block h-[120px] sm:h-[130px]">
-            <GaugeMetric title="Avg Win/Loss" value={1.83} type="bar" />
-          </div>
-        </div>
+      {/* Charts */}
+      <PerformanceCharts />
 
-        {/* Mobile: Gauge metrics in a row */}
-        <div className="grid grid-cols-3 gap-2 xl:hidden">
-          <GaugeMetric title="Profit Factor" value={1.82} type="arc" compact />
-          <GaugeMetric title="Win Rate" value={68.5} type="donut" compact />
-          <GaugeMetric title="Avg W/L" value={1.83} type="bar" compact />
-        </div>
-
-        {/* Charts Row */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
-          <ChartCard
-            title="Trading Score"
-            type="radar"
-            data={radarChartData}
-          />
-          <ChartCard
-            title="Cumulative P&L"
-            type="area"
-            data={areaChartData}
-          />
-          <div className="lg:col-span-2 xl:col-span-1">
-            <ChartCard
-              title="Daily P&L"
-              type="bar"
-              data={barChartData}
-            />
-          </div>
-        </div>
-
-        {/* Bottom Row */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
-          <RecentTrades />
-          <MiniCalendar />
-        </div>
+      {/* Bottom Section */}
+      <div className="grid lg:grid-cols-2 gap-6">
+        <RecentTrades />
+        <MiniCalendar />
       </div>
-    </>
+    </div>
   );
 };
 

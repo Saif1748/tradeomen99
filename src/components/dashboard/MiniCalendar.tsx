@@ -1,119 +1,175 @@
-import { CaretLeft, CaretRight } from "@phosphor-icons/react";
-import { useState } from "react";
+import { useState, useMemo } from "react";
+import { CaretLeft, CaretRight, CalendarBlank, CircleNotch } from "@phosphor-icons/react";
+import { 
+  format, 
+  startOfMonth, 
+  endOfMonth, 
+  startOfWeek, 
+  endOfWeek, 
+  eachDayOfInterval, 
+  isSameDay, 
+  isSameMonth,
+  addMonths,
+  subMonths
+} from "date-fns";
 
-const tradingDays: Record<number, { pnl: number; trades: number }> = {
-  7: { pnl: 628, trades: 2 },
-  8: { pnl: -120, trades: 1 },
-  12: { pnl: 340, trades: 3 },
-  15: { pnl: 890, trades: 4 },
-  18: { pnl: -45, trades: 1 },
-  20: { pnl: 156, trades: 2 },
-  22: { pnl: -85, trades: 1 },
-  23: { pnl: 248, trades: 1 },
-};
+import { useTrades } from "@/hooks/useTrades";
+import { useWorkspace } from "@/contexts/WorkspaceContext";
+import { useUser } from "@/contexts/UserContext";
+import { useSettings } from "@/contexts/SettingsContext"; // ✅ 1. Import Settings
+import { convertCurrency } from "@/services/currencyService"; // ✅ 2. Import Converter
+import { cn } from "@/lib/utils";
 
-const MiniCalendar = () => {
-  const [currentMonth] = useState(new Date(2024, 11)); // December 2024
-  const daysInMonth = new Date(2024, 12, 0).getDate();
-  const firstDayOfMonth = new Date(2024, 11, 1).getDay();
+const daysOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-  const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const monthName = currentMonth.toLocaleDateString("en-US", {
-    month: "long",
-    year: "numeric",
-  });
+export const MiniCalendar = () => {
+  const { activeAccount } = useWorkspace();
+  const { profile } = useUser();
+  
+  // ✅ 3. Get Currency Settings
+  const { exchangeRate, getCurrencySymbol } = useSettings();
+  const currencySymbol = getCurrencySymbol();
+  
+  // State: Manage current view (defaults to real-time current month)
+  const [currentMonth, setCurrentMonth] = useState(new Date());
 
-  const renderCalendarDays = () => {
-    const cells = [];
+  // 🔥 FETCH REAL DATA (Shared Cache)
+  const { trades, isLoading } = useTrades(activeAccount?.id, profile?.uid);
 
-    // Empty cells for days before the first day of month
-    for (let i = 0; i < firstDayOfMonth; i++) {
-      cells.push(
-        <div key={`empty-${i}`} className="h-12 rounded-lg" />
-      );
-    }
+  // 🔄 PROCESS DATA: Map trades to calendar grid
+  const calendarDays = useMemo(() => {
+    const monthStart = startOfMonth(currentMonth);
+    const monthEnd = endOfMonth(currentMonth);
+    const startDate = startOfWeek(monthStart); // Adjusts to Sunday start
+    const endDate = endOfWeek(monthEnd);
 
-    // Days of the month
-    for (let day = 1; day <= daysInMonth; day++) {
-      const tradingData = tradingDays[day];
-      const hasTrading = !!tradingData;
-      const isProfit = tradingData?.pnl > 0;
-      const isLoss = tradingData?.pnl < 0;
-      const isToday = day === 23;
+    const daysInterval = eachDayOfInterval({ start: startDate, end: endDate });
 
-      cells.push(
-        <div
-          key={day}
-          className={`h-12 rounded-lg flex flex-col items-center justify-center text-xs transition-colors cursor-pointer hover:bg-secondary/50 ${
-            isToday ? "ring-1 ring-primary" : ""
-          } ${
-            hasTrading
-              ? isProfit
-                ? "bg-emerald-400/10"
-                : "bg-rose-400/10"
-              : "bg-secondary/20"
-          }`}
-        >
-          <span
-            className={`font-normal ${
-              isToday ? "text-primary" : "text-muted-foreground"
-            }`}
-          >
-            {day}
-          </span>
-          {hasTrading && (
-            <span
-              className={`text-[9px] font-light ${
-                isProfit ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
-              }`}
-            >
-              {isProfit ? "+" : ""}${Math.abs(tradingData.pnl)}
-            </span>
-          )}
-        </div>
-      );
-    }
+    return daysInterval.map((day) => {
+      // Filter trades for this specific day
+      // Handles both Firestore Timestamps and JS Dates
+      const dayTrades = trades.filter(t => {
+        const tradeDate = t.entryDate instanceof Date 
+          ? t.entryDate 
+          : (typeof t.entryDate.toDate === 'function' ? t.entryDate.toDate() : new Date(t.entryDate));
+        return isSameDay(tradeDate, day);
+      });
 
-    return cells;
+      const rawPnL = dayTrades.reduce((sum, t) => sum + (t.netPnl || 0), 0);
+      
+      // ✅ 4. Convert P&L to Selected Currency
+      const totalPnL = convertCurrency(rawPnL, exchangeRate);
+      
+      const tradeCount = dayTrades.length;
+
+      return {
+        date: day,
+        dayNumber: day.getDate(),
+        pnl: totalPnL,
+        tradeCount,
+        hasTrades: tradeCount > 0,
+        isCurrentMonth: isSameMonth(day, currentMonth),
+        isToday: isSameDay(day, new Date())
+      };
+    });
+  }, [currentMonth, trades, exchangeRate]); // ✅ Added exchangeRate dependency
+
+  // Handlers
+  const prevMonth = () => setCurrentMonth(subMonths(currentMonth, 1));
+  const nextMonth = () => setCurrentMonth(addMonths(currentMonth, 1));
+
+  // ✅ 5. Update Formatter to use Dynamic Symbol
+  const formatPnL = (val: number) => {
+    const absVal = Math.abs(val);
+    if (absVal >= 1000) return `${currencySymbol}${(absVal / 1000).toFixed(1)}k`;
+    return `${currencySymbol}${absVal.toFixed(0)}`;
   };
 
+  if (isLoading) {
+    return (
+      <div className="glass-card card-glow p-5 rounded-2xl h-full flex items-center justify-center min-h-[300px]">
+        <CircleNotch className="w-6 h-6 animate-spin text-primary" />
+      </div>
+    );
+  }
+
   return (
-    <div className="glass-card card-glow p-5 rounded-2xl">
+    <div className="glass-card card-glow p-5 rounded-2xl h-full flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-light text-foreground">{monthName}</h3>
-        <div className="flex items-center gap-1">
-          <button className="p-1.5 rounded-lg hover:bg-secondary/50 transition-colors">
-            <CaretLeft
-              weight="bold"
-              className="w-3.5 h-3.5 text-muted-foreground"
-            />
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={prevMonth}
+            className="p-1.5 rounded-lg hover:bg-secondary transition-colors"
+          >
+            <CaretLeft weight="bold" className="w-4 h-4 text-muted-foreground" />
           </button>
-          <button className="p-1.5 rounded-lg hover:bg-secondary/50 transition-colors">
-            <CaretRight
-              weight="bold"
-              className="w-3.5 h-3.5 text-muted-foreground"
-            />
+          <button 
+            onClick={nextMonth}
+            className="p-1.5 rounded-lg hover:bg-secondary transition-colors"
+          >
+            <CaretRight weight="bold" className="w-4 h-4 text-muted-foreground" />
           </button>
+          <span className="text-sm font-medium text-foreground ml-2">
+            {format(currentMonth, "MMMM yyyy")}
+          </span>
         </div>
       </div>
 
-      {/* Days header */}
+      {/* Days of Week */}
       <div className="grid grid-cols-7 gap-1 mb-2">
-        {days.map((day) => (
-          <div
-            key={day}
-            className="h-6 flex items-center justify-center text-[10px] font-light text-muted-foreground uppercase"
-          >
+        {daysOfWeek.map((day) => (
+          <div key={day} className="text-center text-xs text-muted-foreground py-2 font-medium">
             {day}
           </div>
         ))}
       </div>
 
-      {/* Calendar grid */}
-      <div className="grid grid-cols-7 gap-1">{renderCalendarDays()}</div>
+      {/* Calendar Grid */}
+      <div className="grid grid-cols-7 gap-1 flex-1">
+        {calendarDays.map((dayData, index) => (
+          <div
+            key={index}
+            className={cn(
+              "aspect-square rounded-lg p-1 flex flex-col items-center justify-center transition-colors relative",
+              // Styling logic:
+              !dayData.isCurrentMonth 
+                ? "opacity-20 hover:bg-secondary/30" // Dim days from other months
+                : dayData.hasTrades
+                  ? dayData.pnl >= 0
+                    ? "bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400"
+                    : "bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400"
+                  : "hover:bg-secondary/50 text-muted-foreground",
+              dayData.isToday && "ring-1 ring-primary z-10"
+            )}
+          >
+            {/* Day Number */}
+            <span className={cn(
+              "text-xs font-medium",
+              dayData.isToday && "text-primary font-bold"
+            )}>
+              {dayData.dayNumber}
+            </span>
+
+            {/* PnL Display (Only if has trades) */}
+            {dayData.hasTrades && (
+              <span className="text-[8px] font-bold mt-0.5">
+                {dayData.pnl >= 0 ? "+" : "-"}{formatPnL(dayData.pnl)}
+              </span>
+            )}
+
+            {/* Trade Count Icon (Only if has trades) */}
+            {dayData.hasTrades && (
+              <div className="flex items-center gap-0.5 mt-0.5">
+                <CalendarBlank weight="fill" className="w-2 h-2 opacity-70" />
+                <span className="text-[8px] opacity-90 font-medium">
+                  {dayData.tradeCount}
+                </span>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 };
-
-export default MiniCalendar;

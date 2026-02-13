@@ -105,7 +105,7 @@ const ProfileSection = () => {
         </div>
         <div className="flex-1">
           <Button variant="outline" size="sm" disabled>Change Avatar</Button>
-          <p className="text-[10px] text-muted-foreground mt-1">Google/Github avatars sync automatically.</p>
+          <p className="text-[10px] text-muted-foreground mt-1">Google avatars sync automatically.</p>
         </div>
       </div>
       
@@ -404,7 +404,7 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
         <DialogHeader className="pb-4 border-b border-border/50">
           <DialogTitle className="text-2xl font-bold flex items-center gap-2">
             <Gear weight="fill" className="text-primary w-6 h-6" />
-            Workspace Settings
+            Settings
           </DialogTitle>
         </DialogHeader>
         {content}

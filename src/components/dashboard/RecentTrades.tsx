@@ -1,57 +1,121 @@
-const trades = [
-  { date: "Dec 23, 2024", symbol: "AAPL", type: "Long", pnl: 248.50, status: "win" },
-  { date: "Dec 22, 2024", symbol: "TSLA", type: "Short", pnl: -85.20, status: "loss" },
-  { date: "Dec 21, 2024", symbol: "SPY", type: "Long", pnl: 156.75, status: "win" },
-  { date: "Dec 20, 2024", symbol: "NVDA", type: "Long", pnl: 312.00, status: "win" },
-  { date: "Dec 19, 2024", symbol: "META", type: "Short", pnl: -42.30, status: "loss" },
-];
+import { useNavigate } from "react-router-dom";
+import { format } from "date-fns";
+import { ArrowUp, ArrowDown, ArrowRight, CircleNotch } from "@phosphor-icons/react";
+import { useTrades } from "@/hooks/useTrades";
+import { useWorkspace } from "@/contexts/WorkspaceContext";
+import { useUser } from "@/contexts/UserContext";
+import { useSettings } from "@/contexts/SettingsContext"; // ✅ 1. Import Settings Context
 
-const RecentTrades = () => {
+export const RecentTrades = () => {
+  const navigate = useNavigate();
+  const { activeAccount } = useWorkspace();
+  const { profile } = useUser();
+  
+  // ✅ 2. Get the global currency formatter
+  const { formatCurrency } = useSettings();
+
+  // 🔥 FETCH REAL DATA (Shared Cache)
+  const { trades, isLoading } = useTrades(activeAccount?.id, profile?.uid);
+
+  // Take the latest 5 trades
+  const recentTrades = trades.slice(0, 5);
+
+  if (isLoading) {
+    return (
+      <div className="glass-card card-glow p-5 rounded-2xl h-full min-h-[300px] flex items-center justify-center">
+        <CircleNotch className="w-6 h-6 animate-spin text-primary" />
+      </div>
+    );
+  }
+
   return (
-    <div className="glass-card card-glow p-5 rounded-2xl">
-      <div className="flex items-center justify-between mb-5">
-        <h3 className="text-sm font-light text-foreground">Recent Trades</h3>
-        <button className="text-xs font-light text-primary hover:underline">
-          View All
+    <div className="glass-card card-glow overflow-hidden flex flex-col h-full">
+      <div className="p-5 border-b border-border flex items-center justify-between">
+        <h3 className="text-sm font-medium text-foreground">Recent Trades</h3>
+        <button 
+          onClick={() => navigate("/trades")}
+          className="group flex items-center gap-1 text-xs font-medium text-primary hover:text-primary/80 transition-colors"
+        >
+          View All 
+          <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
         </button>
       </div>
+      
+      <div className="overflow-x-auto">
+        {recentTrades.length === 0 ? (
+           <div className="p-8 text-center text-muted-foreground opacity-60 text-sm">
+             No trades recorded yet.
+           </div>
+        ) : (
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-border">
+                <th className="text-left text-xs font-medium text-muted-foreground p-4">Date</th>
+                <th className="text-left text-xs font-medium text-muted-foreground p-4">Symbol</th>
+                <th className="text-left text-xs font-medium text-muted-foreground p-4">Type</th>
+                <th className="text-left text-xs font-medium text-muted-foreground p-4">Entry</th>
+                <th className="text-left text-xs font-medium text-muted-foreground p-4">Exit</th>
+                <th className="text-right text-xs font-medium text-muted-foreground p-4">P&L</th>
+              </tr>
+            </thead>
+            <tbody>
+              {recentTrades.map((trade) => {
+                const isLong = trade.direction === "LONG";
+                const pnl = trade.netPnl || 0;
+                const isPositive = pnl >= 0;
+                
+                // Handle Date (Firestore Timestamp vs Date object)
+                const tradeDate = trade.entryDate instanceof Date 
+                    ? trade.entryDate 
+                    : trade.entryDate.toDate();
 
-      <div className="space-y-3">
-        <div className="grid grid-cols-4 text-[10px] font-light text-muted-foreground uppercase tracking-wider pb-2 border-b border-border">
-          <span>Date</span>
-          <span>Symbol</span>
-          <span>Type</span>
-          <span className="text-right">P&L</span>
-        </div>
-
-        {trades.map((trade, index) => (
-          <div
-            key={index}
-            className="grid grid-cols-4 text-sm font-light items-center py-2 hover:bg-secondary/30 -mx-2 px-2 rounded-lg transition-colors"
-          >
-            <span className="text-muted-foreground text-xs">{trade.date}</span>
-            <span className="text-foreground font-normal">{trade.symbol}</span>
-            <span
-              className={`text-xs px-2 py-0.5 rounded w-fit ${
-                trade.type === "Long"
-                  ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                  : "bg-rose-500/10 text-rose-600 dark:text-rose-400"
-              }`}
-            >
-              {trade.type}
-            </span>
-            <span
-              className={`text-right font-normal ${
-                trade.pnl >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
-              }`}
-            >
-              {trade.pnl >= 0 ? "+" : ""}${Math.abs(trade.pnl).toFixed(2)}
-            </span>
-          </div>
-        ))}
+                return (
+                  <tr 
+                    key={trade.id} 
+                    onClick={() => navigate("/trades")}
+                    className="border-b border-border last:border-0 hover:bg-secondary/30 transition-colors cursor-pointer"
+                  >
+                    <td className="p-4 text-sm text-muted-foreground">
+                      {format(tradeDate, "MMM dd, yyyy")}
+                    </td>
+                    <td className="p-4">
+                      <span className="text-sm font-medium text-foreground">{trade.symbol}</span>
+                    </td>
+                    <td className="p-4">
+                      <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-md ${
+                        isLong 
+                          ? "bg-emerald-500/10 text-emerald-500" 
+                          : "bg-rose-500/10 text-rose-500"
+                      }`}>
+                        {isLong ? (
+                          <ArrowUp weight="bold" className="w-3 h-3" />
+                        ) : (
+                          <ArrowDown weight="bold" className="w-3 h-3" />
+                        )}
+                        {trade.direction}
+                      </span>
+                    </td>
+                    {/* ✅ 3. Apply formatCurrency to Entry Price */}
+                    <td className="p-4 text-sm text-muted-foreground tabular-nums">
+                      {formatCurrency(trade.avgEntryPrice)}
+                    </td>
+                    {/* ✅ 4. Apply formatCurrency to Exit Price */}
+                    <td className="p-4 text-sm text-muted-foreground tabular-nums">
+                      {trade.avgExitPrice ? formatCurrency(trade.avgExitPrice) : "-"}
+                    </td>
+                    {/* ✅ 5. Apply formatCurrency to P&L */}
+                    <td className={`p-4 text-sm font-medium text-right tabular-nums ${
+                      isPositive ? "text-emerald-500" : "text-rose-500"
+                    }`}>
+                      {isPositive ? "+" : ""}{formatCurrency(pnl)}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );
 };
-
-export default RecentTrades;

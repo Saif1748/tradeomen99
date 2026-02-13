@@ -7,13 +7,7 @@ import {
   deleteTrade 
 } from "@/services/tradeService";
 import { Trade } from "@/types/trade";
-
-// 🔑 Standardized Query Keys for Cache Management
-export const tradeKeys = {
-  all: ["trades"] as const,
-  list: (accountId: string) => [...tradeKeys.all, "list", accountId] as const,
-  detail: (tradeId: string) => [...tradeKeys.all, "detail", tradeId] as const,
-};
+import { queryKeys } from "@/lib/queryKeys"; // ✅ Centralized Keys for Shared Caching
 
 export const useTrades = (accountId?: string, userId?: string) => {
   const queryClient = useQueryClient();
@@ -25,7 +19,8 @@ export const useTrades = (accountId?: string, userId?: string) => {
     isError,
     error 
   } = useQuery({
-    queryKey: tradeKeys.list(accountId || ""),
+    // ✅ Matches Dashboard key: ['tradeomen', 'trades', accountId]
+    queryKey: queryKeys.tradesByAccount(accountId || ""), 
     queryFn: () => {
       if (!accountId) throw new Error("Account ID required");
       return getTrades(accountId);
@@ -46,9 +41,13 @@ export const useTrades = (accountId?: string, userId?: string) => {
     onSuccess: (newTrade) => {
       // ⚡ INSTANT UPDATE: Inject new trade directly into cache
       // This avoids a costly re-fetch of the entire trade list
-      queryClient.setQueryData(tradeKeys.list(accountId!), (old: Trade[] = []) => {
+      queryClient.setQueryData(queryKeys.tradesByAccount(accountId!), (old: Trade[] = []) => {
         return [newTrade, ...old];
       });
+      
+      // Also invalidate stats to trigger recalculation
+      queryClient.invalidateQueries({ queryKey: queryKeys.stats(accountId!, {}) });
+      
       toast.success("Trade logged successfully");
     },
     onError: (err) => {
@@ -66,14 +65,14 @@ export const useTrades = (accountId?: string, userId?: string) => {
     // ⚡ OPTIMISTIC UPDATE START
     onMutate: async ({ trade, updates }) => {
       // Cancel any outgoing refetches (so they don't overwrite our optimistic update)
-      await queryClient.cancelQueries({ queryKey: tradeKeys.list(accountId!) });
+      await queryClient.cancelQueries({ queryKey: queryKeys.tradesByAccount(accountId!) });
 
       // Snapshot the previous value
-      const previousTrades = queryClient.getQueryData<Trade[]>(tradeKeys.list(accountId!));
+      const previousTrades = queryClient.getQueryData<Trade[]>(queryKeys.tradesByAccount(accountId!));
 
       // Optimistically update to the new value
       if (previousTrades) {
-        queryClient.setQueryData(tradeKeys.list(accountId!), (old: Trade[] = []) => {
+        queryClient.setQueryData(queryKeys.tradesByAccount(accountId!), (old: Trade[] = []) => {
           return old.map((t) => 
             t.id === trade.id ? { ...t, ...updates } : t
           );
@@ -86,13 +85,13 @@ export const useTrades = (accountId?: string, userId?: string) => {
     // ❌ ERROR: Rollback
     onError: (_err, _newTodo, context) => {
       if (context?.previousTrades) {
-        queryClient.setQueryData(tradeKeys.list(accountId!), context.previousTrades);
+        queryClient.setQueryData(queryKeys.tradesByAccount(accountId!), context.previousTrades);
       }
       toast.error("Failed to update trade");
     },
     // ✅ SETTLED: Sync with server
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: tradeKeys.list(accountId!) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.tradesByAccount(accountId!) });
     },
   });
 
@@ -103,11 +102,11 @@ export const useTrades = (accountId?: string, userId?: string) => {
       return deleteTrade(trade, userId);
     },
     onMutate: async (tradeToDelete) => {
-      await queryClient.cancelQueries({ queryKey: tradeKeys.list(accountId!) });
-      const previousTrades = queryClient.getQueryData<Trade[]>(tradeKeys.list(accountId!));
+      await queryClient.cancelQueries({ queryKey: queryKeys.tradesByAccount(accountId!) });
+      const previousTrades = queryClient.getQueryData<Trade[]>(queryKeys.tradesByAccount(accountId!));
 
       // Optimistically remove
-      queryClient.setQueryData(tradeKeys.list(accountId!), (old: Trade[] = []) => {
+      queryClient.setQueryData(queryKeys.tradesByAccount(accountId!), (old: Trade[] = []) => {
         return old.filter((t) => t.id !== tradeToDelete.id);
       });
 
@@ -115,7 +114,7 @@ export const useTrades = (accountId?: string, userId?: string) => {
     },
     onError: (_err, _variables, context) => {
       if (context?.previousTrades) {
-        queryClient.setQueryData(tradeKeys.list(accountId!), context.previousTrades);
+        queryClient.setQueryData(queryKeys.tradesByAccount(accountId!), context.previousTrades);
       }
       toast.error("Failed to delete trade");
     },
@@ -123,7 +122,7 @@ export const useTrades = (accountId?: string, userId?: string) => {
       toast.success("Trade deleted");
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: tradeKeys.list(accountId!) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.tradesByAccount(accountId!) });
     },
   });
 

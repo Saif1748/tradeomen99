@@ -3,6 +3,7 @@ import { onAuthStateChanged, signOut as firebaseSignOut, User } from "firebase/a
 import { doc, onSnapshot, updateDoc } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 import { toast } from "sonner";
+import { getExchangeRates, convertCurrency, convertToUSD } from "@/services/currencyService"; // ✅ Import Service
 
 // --- Types ---
 export interface UserProfile {
@@ -15,8 +16,11 @@ export interface UserProfile {
   tier?: "FREE" | "PRO" | "PREMIUM";
 }
 
+// 🟢 Updated: Added INR and major global currencies
+export type SupportedCurrency = "USD" | "EUR" | "GBP" | "JPY" | "INR" | "AUD" | "CAD" | "CNY";
+
 export interface TradingPreferences {
-  currency: "USD" | "EUR" | "GBP" | "JPY";
+  currency: SupportedCurrency;
   timezone: string;
   riskLevel: number;
   showWeekends: boolean;
@@ -35,8 +39,13 @@ interface SettingsContextType {
   setTradingPreferences: (prefs: TradingPreferences) => Promise<void>;
   appearance: AppearanceSettings;
   setAppearance: (appearance: AppearanceSettings) => void;
+  
+  // 💰 Currency Converter (Industry Grade)
+  exchangeRate: number; // The current rate (USD -> Preferred)
+  formatCurrency: (usdValue: number) => string; // Display: Database (USD) -> UI (INR)
+  parseToUSD: (localValue: number) => number;   // Save: Input (INR) -> Database (USD)
   getCurrencySymbol: () => string;
-  formatCurrency: (value: number) => string;
+  
   isLoading: boolean;
   logout: () => Promise<void>;
 }
@@ -74,6 +83,10 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
   const [profile, setProfileState] = useState<UserProfile>(defaultProfile);
   const [tradingPreferences, setTradingPreferencesState] = useState<TradingPreferences>(defaultTradingPreferences);
   
+  // 🟢 Currency State
+  const [rates, setRates] = useState<Record<string, number>>({ USD: 1 });
+  const [currentRate, setCurrentRate] = useState<number>(1);
+
   // Appearance (Local Storage)
   const [appearance, setAppearanceState] = useState<AppearanceSettings>(() => {
     if (typeof window === 'undefined') return defaultAppearance;
@@ -98,7 +111,23 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
     return () => unsubscribeAuth();
   }, []);
 
-  // 2. Listen to Firestore Data (Real-time)
+  // 2. Fetch Exchange Rates (Global)
+  useEffect(() => {
+    const initRates = async () => {
+      const fetchedRates = await getExchangeRates();
+      setRates(fetchedRates);
+    };
+    initRates();
+  }, []);
+
+  // 3. Update Current Rate when Preferences or Rates change
+  useEffect(() => {
+    const currency = tradingPreferences.currency;
+    const newRate = rates[currency] || 1;
+    setCurrentRate(newRate);
+  }, [rates, tradingPreferences.currency]);
+
+  // 4. Listen to Firestore Data
   useEffect(() => {
     if (!user) return;
 
@@ -108,11 +137,10 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
 
-        // Safe Name Parsing
         const fullName = data.displayName || "";
         const nameParts = fullName.trim().split(" ");
         const first = nameParts[0] || "";
-        const last = nameParts.slice(1).join(" ") || ""; // Handles "John Von Neumann" correctly
+        const last = nameParts.slice(1).join(" ") || ""; 
 
         const loadedProfile: UserProfile = {
           uid: user.uid,
@@ -153,36 +181,26 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
 
   const setProfile = async (newProfile: UserProfile) => {
     if (!user) return;
-    
-    // 1. Optimistic Update
     setProfileState(newProfile); 
-
     try {
       const userDocRef = doc(db, "users", user.uid);
       await updateDoc(userDocRef, {
         displayName: `${newProfile.firstName} ${newProfile.lastName}`.trim(),
         bio: newProfile.bio,
-        // We don't update email/uid/tier here as those are managed elsewhere
       });
-      // Update successful, sync ref
       prevProfileRef.current = newProfile;
     } catch (error) {
       console.error("Failed to save profile:", error);
       toast.error("Failed to save changes");
-      // 2. Revert on Error
       setProfileState(prevProfileRef.current);
     }
   };
 
   const setTradingPreferences = async (newPrefs: TradingPreferences) => {
     if (!user) return;
-
-    // 1. Optimistic Update
     setTradingPreferencesState(newPrefs);
-
     try {
       const userDocRef = doc(db, "users", user.uid);
-      // 2. Granular Updates (Safer than overwriting the whole object)
       await updateDoc(userDocRef, {
         "settings.currency": newPrefs.currency,
         "settings.preferences.timezone": newPrefs.timezone,
@@ -194,7 +212,6 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
     } catch (error) {
       console.error("Failed to save preferences:", error);
       toast.error("Failed to save preferences");
-      // 3. Revert on Error
       setTradingPreferencesState(prevPrefsRef.current);
     }
   };
@@ -207,7 +224,6 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
   const logout = async () => {
     try {
       await firebaseSignOut(auth);
-      // Clear state immediately to prevent "flash" of old data on next login
       setProfileState(defaultProfile);
       setTradingPreferencesState(defaultTradingPreferences);
       toast.success("Logged out successfully");
@@ -217,7 +233,7 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  // --- Helpers ---
+  // --- 💵 Currency Helpers (The "Industry Grade" Logic) ---
 
   const getCurrencySymbol = () => {
     switch (tradingPreferences.currency) {
@@ -225,20 +241,42 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
       case "EUR": return "€";
       case "GBP": return "£";
       case "JPY": return "¥";
+      case "INR": return "₹";
+      case "AUD": return "A$";
+      case "CAD": return "C$";
+      case "CNY": return "¥";
       default: return "$";
     }
   };
 
-  const formatCurrency = (value: number) => {
-    if (isNaN(value)) return `${getCurrencySymbol()}0.00`;
+  /**
+   * Takes a USD value (from Database), converts it to the User's currency
+   * based on TODAY'S rate, and formats it string.
+   */
+  const formatCurrency = (usdValue: number) => {
+    if (isNaN(usdValue)) return `${getCurrencySymbol()}0.00`;
     
+    // 1. Convert
+    const convertedValue = convertCurrency(usdValue, currentRate);
+    
+    // 2. Format
     const symbol = getCurrencySymbol();
-    const absValue = Math.abs(value);
+    const absValue = Math.abs(convertedValue);
+    
     const formatted = absValue.toLocaleString('en-US', { 
       minimumFractionDigits: 2, 
       maximumFractionDigits: 2 
     });
-    return value >= 0 ? `${symbol}${formatted}` : `-${symbol}${formatted}`;
+    
+    return usdValue >= 0 ? `${symbol}${formatted}` : `-${symbol}${formatted}`;
+  };
+
+  /**
+   * Takes a User Input value (e.g. INR), converts it BACK to USD
+   * so it can be saved in the database consistently.
+   */
+  const parseToUSD = (localValue: number) => {
+    return convertToUSD(localValue, currentRate);
   };
 
   // --- Side Effects (Appearance) ---
@@ -270,7 +308,9 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
         appearance,
         setAppearance,
         getCurrencySymbol,
-        formatCurrency,
+        formatCurrency, // 🟢 Now converts AND formats
+        parseToUSD,     // 🟢 New helper for forms
+        exchangeRate: currentRate, // 🟢 Expose rate if needed by UI
         isLoading,
         logout,
       }}
