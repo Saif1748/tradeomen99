@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { useQueryClient } from "@tanstack/react-query"; // ✅ IMPORTED: Key for instant updates
 import {
   Users,
@@ -122,6 +122,18 @@ export const AccountModal = ({ open, onOpenChange }: AccountModalProps) => {
 
   // --- 5. Handlers (with Cache Invalidation) ---
 
+  // ✅ Helper to force React Query to fetch fresh data immediately
+  const refreshData = async () => {
+    // We invalidate both "accounts" (for the total balance) and "ledger" (for the list)
+    // We await refetchQueries to ensure the UI updates before the user sees the modal close/update
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["accounts"] }),
+      queryClient.invalidateQueries({ queryKey: ["ledger"] }),
+      queryClient.refetchQueries({ queryKey: ["accounts"] }),
+      queryClient.refetchQueries({ queryKey: ["ledger"] })
+    ]);
+  };
+
   const handleDeposit = async (amount: number, note: string) => {
     if (!selectedAccount) return;
     try {
@@ -132,13 +144,10 @@ export const AccountModal = ({ open, onOpenChange }: AccountModalProps) => {
         description: note || "Manual Deposit",
       });
 
-      // 2. ⚡️ INSTANT UPDATE: Invalidate 'accounts' query to fetch new balance
-      // This forces useAccounts to re-run and update the 'accounts' array above
-      await queryClient.invalidateQueries({ queryKey: ["accounts"] });
-      await queryClient.invalidateQueries({ queryKey: ["ledger", selectedAccount.id] });
+      // 2. ⚡️ INSTANT UPDATE: Force refetch
+      await refreshData();
 
       setDepositOpen(false);
-      // toast.success is handled by hook usually, but doubling up is safe or rely on hook
     } catch (error) {
       console.error("Deposit failed", error);
     }
@@ -154,8 +163,7 @@ export const AccountModal = ({ open, onOpenChange }: AccountModalProps) => {
       });
 
       // ⚡️ INSTANT UPDATE
-      await queryClient.invalidateQueries({ queryKey: ["accounts"] });
-      await queryClient.invalidateQueries({ queryKey: ["ledger", selectedAccount.id] });
+      await refreshData();
 
       setWithdrawOpen(false);
     } catch (error) {
@@ -179,7 +187,7 @@ export const AccountModal = ({ open, onOpenChange }: AccountModalProps) => {
       await sendInvitation({ email: inviteEmail, role: "EDITOR" });
       setInviteEmail("");
       setShowInviteInput(false);
-      // Invalidate invites if needed, usually handled by subscription or hook
+      // Invalidate invites
       queryClient.invalidateQueries({ queryKey: ["invitations"] }); 
     } catch (e) { /* Hook handles error */ }
   };
@@ -478,7 +486,6 @@ export const AccountModal = ({ open, onOpenChange }: AccountModalProps) => {
                       )}
 
                       <div className="divide-y divide-border/30">
-                        {/* Current Members */}
                         {membersList.map((member: any, idx) => (
                           <div key={member.id ?? idx} className="p-3 flex items-center gap-3 hover:bg-secondary/10 transition-colors">
                             <Avatar className="h-9 w-9 border border-border/50">
@@ -494,7 +501,6 @@ export const AccountModal = ({ open, onOpenChange }: AccountModalProps) => {
                           </div>
                         ))}
 
-                        {/* Pending Invites */}
                         {outgoingInvites.map((invite: any) => (
                           <div key={invite.id} className="p-3 flex items-center gap-3 bg-yellow-500/5">
                             <div className="h-9 w-9 rounded-full bg-yellow-500/10 flex items-center justify-center border border-yellow-500/20">
@@ -531,20 +537,34 @@ export const AccountModal = ({ open, onOpenChange }: AccountModalProps) => {
                         </div>
                       ) : (
                         transactions.slice(0, 5).map((tx: any) => {
-                          const isDeposit = tx.type === "DEPOSIT";
+                          const type = (tx.type || "").toString().toUpperCase();
+                          const amount = Number(tx.amount || 0);
+                          
+                          // ✅ FIXED LOGIC FOR +/- Signs:
+                          // Income (Positive): Deposit, Profit, or Generic Positive Amount (that isn't a Withdrawal/Loss)
+                          // Expense (Negative): Withdrawal, Loss, Fee, or Generic Negative Amount
+                          
+                          const isExpense = type.includes("WITHDRAW") || type.includes("LOSS") || type.includes("FEE");
+                          // If it's explicitly an expense, it's negative.
+                          // Otherwise, check if it looks like income (DEPOSIT/PROFIT) OR if the amount itself is positive.
+                          const isIncome = !isExpense && (type.includes("DEPOSIT") || type.includes("PROFIT") || amount > 0);
+
+                          // For display, we ensure amount is absolute, and we prepend +/- based on logic above
+                          const displayAmount = Math.abs(amount).toLocaleString("en-US", { style: "currency", currency: selectedAccount.currency || "USD" });
+
                           return (
                             <div key={tx.id} className="flex items-center justify-between p-3 rounded-xl bg-card border border-border/40 hover:border-border transition-colors shadow-sm">
                               <div className="flex items-center gap-3">
-                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isDeposit ? "bg-emerald-500/10 text-emerald-500" : "bg-orange-500/10 text-orange-500"}`}>
-                                  {isDeposit ? <ArrowDown weight="bold" className="w-4 h-4" /> : <ArrowUp weight="bold" className="w-4 h-4" />}
+                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isIncome ? "bg-emerald-500/10 text-emerald-500" : "bg-orange-500/10 text-orange-500"}`}>
+                                  {isIncome ? <ArrowDown weight="bold" className="w-4 h-4" /> : <ArrowUp weight="bold" className="w-4 h-4" />}
                                 </div>
                                 <div>
-                                  <p className="text-sm font-medium text-foreground">{tx.description || (isDeposit ? "Deposit" : "Withdrawal")}</p>
+                                  <p className="text-sm font-medium text-foreground">{tx.description || (isIncome ? "Deposit" : "Withdrawal")}</p>
                                   <p className="text-[11px] text-muted-foreground">{formatDate(tx.date)}</p>
                                 </div>
                               </div>
-                              <span className={`text-sm font-semibold ${isDeposit ? "text-emerald-500" : "text-orange-500"}`}>
-                                {isDeposit ? "+" : "-"}{Number(tx.amount).toLocaleString("en-US", { style: "currency", currency: selectedAccount.currency || "USD" })}
+                              <span className={`text-sm font-semibold ${isIncome ? "text-emerald-500" : "text-orange-500"}`}>
+                                {isIncome ? "+" : "-"}{displayAmount}
                               </span>
                             </div>
                           );
