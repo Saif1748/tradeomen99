@@ -14,7 +14,6 @@ import {
 } from "date-fns";
 
 // Services & Hooks
-import { useDashboard } from "@/components/dashboard/DashboardLayout";
 import { useTrades } from "@/hooks/useTrades";
 import { useJournal } from "@/hooks/useJournal";
 import { useStrategies } from "@/hooks/useStrategies";
@@ -24,14 +23,12 @@ import { useSettings } from "@/contexts/SettingsContext"; // ✅ 1. Import Setti
 import { convertCurrency } from "@/services/currencyService"; // ✅ 2. Import Conversion Service
 
 // Components
-import PageHeader from "@/components/dashboard/PageHeader";
 import CalendarGrid from "@/components/calendar/CalendarGrid";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { DayData, Trade } from "@/lib/calendarData";
 
 const Calendar = () => {
-  const { onMobileMenuOpen } = useDashboard();
   const { activeAccount } = useWorkspace();
   const { profile } = useUser();
   
@@ -192,12 +189,6 @@ const Calendar = () => {
 
   return (
     <>
-      <PageHeader
-        title="Calendar"
-        icon={<CalendarBlank weight="duotone" className="w-6 h-6 text-primary" />}
-        onMobileMenuOpen={onMobileMenuOpen}
-      />
-
       <div className="px-4 sm:px-6 lg:px-8 pb-6 pt-4 space-y-4 sm:space-y-6">
         
         {/* Stats Row */}
@@ -228,7 +219,7 @@ const Calendar = () => {
 
         {/* Calendar Grid Container */}
         <div className="glass-card p-3 sm:p-6 rounded-xl sm:rounded-2xl">
-          {/* Header Controls */}
+          {/* Header Controls (removed PageHeader — Calendar title removed) */}
           <div className="flex items-center justify-between gap-2 mb-4">
              <div className="flex items-center gap-1 sm:gap-3">
                <Button variant="outline" size="icon" onClick={prevMonth} className="h-8 w-8 sm:h-9 sm:w-9">

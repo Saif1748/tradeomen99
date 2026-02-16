@@ -1,5 +1,6 @@
+// src/components/trades/AddTradeModal.tsx
 import React, { useState, useMemo, useCallback, useRef, useEffect } from "react";
-import { Plus, X, Image, Upload, Clipboard, SpinnerGap, Trash, WarningCircle } from "@phosphor-icons/react";
+import { Plus, X, Upload, Clipboard, SpinnerGap, Trash, TrendUp, TrendDown } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -105,7 +106,7 @@ const AddTradeModal: React.FC<AddTradeModalProps> = ({
 
   // --- Form State ---
   const [assetClass, setAssetClass] = useState<AssetClass>("STOCK");
-  const [direction, setDirection] = useState<TradeDirection>("LONG");
+  // REMOVED: const [direction, setDirection] = useState<TradeDirection>("LONG");
   const [symbol, setSymbol] = useState("");
   const [stopLoss, setStopLoss] = useState("");
   const [target, setTarget] = useState("");
@@ -120,12 +121,12 @@ const AddTradeModal: React.FC<AddTradeModalProps> = ({
   // Initialize executions
   const createNewExecution = useCallback((): ExecutionInput => ({
     id: uuidv4(),
-    side: direction === "LONG" ? "BUY" : "SELL",
+    side: "BUY", // Defaults to BUY, user can toggle first row to set direction
     price: "",
     quantity: "",
     datetime: format(new Date(), "yyyy-MM-dd'T'HH:mm"),
     fee: ""
-  }), [direction]);
+  }), []);
 
   const [executions, setExecutions] = useState<ExecutionInput[]>([]);
 
@@ -133,6 +134,13 @@ const AddTradeModal: React.FC<AddTradeModalProps> = ({
   useEffect(() => {
     if (executions.length === 0) setExecutions([createNewExecution()]);
   }, [createNewExecution]);
+
+  // --- Derived Direction Logic ---
+  // The first execution defines the trade direction
+  const derivedDirection: TradeDirection = useMemo(() => {
+    if (executions.length === 0) return "LONG";
+    return executions[0].side === "BUY" ? "LONG" : "SHORT";
+  }, [executions]);
 
   // --- Load Strategies ---
   useEffect(() => {
@@ -145,23 +153,11 @@ const AddTradeModal: React.FC<AddTradeModalProps> = ({
     }
   }, [accountId, open]);
 
-  // --- Auto-Sync Side with Direction ---
-  useEffect(() => {
-    // Only update empty executions to be helpful, don't overwrite user data
-    setExecutions(prev => prev.map(e => {
-      // If user hasn't typed price/qty yet, flip the side to match direction
-      if (!e.price && !e.quantity) {
-        return { ...e, side: direction === "LONG" ? "BUY" : "SELL" };
-      }
-      return e;
-    }));
-  }, [direction]);
-
   // --- Reset Form ---
   const resetForm = useCallback(() => {
     setActiveTab("trade");
     setAssetClass("STOCK");
-    setDirection("LONG");
+    // setDirection("LONG"); // Removed
     setSymbol("");
     setStopLoss("");
     setTarget("");
@@ -183,15 +179,18 @@ const AddTradeModal: React.FC<AddTradeModalProps> = ({
 
   // --- Handlers ---
   const addExecution = useCallback(() => {
+    // Default new row side to match the FIRST execution (Entry side)
+    const defaultSide = executions.length > 0 ? executions[0].side : "BUY";
+    
     setExecutions(prev => [...prev, {
       id: uuidv4(),
-      side: direction === "LONG" ? "BUY" : "SELL",
+      side: defaultSide,
       price: "",
       quantity: "",
       datetime: format(new Date(), "yyyy-MM-dd'T'HH:mm"),
       fee: ""
     }]);
-  }, [direction]);
+  }, [executions]);
   
   const removeExecution = useCallback((id: string) => {
     setExecutions(prev => prev.length > 1 ? prev.filter((e) => e.id !== id) : prev);
@@ -276,14 +275,12 @@ const AddTradeModal: React.FC<AddTradeModalProps> = ({
     }
 
     if (foundImage) {
-      // Create a FileList-like object
       const dt = new DataTransfer();
       files.forEach(f => dt.items.add(f));
       handleFileUpload(dt.files);
     }
   }, [handleFileUpload]);
 
-  // Cleanup memory
   useEffect(() => {
     return () => {
       pendingImages.forEach(img => URL.revokeObjectURL(img.previewUrl));
@@ -319,15 +316,13 @@ const AddTradeModal: React.FC<AddTradeModalProps> = ({
     setIsSubmitting(true);
 
     try {
-      // 1. Upload Images concurrently
       const uploadPromises = pendingImages.map(img => 
         uploadTradeImage(userId, img.file)
       );
       
       const uploadedUrls = await Promise.all(uploadPromises);
 
-      // 2. Format Executions
-      // Sort by date to ensure entryDate is correct
+      // Sort executions by date
       const formattedExecutions = executions
         .filter(e => e.price && e.quantity && e.datetime)
         .map(e => ({
@@ -342,11 +337,10 @@ const AddTradeModal: React.FC<AddTradeModalProps> = ({
 
       if (formattedExecutions.length === 0) throw new Error("No valid executions found.");
 
-      // 3. Create Payload
       const payload: TradeSubmissionPayload = {
         symbol: symbol.toUpperCase().trim(),
         assetClass,
-        direction,
+        direction: derivedDirection, // 🟢 Uses derived direction
         initialStopLoss: safeFloat(stopLoss),
         takeProfitTarget: safeFloat(target),
         strategyId: selectedStrategyId || null,
@@ -354,7 +348,7 @@ const AddTradeModal: React.FC<AddTradeModalProps> = ({
         notes: notes.trim(),
         screenshots: uploadedUrls,
         executions: formattedExecutions,
-        entryDate: formattedExecutions[0].date // Earliest execution
+        entryDate: formattedExecutions[0].date
       };
 
       await onSubmit(payload);
@@ -387,6 +381,16 @@ const AddTradeModal: React.FC<AddTradeModalProps> = ({
               Log Trade
               {isSubmitting && <SpinnerGap className="animate-spin text-muted-foreground w-4 h-4" />}
             </h2>
+            {/* Display Inferred Direction */}
+            <Badge variant="outline" className={`
+                text-xs font-bold px-2 py-0.5 border-transparent
+                ${derivedDirection === "LONG" 
+                    ? "bg-emerald-500/10 text-emerald-500" 
+                    : "bg-rose-500/10 text-rose-500"}
+            `}>
+                {derivedDirection === "LONG" ? <TrendUp className="w-3.5 h-3.5 mr-1" /> : <TrendDown className="w-3.5 h-3.5 mr-1" />}
+                {derivedDirection}
+            </Badge>
           </div>
           
           <div className="flex gap-1 p-1 bg-secondary/30 rounded-xl w-fit border border-white/5">
@@ -430,7 +434,7 @@ const AddTradeModal: React.FC<AddTradeModalProps> = ({
                 className="p-6 pt-6 space-y-7"
               >
                 <div className="grid grid-cols-2 gap-5">
-                  <div className="col-span-2 sm:col-span-1 space-y-2">
+                  <div className="col-span-1 space-y-2">
                     <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Symbol</Label>
                     <Input
                       placeholder="e.g. AAPL"
@@ -441,7 +445,7 @@ const AddTradeModal: React.FC<AddTradeModalProps> = ({
                     />
                   </div>
 
-                  <div className="col-span-2 sm:col-span-1 space-y-2">
+                  <div className="col-span-1 space-y-2">
                     <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Asset Class</Label>
                     <Select value={assetClass} onValueChange={(v) => setAssetClass(v as AssetClass)}>
                       <SelectTrigger className="h-11 bg-secondary/20 border-border/40">
@@ -455,26 +459,7 @@ const AddTradeModal: React.FC<AddTradeModalProps> = ({
                     </Select>
                   </div>
 
-                  <div className="col-span-2 space-y-2">
-                    <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Direction</Label>
-                    <div className="flex gap-3">
-                      {(["LONG", "SHORT"] as const).map((dir) => (
-                        <button
-                          key={dir}
-                          onClick={() => setDirection(dir)}
-                          className={`flex-1 py-2.5 rounded-xl text-sm font-bold border transition-all ${
-                            direction === dir 
-                              ? (dir === "LONG" 
-                                ? "bg-emerald-500/10 border-emerald-500/50 text-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.1)]" 
-                                : "bg-rose-500/10 border-rose-500/50 text-rose-500 shadow-[0_0_15px_rgba(244,63,94,0.1)]")
-                              : "bg-secondary/20 border-transparent text-muted-foreground hover:bg-secondary/40"
-                          }`}
-                        >
-                          {dir}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                  {/* REMOVED MANUAL DIRECTION SELECTOR */}
 
                   <div className="space-y-2">
                     <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Take Profit</Label>
@@ -706,7 +691,6 @@ const AddTradeModal: React.FC<AddTradeModalProps> = ({
                   </div>
                 </div>
 
-                {/* Paste Hint */}
                 <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground opacity-70">
                   <Clipboard className="w-3.5 h-3.5" />
                   <span>Pro tip: Paste screenshots directly (Cmd/Ctrl+V)</span>

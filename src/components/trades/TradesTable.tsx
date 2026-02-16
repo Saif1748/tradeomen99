@@ -1,25 +1,16 @@
-import { useState, useMemo, useEffect } from "react";
-import { CaretUp, CaretDown, ChartLineUp } from "@phosphor-icons/react";
+import { useEffect, useState, useMemo } from "react";
+import { CaretUp, CaretDown, TrendUp, TrendDown } from "@phosphor-icons/react";
 import { format } from "date-fns";
-import { Trade } from "@/types/trade";
+import { Trade, computeTradeData } from "@/lib/tradesData";
 import { Badge } from "@/components/ui/badge";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Pagination,
-  PaginationContent,
-  PaginationEllipsis,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
+  Pagination, PaginationContent, PaginationEllipsis,
+  PaginationItem, PaginationLink, PaginationNext, PaginationPrevious,
 } from "@/components/ui/pagination";
+
+// ✅ Import Currency Services & Context
+import { getExchangeRates, convertCurrency, ExchangeRates } from "@/services/currencyService";
+import { useSettings } from "@/contexts/SettingsContext";
 
 interface TradesTableProps {
   trades: Trade[];
@@ -27,47 +18,52 @@ interface TradesTableProps {
   sortField: string;
   sortDirection: "asc" | "desc";
   onSort: (field: string) => void;
+  isLoading?: boolean; // Added optional prop for consistency
 }
 
 const ITEMS_PER_PAGE = 30;
 
-const TradesTable = ({
-  trades,
-  onTradeClick,
-  sortField,
-  sortDirection,
-  onSort,
-}: TradesTableProps) => {
+const TradesTable = ({ trades, onTradeClick, sortField, sortDirection, onSort }: TradesTableProps) => {
   const [currentPage, setCurrentPage] = useState(1);
+  
+  // ✅ 1. Currency State
+  const { tradingPreferences } = useSettings();
+  const [rates, setRates] = useState<ExchangeRates>({});
+  const targetCurrency = tradingPreferences.currency || "USD";
 
-  // Reset to page 1 if data length changes (filtering)
+  // ✅ 2. Fetch Rates on Mount
+  useEffect(() => {
+    const fetchRates = async () => {
+      const data = await getExchangeRates();
+      setRates(data);
+    };
+    fetchRates();
+  }, []);
+
+  // ✅ 3. Helper: Convert & Format Currency
+  const formatMoney = (amount: number) => {
+    const rate = rates[targetCurrency] || 1;
+    // If base data is USD, we multiply by rate. 
+    // If base data matches account currency, this logic might need adjustment based on your backend storage.
+    // Assuming stored values are standardized or base USD for this display:
+    const converted = convertCurrency(amount, rate);
+    
+    return converted.toLocaleString("en-US", { 
+      style: 'currency', 
+      currency: targetCurrency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2 
+    });
+  };
+
+  const totalPages = Math.max(1, Math.ceil(trades.length / ITEMS_PER_PAGE));
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const paginatedTrades = trades.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+
+  // Reset page when data or sort changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [trades.length]);
-
-  // Memoize pagination to prevent lag on re-renders
-  const { paginatedTrades, totalPages } = useMemo(() => {
-    const total = Math.ceil(trades.length / ITEMS_PER_PAGE);
-    const start = (currentPage - 1) * ITEMS_PER_PAGE;
-    const paginated = trades.slice(start, start + ITEMS_PER_PAGE);
-    return { paginatedTrades: paginated, totalPages: total };
-  }, [trades, currentPage]);
-
-  const SortIcon = ({ field }: { field: string }) => {
-    if (sortField !== field) {
-      return (
-        <span className="ml-1 inline-flex flex-col opacity-20 hover:opacity-50 transition-opacity">
-          <CaretUp weight="bold" className="w-2 h-2 -mb-0.5" />
-          <CaretDown weight="bold" className="w-2 h-2 -mt-0.5" />
-        </span>
-      );
-    }
-    return sortDirection === "asc" ? (
-      <CaretUp weight="bold" className="w-3 h-3 ml-1 inline text-primary" />
-    ) : (
-      <CaretDown weight="bold" className="w-3 h-3 ml-1 inline text-primary" />
-    );
-  };
+  }, [trades.length, sortField, sortDirection]);
 
   const getPageNumbers = () => {
     const pages: (number | "ellipsis")[] = [];
@@ -76,263 +72,321 @@ const TradesTable = ({
     } else {
       pages.push(1);
       if (currentPage > 3) pages.push("ellipsis");
-      for (let i = Math.max(2, currentPage - 1); i <= Math.min(totalPages - 1, currentPage + 1); i++) {
-        pages.push(i);
-      }
+      for (let i = Math.max(2, currentPage - 1); i <= Math.min(totalPages - 1, currentPage + 1); i++) pages.push(i);
       if (currentPage < totalPages - 2) pages.push("ellipsis");
       pages.push(totalPages);
     }
     return pages;
   };
 
-  // Helper to safely format dates
-  const formatDate = (dateInput: any) => {
-    if (!dateInput) return <span className="text-muted-foreground/30">-</span>;
-    try {
-      const date = typeof dateInput.toDate === 'function' 
-        ? dateInput.toDate() 
-        : new Date(dateInput);
-      return format(date, "MMM d, yyyy");
-    } catch (e) {
-      return <span className="text-rose-500 text-xs">Error</span>;
+  const gridLayout = "grid-cols-[minmax(90px,1fr)_minmax(120px,1.5fr)_minmax(90px,1fr)_minmax(80px,0.8fr)_minmax(80px,1fr)_minmax(100px,1.2fr)_minmax(100px,1.2fr)_minmax(70px,0.8fr)_minmax(110px,1.2fr)_minmax(90px,1fr)]";
+
+  const columns = [
+    { key: "entryDate", label: "Date", sortable: true, align: "justify-start text-left" },
+    { key: "symbol", label: "Symbol", sortable: true, align: "justify-start text-left" },
+    { key: "status", label: "Status", sortable: true, align: "justify-start text-left" },
+    { key: "direction", label: "Side", sortable: true, align: "justify-start text-left" },
+    { key: "netQuantity", label: "Qty", sortable: true, align: "justify-end text-right" },
+    { key: "avgEntryPrice", label: "Avg Entry", sortable: true, align: "justify-end text-right" },
+    { key: "avgExitPrice", label: "Avg Exit", sortable: true, align: "justify-end text-right" },
+    { key: "durationSeconds", label: "Hold", sortable: true, align: "justify-center text-center" },
+    { key: "netPnl", label: "Return", sortable: true, align: "justify-end text-right" },
+    { key: "returnPercent", label: "Return %", sortable: true, align: "justify-end text-right" },
+  ];
+
+  const SortIcon = ({ field }: { field: string }) => {
+    if (sortField !== field) {
+      return (
+        <span className="ml-1.5 inline-flex flex-col opacity-20 hover:opacity-50 transition-opacity">
+          <CaretUp weight="bold" className="w-2 h-2 -mb-0.5" />
+          <CaretDown weight="bold" className="w-2 h-2 -mt-0.5" />
+        </span>
+      );
     }
+    return sortDirection === "asc" ? (
+      <CaretUp weight="bold" className="w-3 h-3 ml-1.5 inline text-primary animate-in fade-in zoom-in duration-200" />
+    ) : (
+      <CaretDown weight="bold" className="w-3 h-3 ml-1.5 inline text-primary animate-in fade-in zoom-in duration-200" />
+    );
   };
 
-  // --- Render ---
-
-  if (trades.length === 0) {
-    return (
-      <div className="glass-card rounded-2xl p-12 flex flex-col items-center justify-center text-center border border-dashed border-border/60">
-        <div className="w-12 h-12 bg-secondary/50 rounded-full flex items-center justify-center mb-3 text-muted-foreground">
-          <ChartLineUp size={24} weight="duotone" />
-        </div>
-        <h3 className="text-lg font-medium text-foreground">No trades found</h3>
-        <p className="text-sm text-muted-foreground mt-1 max-w-xs">
-          Try adjusting your filters or add a new trade to get started.
-        </p>
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-4 animate-in fade-in duration-500">
-      {/* Desktop Table View */}
-      <div className="glass-card rounded-2xl overflow-hidden hidden lg:block border border-border/40 shadow-sm">
-        <Table>
-          <TableHeader className="bg-secondary/30">
-            <TableRow className="border-border/50 hover:bg-transparent">
-              <TableHead className="cursor-pointer h-11" onClick={() => onSort("entryDate")}>
-                Date <SortIcon field="entryDate" />
-              </TableHead>
-              <TableHead className="cursor-pointer h-11" onClick={() => onSort("symbol")}>
-                Symbol <SortIcon field="symbol" />
-              </TableHead>
-              <TableHead className="cursor-pointer h-11" onClick={() => onSort("assetClass")}>
-                Type <SortIcon field="assetClass" />
-              </TableHead>
-              <TableHead className="cursor-pointer h-11" onClick={() => onSort("direction")}>
-                Side <SortIcon field="direction" />
-              </TableHead>
-              <TableHead className="text-right cursor-pointer h-11" onClick={() => onSort("pnl")}>
-                P/L <SortIcon field="pnl" />
-              </TableHead>
-              <TableHead className="text-right cursor-pointer h-11" onClick={() => onSort("riskMultiple")}>
-                R-Multiple <SortIcon field="riskMultiple" />
-              </TableHead>
-              <TableHead className="h-11">Tags</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {paginatedTrades.map((trade) => {
-              const pnl = trade.netPnl || 0;
-              const rMultiple = trade.riskMultiple || 0;
+    <div className="space-y-4 w-full h-full flex flex-col">
+      {/* Desktop Table */}
+      <div className="hidden lg:flex flex-col w-full h-full">
+        <div className="flex-1 w-full overflow-x-auto custom-scrollbar pb-4">
+          <div className="min-w-[1000px] space-y-2">
+            {/* Header Row */}
+            <div className="bg-card/40 border border-border/60 rounded-xl px-5 py-3.5 backdrop-blur-md sticky top-0 z-10 shadow-sm">
+              <div className={`grid ${gridLayout} gap-4 items-center`}>
+                {columns.map((col) => (
+                  <div
+                    key={col.key}
+                    className={`flex items-center text-[11px] font-bold text-muted-foreground uppercase tracking-widest ${col.align} ${
+                      col.sortable ? "cursor-pointer select-none hover:text-foreground transition-colors group" : "cursor-default"
+                    }`}
+                    onClick={() => col.sortable && onSort(col.key)}
+                  >
+                    {col.label}
+                    {col.sortable && <SortIcon field={col.key} />}
+                  </div>
+                ))}
+              </div>
+            </div>
 
-              return (
-                <TableRow
-                  key={trade.id}
-                  className="border-border/50 cursor-pointer hover:bg-secondary/40 transition-colors group h-14"
-                  onClick={() => onTradeClick(trade)}
-                >
-                  <TableCell className="text-muted-foreground font-mono text-xs">
-                    {formatDate(trade.entryDate)}
-                  </TableCell>
-                  <TableCell className="font-semibold text-foreground">
-                    {trade.symbol}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="secondary" className="text-[10px] font-normal opacity-70 bg-secondary/50">
-                      {trade.assetClass}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant="outline"
-                      className={`text-[10px] uppercase tracking-wide border px-2 py-0.5 ${
-                        trade.direction === "LONG"
-                          ? "border-emerald-500/20 bg-emerald-500/5 text-emerald-600 dark:text-emerald-400"
-                          : "border-rose-500/20 bg-rose-500/5 text-rose-600 dark:text-rose-400"
-                      }`}
-                    >
-                      {trade.direction}
-                    </Badge>
-                  </TableCell>
-                  <TableCell
-                    className={`text-right font-medium font-mono tabular-nums ${
-                      pnl > 0 ? "text-emerald-600 dark:text-emerald-400" 
-                      : pnl < 0 ? "text-rose-600 dark:text-rose-400" 
-                      : "text-muted-foreground"
-                    }`}
+            {/* Trade Rows */}
+            <div className="space-y-1.5">
+              {paginatedTrades.map((trade) => {
+                const c = computeTradeData(trade);
+                const isWin = (c.pnl ?? 0) > 0;
+                const isLoss = (c.pnl ?? 0) < 0;
+
+                // Robust entry date: accept either field name
+                const entryDate: Date | null | undefined = (c as any).firstExecutionDate ?? (c as any).entryDate ?? null;
+                const entryDateDisplay = entryDate ? format(entryDate, "MMM d") : "—";
+
+                // Safe instrument label
+                const instr = (c.instrumentType || "").toString();
+                const instrShort = instr ? instr.substring(0, 3) : "";
+
+                const totalQty = Number(c.totalQuantity || 0);
+                const avgEntry = Number(c.avgEntryPrice || 0);
+                const entryTotal = avgEntry * totalQty;
+                const returnPct = entryTotal > 0 ? ((Number(c.pnl || 0) / entryTotal) * 100) : 0;
+
+                return (
+                  <div
+                    key={trade.id}
+                    className="bg-card border border-border/40 rounded-xl px-5 py-3 cursor-pointer hover:bg-secondary/40 hover:border-border/80 hover:shadow-sm transition-all duration-200 group active:scale-[0.998]"
+                    onClick={() => onTradeClick(trade)}
                   >
-                    {pnl > 0 ? "+" : ""}{pnl.toLocaleString("en-US", { style: "currency", currency: "USD" })}
-                  </TableCell>
-                  <TableCell
-                    className={`text-right font-medium text-sm tabular-nums ${
-                      rMultiple > 0 ? "text-emerald-600 dark:text-emerald-400" 
-                      : rMultiple < 0 ? "text-rose-600 dark:text-rose-400" 
-                      : "text-muted-foreground/50"
-                    }`}
-                  >
-                    {rMultiple !== 0 ? `${rMultiple > 0 ? "+" : ""}${rMultiple.toFixed(2)}R` : "-"}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex flex-wrap gap-1">
-                      {trade.tags?.slice(0, 2).map((tag, index) => (
-                        <Badge
-                          key={index}
-                          variant="outline"
-                          className="border-border bg-background/50 text-[10px] text-muted-foreground group-hover:border-primary/20 transition-colors font-normal"
-                        >
-                          {tag}
-                        </Badge>
-                      ))}
-                      {(trade.tags?.length || 0) > 2 && (
-                        <span className="text-[10px] text-muted-foreground self-center ml-1">
-                          +{trade.tags!.length - 2}
+                    <div className={`grid ${gridLayout} gap-4 items-center`}>
+                      {/* Date */}
+                      <span className="text-sm text-muted-foreground tabular-nums font-medium">
+                        {entryDateDisplay}
+                      </span>
+
+                      {/* Symbol */}
+                      <div className="flex items-center gap-2.5 overflow-hidden">
+                        <span className="text-sm font-bold text-foreground truncate">
+                          {trade.symbol}
                         </span>
-                      )}
+                        <Badge variant="secondary" className="px-1.5 h-5 text-[9px] font-bold bg-secondary/80 text-muted-foreground border-transparent uppercase tracking-wider hidden xl:inline-flex">
+                          {instrShort}
+                        </Badge>
+                      </div>
+
+                      {/* Status */}
+                      {(() => {
+                        const status = ((c.status || "") as string).toString().toUpperCase();
+                        const dotClass =
+                          status === "OPEN" ? "bg-blue-500 shadow-blue-500/40" :
+                          isWin ? "bg-emerald-500 shadow-emerald-500/40" :
+                          isLoss ? "bg-rose-500 shadow-rose-500/40" :
+                          "bg-muted-foreground";
+
+                        const textClass =
+                          status === "OPEN" ? "text-blue-500" :
+                          isWin ? "text-emerald-500" :
+                          isLoss ? "text-rose-500" :
+                          "text-muted-foreground";
+
+                        return (
+                          <div className="flex items-center gap-2">
+                            <div className={`w-1.5 h-1.5 rounded-full shadow-sm ${dotClass}`} />
+                            <span className={`text-[11px] font-bold uppercase tracking-wide ${textClass}`}>
+                              {status}
+                            </span>
+                          </div>
+                        );
+                      })()}
+
+                      {/* Side */}
+                      <div>
+                        {((c.direction || "") as string).toUpperCase() === "LONG" ? (
+                          <div className="flex items-center gap-1.5 text-emerald-500 bg-emerald-500/5 px-2 py-0.5 rounded-md w-fit border border-emerald-500/10">
+                             <TrendUp weight="bold" className="w-3.5 h-3.5" />
+                             <span className="text-[10px] font-bold">LONG</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1.5 text-rose-500 bg-rose-500/5 px-2 py-0.5 rounded-md w-fit border border-rose-500/10">
+                             <TrendDown weight="bold" className="w-3.5 h-3.5" />
+                             <span className="text-[10px] font-bold">SHORT</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Qty */}
+                      <span className="text-sm text-foreground/70 tabular-nums font-medium text-right">
+                        {totalQty.toLocaleString()}
+                      </span>
+
+                      {/* Avg Entry (Converted) */}
+                      <span className="text-sm text-muted-foreground tabular-nums text-right">
+                        {formatMoney(avgEntry)}
+                      </span>
+
+                      {/* Avg Exit (Converted) */}
+                      <span className="text-sm text-muted-foreground tabular-nums text-right">
+                        {Number(c.avgExitPrice || 0) > 0
+                          ? formatMoney(Number(c.avgExitPrice))
+                          : <span className="text-muted-foreground/30">—</span>}
+                      </span>
+
+                      {/* Hold Time */}
+                      <div className="flex justify-center">
+                        {c.holdTime && c.holdTime !== "-" ? (
+                          <span className="inline-flex items-center justify-center px-2.5 py-0.5 rounded-md text-[10px] font-semibold bg-secondary/50 text-foreground/70 border border-border/30 min-w-[50px]">
+                            {c.holdTime}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground/30 text-xs">—</span>
+                        )}
+                      </div>
+
+                      {/* Return ($) (Converted) */}
+                      <span
+                        className={`text-sm font-bold tabular-nums text-right ${
+                          isWin ? "text-emerald-500" : isLoss ? "text-rose-500" : "text-muted-foreground"
+                        }`}
+                      >
+                        {Number(c.pnl) > 0 ? "+" : ""}{formatMoney(Number(c.pnl || 0))}
+                      </span>
+
+                      {/* Return % */}
+                      <div className="flex justify-end">
+                        <span
+                          className={`text-[11px] font-bold tabular-nums px-2 py-0.5 rounded-md min-w-[64px] text-center border ${
+                            isWin 
+                              ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" 
+                              : isLoss 
+                              ? "bg-rose-500/10 text-rose-500 border-rose-500/20" 
+                              : "bg-secondary/50 text-muted-foreground border-border/50"
+                          }`}
+                        >
+                          {returnPct > 0 ? "+" : ""}{returnPct.toFixed(2)}%
+                        </span>
+                      </div>
+
                     </div>
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* Mobile/Tablet Card View */}
+      {/* Mobile Card View */}
       <div className="lg:hidden space-y-3">
         {paginatedTrades.map((trade) => {
-          const pnl = trade.netPnl || 0;
-          const rMultiple = trade.riskMultiple || 0;
+          const c = computeTradeData(trade);
+          const isWin = (c.pnl ?? 0) > 0;
+          const isLoss = (c.pnl ?? 0) < 0;
+          const entryDate: Date | null | undefined = (c as any).firstExecutionDate ?? (c as any).entryDate ?? null;
+          const entryDateDisplay = entryDate ? format(entryDate, "MMM d") : "—";
 
           return (
             <div
               key={trade.id}
               onClick={() => onTradeClick(trade)}
-              className="glass-card p-4 rounded-xl cursor-pointer active:scale-[0.99] transition-transform border border-border/40"
+              className="glass-card bg-card border border-border/50 px-4 py-3.5 rounded-xl cursor-pointer active:scale-[0.98] transition-transform"
             >
-              {/* Row 1: Symbol + PnL */}
               <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <span className="font-bold text-base text-foreground">{trade.symbol}</span>
+                <div className="flex items-center gap-2.5">
+                  <span className="font-bold text-foreground text-base">{trade.symbol}</span>
                   <Badge
                     variant="outline"
-                    className={`text-[10px] px-1.5 py-0 h-5 ${
-                      trade.direction === "LONG"
-                        ? "border-emerald-500/30 text-emerald-600 bg-emerald-500/5"
-                        : "border-rose-500/30 text-rose-600 bg-rose-500/5"
+                    className={`text-[9px] px-1.5 py-0 h-4 font-bold border-0 uppercase tracking-wide ${
+                      ((c.status || "") as string).toString().toUpperCase() === "OPEN"
+                        ? "bg-blue-500/10 text-blue-500"
+                        : isWin
+                        ? "bg-emerald-500/10 text-emerald-500"
+                        : isLoss
+                        ? "bg-rose-500/10 text-rose-500"
+                        : "bg-muted/50 text-muted-foreground"
                     }`}
                   >
-                    {trade.direction}
+                    {((c.status || "") as string).toString().toUpperCase()}
                   </Badge>
                 </div>
+                {/* Converted Mobile PnL */}
                 <span
-                  className={`font-bold text-base tabular-nums ${
-                    pnl > 0 ? "text-emerald-600 dark:text-emerald-400" 
-                    : pnl < 0 ? "text-rose-600 dark:text-rose-400" 
-                    : "text-muted-foreground"
-                  }`}
+                  className={`text-base font-bold tabular-nums ${isWin ? "text-emerald-500" : isLoss ? "text-rose-500" : "text-muted-foreground"}`}
                 >
-                  {pnl > 0 ? "+" : ""}{Math.abs(pnl).toLocaleString("en-US", { style: "currency", currency: "USD" })}
+                  {Number(c.pnl) > 0 ? "+" : ""}{formatMoney(Number(c.pnl || 0))}
                 </span>
               </div>
-
-              {/* Row 2: Grid Stats */}
-              <div className="grid grid-cols-3 gap-2 text-xs text-muted-foreground border-t border-border/30 pt-3">
-                <div className="flex flex-col gap-0.5">
-                   <span className="opacity-70">Date</span>
-                   <span className="text-foreground font-medium">{formatDate(trade.entryDate)}</span>
-                </div>
-                <div className="flex flex-col gap-0.5 text-center border-l border-r border-border/30 px-2">
-                   <span className="opacity-70">Type</span>
-                   <span className="text-foreground font-medium">{trade.assetClass}</span>
-                </div>
-                <div className="flex flex-col gap-0.5 text-right">
-                   <span className="opacity-70">R-Multiple</span>
-                   <span className={`font-medium ${
-                      rMultiple > 0 ? "text-emerald-600 dark:text-emerald-400" 
-                      : rMultiple < 0 ? "text-rose-600 dark:text-rose-400" 
-                      : "text-foreground"
-                   }`}>
-                     {rMultiple !== 0 ? `${rMultiple > 0 ? "+" : ""}${rMultiple.toFixed(2)}R` : "-"}
-                   </span>
-                </div>
+              
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                 <div className="flex items-center gap-2">
+                    <span className="font-medium text-foreground/80">{entryDateDisplay}</span>
+                    <span className="text-border/60">•</span>
+                    <span className={((c.direction || "") as string).toString().toUpperCase() === "LONG" ? "text-emerald-500 font-bold" : "text-rose-500 font-bold"}>
+                        {((c.direction || "") as string).toString().toUpperCase()}
+                    </span>
+                    <span className="text-border/60">•</span>
+                    <span>{Number(c.totalQuantity || 0).toLocaleString()} Qty</span>
+                 </div>
+                 <div className={`font-bold tabular-nums ${isWin ? "text-emerald-500" : isLoss ? "text-rose-500" : ""}`}>
+                    {Number(c.rMultiple || 0) > 0 ? "+" : ""}{Number(c.rMultiple || 0).toFixed(2)}R
+                 </div>
               </div>
             </div>
           );
         })}
       </div>
 
-      {/* Pagination Controls */}
+      {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2 border-t border-border/30">
           <p className="text-xs text-muted-foreground order-2 sm:order-1">
-            Showing <span className="font-medium text-foreground">{((currentPage - 1) * ITEMS_PER_PAGE) + 1}</span> to <span className="font-medium text-foreground">{Math.min(currentPage * ITEMS_PER_PAGE, trades.length)}</span> of {trades.length} trades
+            Showing <span className="font-medium text-foreground">{startIndex + 1}-{Math.min(startIndex + ITEMS_PER_PAGE, trades.length)}</span> of {trades.length}
           </p>
-          
-          <Pagination className="order-1 sm:order-2 w-auto mx-0">
-            <PaginationContent>
-              <PaginationItem>
-                <PaginationPrevious
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  className={`h-9 w-9 p-0 hover:bg-secondary ${currentPage === 1 ? "pointer-events-none opacity-40" : "cursor-pointer"}`}
-                />
-              </PaginationItem>
-              
-              <div className="hidden sm:flex items-center gap-1">
-                {getPageNumbers().map((page, i) =>
-                  page === "ellipsis" ? (
-                    <PaginationItem key={`ell-${i}`}><PaginationEllipsis /></PaginationItem>
-                  ) : (
-                    <PaginationItem key={page}>
-                      <PaginationLink
-                        onClick={() => setCurrentPage(page)}
-                        isActive={currentPage === page}
-                        className={`h-9 w-9 cursor-pointer transition-all border-transparent ${
+          <div className="order-1 sm:order-2">
+            <Pagination>
+              <PaginationContent className="gap-1">
+                <PaginationItem>
+                  <PaginationPrevious
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    className={`h-8 w-8 p-0 rounded-lg ${currentPage === 1 ? "pointer-events-none opacity-30" : "cursor-pointer hover:bg-secondary"}`}
+                  />
+                </PaginationItem>
+                <div className="hidden sm:flex gap-1">
+                  {getPageNumbers().map((page, index) =>
+                    page === "ellipsis" ? (
+                      <PaginationItem key={`ellipsis-${index}`}>
+                        <PaginationEllipsis />
+                      </PaginationItem>
+                    ) : (
+                      <PaginationItem key={page}>
+                        <PaginationLink
+                          onClick={() => setCurrentPage(page)}
+                          isActive={currentPage === page}
+                          className={`cursor-pointer h-8 w-8 text-xs font-medium rounded-lg transition-all ${
                             currentPage === page 
-                            ? "bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm font-bold" 
-                            : "hover:bg-secondary text-muted-foreground hover:text-foreground"
-                        }`}
-                      >
-                        {page}
-                      </PaginationLink>
-                    </PaginationItem>
-                  )
-                )}
-              </div>
-              
-              <span className="sm:hidden text-sm font-medium px-4">
-                Page {currentPage} of {totalPages}
-              </span>
-
-              <PaginationItem>
-                <PaginationNext
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  className={`h-9 w-9 p-0 hover:bg-secondary ${currentPage === totalPages ? "pointer-events-none opacity-40" : "cursor-pointer"}`}
-                />
-              </PaginationItem>
-            </PaginationContent>
-          </Pagination>
+                              ? "bg-primary text-primary-foreground shadow-sm" 
+                              : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+                          }`}
+                        >
+                          {page}
+                        </PaginationLink>
+                      </PaginationItem>
+                    )
+                  )}
+                </div>
+                <span className="sm:hidden text-xs text-muted-foreground px-2 font-medium">
+                  {currentPage} / {totalPages}
+                </span>
+                <PaginationItem>
+                  <PaginationNext
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    className={`h-8 w-8 p-0 rounded-lg ${currentPage === totalPages ? "pointer-events-none opacity-30" : "cursor-pointer hover:bg-secondary"}`}
+                  />
+                </PaginationItem>
+              </PaginationContent>
+            </Pagination>
+          </div>
         </div>
       )}
     </div>

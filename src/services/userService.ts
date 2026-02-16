@@ -14,6 +14,7 @@ import {
 import { db } from "@/lib/firebase";
 import { UserDocument, UserStatus, UserPreferences } from "@/types/user";
 import { User } from "firebase/auth";
+import { uploadAvatarFromUrl } from "./storageService"; 
 
 // --- 📊 AUDIT LOGGING ---
 
@@ -71,6 +72,7 @@ export const subscribeToUser = (
  * 🔄 Syncs Firebase Auth -> Firestore DB.
  * - Handles New User Creation (Provisioning)
  * - Handles Returning User Updates (Last Login, Verification Status)
+ * - 🔥 FIX: Normalizes Avatars for EXISTING accounts (Google -> Storage)
  */
 export const syncUserWithFirestore = async (authUser: User): Promise<UserDocument> => {
   if (!authUser?.uid) throw new Error("Invalid User object provided to sync.");
@@ -82,19 +84,43 @@ export const syncUserWithFirestore = async (authUser: User): Promise<UserDocumen
   // Determine status (Google Sign-In usually verifies email instantly)
   const currentStatus: UserStatus = authUser.emailVerified ? "ACTIVE" : "PENDING";
 
+  // --- 🛡️ AVATAR NORMALIZATION LOGIC ---
+  // Check if we need to migrate the user's avatar to our own storage
+  
+  const isInternalUrl = (url: string | null) => url?.includes("firebasestorage.googleapis.com");
+  
+  let finalPhotoURL = authUser.photoURL;
+  const existingPhotoURL = userSnap.exists() ? userSnap.data().photoURL : null;
+
+  // 1. If DB already has a stable internal URL, keep it (don't overwrite with Google's temp URL)
+  if (existingPhotoURL && isInternalUrl(existingPhotoURL)) {
+    finalPhotoURL = existingPhotoURL;
+  } 
+  // 2. If DB has an external URL (or null), AND Auth provides a photo -> PROXY IT
+  else if (authUser.photoURL && !isInternalUrl(authUser.photoURL)) {
+    try {
+        // 🚀 Migration: Download from Google -> Upload to Firebase Storage
+        finalPhotoURL = await uploadAvatarFromUrl(authUser.uid, authUser.photoURL);
+    } catch (e) {
+        console.warn("Avatar migration failed, falling back to provider URL", e);
+    }
+  }
+
   if (userSnap.exists()) {
     // === 🟢 EXISTING USER (LOGIN) ===
+    // This update block now includes 'photoURL', which fixes the "Already Created Account" issue
     await updateDoc(userRef, {
       "timestamps.lastActiveAt": now,
       "lastLoginAt": now,
       "emailVerified": authUser.emailVerified,
       "failedLoginCount": 0,
+      "photoURL": finalPhotoURL, // ✅ Updates the avatar to the stable URL
       // If they were pending and just verified email, activate them
       ...(userSnap.data().status === "PENDING" && authUser.emailVerified ? { status: "ACTIVE" } : {})
     });
 
     logAuditEvent(authUser.uid, "LOGIN", "SUCCESS").catch(console.warn);
-    return userSnap.data() as UserDocument;
+    return { ...userSnap.data(), photoURL: finalPhotoURL } as UserDocument;
   } else {
     // === 🔵 NEW USER (SIGNUP) ===
     // Initialize with "SaaS Defaults" matching types/user.ts
@@ -104,7 +130,7 @@ export const syncUserWithFirestore = async (authUser: User): Promise<UserDocumen
       uid: authUser.uid,
       email: authUser.email || "", 
       displayName: authUser.displayName || "New Trader",
-      photoURL: authUser.photoURL || null,
+      photoURL: finalPhotoURL, // ✅ Uses stable URL from start
       role: "user",
 
       // Workspace Context (Start empty, WorkspaceProvider handles creation)

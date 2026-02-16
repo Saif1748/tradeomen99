@@ -1,8 +1,9 @@
+// src/types/trade.ts
 import { Timestamp } from "firebase/firestore";
 
 // --- Enums & Union Types ---
 export type TradeDirection = "LONG" | "SHORT";
-export type TradeStatus = "OPEN" | "CLOSED"; 
+export type TradeStatus = "OPEN" | "CLOSED";
 export type AssetClass = "STOCK" | "CRYPTO" | "FOREX" | "FUTURES" | "OPTIONS" | "INDEX";
 export type ExecutionSide = "BUY" | "SELL";
 export type TradeEmotion = "CONFIDENT" | "NEUTRAL" | "FEARFUL" | "GREEDY" | "REVENGING" | "FOMO" | "HESITANT";
@@ -12,7 +13,7 @@ export type TradeEmotion = "CONFIDENT" | "NEUTRAL" | "FEARFUL" | "GREEDY" | "REV
 export interface Execution {
   id: string;
   tradeId: string;
-  accountId: string; 
+  accountId: string;
   userId: string;
   
   // Core Data
@@ -22,8 +23,9 @@ export interface Execution {
   quantity: number;      // Always positive
   fees: number;          // Commission + Swap + SEC fees (Always positive)
   
-  // Execution Quality (New)
+  // Execution Quality
   expectedPrice?: number; // The Limit/Stop price (used to calc slippage)
+  slippage?: number;      // Calculated: |Fill - Expected| * Quantity
 
   // Meta
   brokerOrderId?: string; // External Broker ID (e.g., "IB-12345")
@@ -42,8 +44,8 @@ export interface Trade {
   strategyId?: string; // 🔗 Link to Strategy ID
   
   // ✅ AUDIT TRAIL
-  createdBy?: string;  
-  updatedBy?: string;  
+  createdBy?: string;
+  updatedBy?: string;
 
   // --- 2. Core Trade Info ---
   symbol: string;      // Normalized (e.g., "BTCUSD", "AAPL")
@@ -55,51 +57,72 @@ export interface Trade {
   // Updated atomically via Transaction. Allows O(1) reads.
   netQuantity: number;     // Remaining open size. (Decreases on sell. 0 = Closed)
   
-  // 🆕 THE FIX: "High Water Mark" for position size
-  // Accumulates all ENTRY quantities. Never decreases on Exit.
-  // CRITICAL for accurate Risk Amount (R) calculation when scaling out.
-  initialQuantity: number; 
+  // 🆕 SPLIT: Risk vs Performance size tracking
+  plannedQuantity: number;  // The intended full size (Used for Risk Calculations)
+  peakQuantity: number;     // The actual max size reached (High-Water Mark for Capital Efficiency)
+  
+  // Legacy support
+  initialQuantity?: number; 
 
-  avgEntryPrice: number;   // Weighted Average Price of ALL entry fills
-  avgExitPrice?: number;   // Weighted Average Price of ALL exit fills
-  totalExecutions: number; // Count of child docs
-  investedAmount: number;  // Cost Basis (Total $ currently invested)
+  avgEntryPrice: number;    // Weighted Average Price of OPEN entry legs
+  
+  // 🆕 Weighted Exit State
+  avgExitPrice?: number;     // Weighted Average Price of ALL exit fills
+  totalExitQuantity: number; // Sum of quantities closed so far
+  totalExitValue: number;    // Sum of (price * qty) for closed portions
+
+  totalExecutions: number;   // Count of child docs
+  investedAmount: number;    // Cost Basis (Total $ currently invested; |netQuantity| * avgEntryPrice)
+  peakInvested: number;      // 🆕 Max capital deployed during lifecycle (for Capital Efficiency)
 
   // --- 4. Financials (The "Result") ---
-  grossPnl: number;        // Raw PnL from price action only
-  totalFees: number;       // Sum of all execution fees
-  netPnl: number;          // grossPnl - totalFees
-  returnPercent?: number;  // ROI % (netPnl / investedAmount)
-  
+  // Cash-flow based totals
+  totalBuyValue: number;    // Sum of (price * qty) for all BUY executions
+  totalSellValue: number;   // Sum of (price * qty) for all SELL executions
+
+  grossPnl: number;         // Lifetime Cashflow: TotalSell - TotalBuy (Includes realized + open cost)
+  realizedPnl: number;      // 🆕 PnL locked in from closed legs only
+  totalFees: number;        // Sum of all execution fees (persisted)
+  netPnl: number;           // grossPnl - totalFees
+  returnPercent?: number;   // ROI % (NetPnL / PeakInvested or RiskBasis)
+
   // --- 5. Risk Management (The "Plan") ---
-  initialStopLoss?: number;
+  initialStopLoss?: number; // User input (can be edited/trailed)
+  originalStopLoss?: number; // 🆕 FROZEN: The stop loss at trade inception (Prevents Risk Drift)
   takeProfitTarget?: number;
   
-  // Calculated using: abs(AvgEntry - SL) * initialQuantity
-  riskAmount?: number;     
-  plannedRR?: number;      // Planned Risk:Reward Ratio
-  riskMultiple?: number;   // Realized R-Multiple (Net PnL / Risk Amount)
+  // Calculated using: abs(AvgEntry - originalStopLoss) * plannedQuantity
+  riskAmount?: number;
+  
+  // 🆕 Frozen to prevent drift when scaling
+  frozenPlannedReward?: number; // abs(Target - Entry) * plannedQuantity
+  
+  plannedRR?: number;       // Planned Risk:Reward Ratio
+  riskMultiple?: number;    // Realized R-Multiple (Net PnL / Risk Amount)
   
   // --- 6. Advanced Performance (MAE/MFE) ---
-  mae?: number;            // Max Adverse Excursion (Lowest price against you)
-  mfe?: number;            // Max Favorable Excursion (Highest price for you)
-  profitCapture?: number;  // Efficiency: Net PnL / MFE
+  mae?: number;             // Max Adverse Excursion (Lowest price against you)
+  mfe?: number;             // Max Favorable Excursion (Highest price for you)
+  profitCapture?: number;   // Efficiency: Net PnL / FrozenPlannedReward
+  holdingPeriodReturn?: number; // Capital Efficiency: NetPnL / PeakInvested
+  profitVelocity?: number;      // Speed: NetPnL / Duration Hours
+  drawdown?: number;            // Drawdown from Peak Unrealized PnL
   
   // --- 7. Execution Quality ---
-  totalSlippage?: number;  // Sum of |Fill Price - Expected Price|
-  executionScore?: number; // 0-1 Score based on slippage vs profit
+  totalSlippage?: number;   // Sum of |Fill Price - Expected Price| * Qty
+  executionScore?: number;  // 0-1 Score based on slippage vs profit
   
   // --- 8. Psychology & Review ---
-  tags: string[];          
-  notes?: string;          
-  screenshots: string[];   
+  tags: string[];
+  notes?: string;
+  screenshots: string[];
   emotion?: TradeEmotion;
-  mistakes?: string[];     
+  mistakes?: string[];
   disciplineScore?: number; // 0-1 Score based on plan adherence
   
   // --- 9. Time Metrics ---
-  entryDate: Timestamp;    // Date of FIRST execution
-  exitDate?: Timestamp;    // Date of LAST execution (if closed)
+  entryDate: Timestamp;     // Date of FIRST execution
+  exitDate?: Timestamp;     // Date of LAST execution (if closed)
   durationSeconds?: number; // Calculated on close
   timeToMFE?: number;       // Seconds from entry until peak profit point
   

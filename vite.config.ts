@@ -8,7 +8,6 @@ export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
     port: 8080,
-    // ✅ Add this headers block to fix the Firebase Auth COOP error
     headers: {
       "Cross-Origin-Opener-Policy": "same-origin-allow-popups",
     },
@@ -18,5 +17,12 @@ export default defineConfig(({ mode }) => ({
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
+  },
+  // ✅ ADD THIS TEST CONFIGURATION
+  test: {
+    globals: true,
+    environment: "jsdom",
+    setupFiles: "./src/test/setup.ts",
+    css: false, // Disables CSS parsing for faster tests
   },
 }));

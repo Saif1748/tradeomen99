@@ -1,16 +1,6 @@
 import { useState, useMemo } from "react";
-import { Plus, MagnifyingGlass, Funnel, Sword, ArrowClockwise, FolderOpen } from "@phosphor-icons/react";
-import { useDashboard } from "@/components/dashboard/DashboardLayout";
-import PageHeader from "@/components/dashboard/PageHeader";
+import { Sword, FolderOpen } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -39,18 +29,17 @@ import { Strategy, TradingStyle } from "@/types/strategy";
 const STRATEGY_STYLES: TradingStyle[] = ["SCALP", "DAY_TRADE", "SWING", "POSITION", "INVESTMENT"];
 
 const Strategies = () => {
-  const { onMobileMenuOpen } = useDashboard();
+  // removed useDashboard / PageHeader usage per request
   const { activeAccount } = useWorkspace();
   const userId = auth.currentUser?.uid;
   
-  // ✅ 1. HOOK INTEGRATION: Replaces manual fetch/state
+  // Hook integration
   const { 
     strategies, 
     isLoading, 
     createStrategy, 
     updateStrategy, 
     deleteStrategy,
-    refetch 
   } = useStrategies(activeAccount?.id, userId);
   
   // UI State
@@ -59,11 +48,11 @@ const Strategies = () => {
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   
-  // Filters
+  // Filters (removed search & style UI but keep state if needed later)
   const [searchQuery, setSearchQuery] = useState("");
   const [styleFilter, setStyleFilter] = useState("all");
 
-  // --- 2. Stats Calculation (Memoized from Hook Data) ---
+  // Stats Calculation (Memoized from Hook Data)
   const stats = useMemo(() => {
     const totalStrategies = strategies.length;
     const combinedTrades = strategies.reduce((acc, s) => acc + (s.metrics?.totalTrades || 0), 0);
@@ -77,7 +66,7 @@ const Strategies = () => {
     return { totalStrategies, combinedTrades, totalPnl, avgWinRate };
   }, [strategies]);
 
-  // --- 3. Filter Logic ---
+  // Filter Logic (kept, but UI controls removed)
   const filteredStrategies = useMemo(() => {
     return strategies.filter(s => {
       const matchesSearch = s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -89,16 +78,14 @@ const Strategies = () => {
     });
   }, [strategies, searchQuery, styleFilter]);
 
-  // --- 4. Handlers ---
-
+  // Handlers
   const handleCreateStrategy = async (newStrategyData: any) => {
     try {
-      // Hook handles API call + Cache Injection + Toast
       await createStrategy(newStrategyData);
       setCreateModalOpen(false);
     } catch (error) {
-      // Error handling (toasts) is done in the hook, 
-      // we catch here just to prevent modal closing if needed.
+      // Hook handles toasts; keep this to prevent modal auto-close on error
+      console.error("create strategy failed", error);
     }
   };
 
@@ -106,12 +93,10 @@ const Strategies = () => {
     if (!selectedStrategy) return;
     try {
       await updateStrategy({ id: selectedStrategy.id, updates: updatedData });
-      
-      // Update local selection so the Detail View reflects changes instantly
       setSelectedStrategy(prev => prev ? { ...prev, ...updatedData } : null);
       setEditModalOpen(false);
     } catch (error) {
-      console.error(error);
+      console.error("update strategy failed", error);
     }
   };
 
@@ -122,7 +107,7 @@ const Strategies = () => {
       setSelectedStrategy(null);
       setDeleteDialogOpen(false);
     } catch (error) {
-      console.error(error);
+      console.error("delete strategy failed", error);
     }
   };
 
@@ -130,11 +115,6 @@ const Strategies = () => {
   if (selectedStrategy) {
     return (
       <>
-        <PageHeader
-          title="Strategy Detail"
-          icon={<Sword weight="duotone" className="w-6 h-6 text-primary" />}
-          onMobileMenuOpen={onMobileMenuOpen}
-        />
         <div className="px-4 sm:px-6 lg:px-8 pb-6 pt-4 animate-in fade-in zoom-in-95 duration-200">
           <StrategyDetail
             strategy={selectedStrategy}
@@ -175,36 +155,9 @@ const Strategies = () => {
     );
   }
 
-  // --- Render: List View ---
+  // --- Render: List View (header removed, buttons removed, search/filter removed) ---
   return (
     <>
-      <PageHeader
-        title="Strategies"
-        icon={<Sword weight="duotone" className="w-6 h-6 text-primary" />}
-        onMobileMenuOpen={onMobileMenuOpen}
-      >
-        <div className="flex gap-2">
-           <Button 
-             variant="outline" 
-             size="sm" 
-             onClick={() => refetch()} 
-             disabled={isLoading || !activeAccount}
-             className="bg-secondary/50 border-border/50"
-           >
-             <ArrowClockwise className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-           </Button>
-           <Button 
-             onClick={() => setCreateModalOpen(true)} 
-             disabled={isLoading || !activeAccount}
-             className="glow-button gap-2 text-white"
-           >
-             <Plus weight="bold" className="w-4 h-4" />
-             <span className="hidden sm:inline">New Strategy</span>
-             <span className="sm:hidden">New</span>
-           </Button>
-        </div>
-      </PageHeader>
-
       <div className="px-4 sm:px-6 lg:px-8 pb-6 pt-4 space-y-4 sm:space-y-6">
         
         {/* Loading Skeleton for Stats */}
@@ -221,30 +174,7 @@ const Strategies = () => {
             />
         )}
 
-        {/* Search & Filter */}
-        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-          <div className="relative flex-1 sm:max-w-md">
-            <MagnifyingGlass weight="regular" className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              placeholder="Search strategies..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 bg-secondary/50 border-border"
-            />
-          </div>
-          <Select value={styleFilter} onValueChange={setStyleFilter}>
-            <SelectTrigger className="w-full sm:w-40 bg-secondary/50 border-border">
-              <Funnel weight="regular" className="w-4 h-4 mr-2" />
-              <SelectValue placeholder="All Styles" />
-            </SelectTrigger>
-            <SelectContent className="bg-card border-border">
-              <SelectItem value="all">All Styles</SelectItem>
-              {STRATEGY_STYLES.map(style => (
-                <SelectItem key={style} value={style}>{style}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        {/* Removed Search & Filter UI as requested */}
 
         {/* Strategy Cards Grid */}
         {isLoading ? (

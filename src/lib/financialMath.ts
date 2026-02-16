@@ -1,13 +1,17 @@
+// src/lib/financialMath.ts
 import { Trade, Execution } from "@/types/trade";
 import { Timestamp } from "firebase/firestore";
 
 /**
  * 🧮 CORE CALCULATION ENGINE
- * Pure functions only. No side effects.
- * "Industry Grade" financial precision.
+ * Pure functions for Industry-Grade financial precision.
  */
 
 // --- Helpers ---
+const safeNum = (val: any): number => {
+  const n = parseFloat(val);
+  return isFinite(n) ? n : 0;
+};
 
 const toMillis = (t: any): number => {
   if (!t) return 0;
@@ -16,233 +20,263 @@ const toMillis = (t: any): number => {
   return new Date(t).getTime();
 };
 
-const safeNum = (val: any): number => {
-  const n = parseFloat(val);
-  return isFinite(n) ? n : 0;
-};
 
-// --- 1. Aggregates & Quantities ---
-export const calculateAggregates = (
-  current: Trade,
-  newExec: Execution
-) => {
-  let netQuantity = safeNum(current.netQuantity);
-  let initialQuantity = safeNum(current.initialQuantity); // 🆕 Track Max Size
-  let avgEntryPrice = safeNum(current.avgEntryPrice);
-  let investedAmount = safeNum(current.investedAmount);
-  
-  const price = safeNum(newExec.price);
-  const quantity = safeNum(newExec.quantity);
-  const side = newExec.side;
-
-  // Determine Entry vs Exit
-  // Long: Buy = Entry, Sell = Exit
-  // Short: Sell = Entry, Buy = Exit
-  const isEntry = 
-    (current.direction === "LONG" && side === "BUY") || 
-    (current.direction === "SHORT" && side === "SELL");
-
-  if (isEntry) {
-    // --- ENTRY LOGIC (Scaling In) ---
-    
-    // 1. Update Weighted Avg Entry Price
-    // Formula: ((OldQty * OldAvg) + (NewQty * NewPrice)) / TotalQty
-    const totalValue = (netQuantity * avgEntryPrice) + (quantity * price);
-    const newTotalQty = netQuantity + quantity;
-    
-    avgEntryPrice = newTotalQty > 0 ? totalValue / newTotalQty : price;
-    
-    // 2. Update Quantities
-    netQuantity += quantity;
-    initialQuantity += quantity; // 🔒 Accumulate planned size
-    
-    // 3. Update Cost Basis
-    investedAmount += (price * quantity);
-    
-  } else {
-    // --- EXIT LOGIC (Scaling Out) ---
-    // We reduce netQuantity, but NEVER initialQuantity or avgEntryPrice
-    netQuantity -= quantity;
-    
-    // Clamp to 0 to avoid floating point ghosts (e.g., -0.0000001)
-    if (netQuantity < 0.000001) netQuantity = 0;
-  }
-
-  return { 
-    netQuantity, 
-    initialQuantity, 
-    avgEntryPrice, 
-    investedAmount 
-  };
-};
-
-// --- 2. PnL (Realized & Fees) ---
-export const calculatePnL = (
-  current: Trade,
-  newExec: Execution,
-  // We need the "before" entry price to calculate PnL correctly on exit
-  currentAvgEntryPrice: number 
-) => {
-  let grossPnl = safeNum(current.grossPnl);
-  let totalFees = safeNum(current.totalFees);
-  
-  const price = safeNum(newExec.price);
-  const quantity = safeNum(newExec.quantity);
-  const fees = safeNum(newExec.fees);
-  const side = newExec.side;
-
-  const isEntry = 
-    (current.direction === "LONG" && side === "BUY") || 
-    (current.direction === "SHORT" && side === "SELL");
-
-  // 1. Fees always accumulate
-  totalFees += fees;
-
-  // 2. Realize PnL ONLY on Exits
-  if (!isEntry) {
-    let realizedPnl = 0;
-    
-    if (current.direction === "LONG") {
-      // Long Exit: (Exit Price - Entry Price) * Qty
-      realizedPnl = (price - currentAvgEntryPrice) * quantity;
-    } else {
-      // Short Exit: (Entry Price - Exit Price) * Qty
-      realizedPnl = (currentAvgEntryPrice - price) * quantity;
-    }
-    
-    grossPnl += realizedPnl;
-  }
-
-  // 3. Net PnL = Gross - Fees
-  const netPnl = grossPnl - totalFees;
-  
-  return { grossPnl, totalFees, netPnl };
-};
-
-// --- 3. Risk Metrics (The Fix) ---
+/**
+ * ✅ EXPORTED: Risk & Performance Metrics 
+ * This is required by tradeService.ts for manual plan updates.
+ */
 export const calculateRiskMetrics = (
   current: Trade,
   netPnl: number,
-  initialQuantity: number, // 🆕 Use Initial Qty for Risk Calc
-  avgEntryPrice: number
+  plannedQuantity: number,
+  avgEntryPrice: number,
+  peakInvested: number
 ) => {
   const initialStopLoss = safeNum(current.initialStopLoss);
   const takeProfitTarget = safeNum(current.takeProfitTarget);
   
-  // Default to existing values to prevent overwriting with 0 if data missing
   let riskAmount = safeNum(current.riskAmount);
   let plannedRR = safeNum(current.plannedRR);
   let riskMultiple = 0;
+  let profitCapture = 0;
+  let holdingPeriodReturn = 0;
 
-  // A. Calculate Risk Amount (R)
-  // Formula: abs(AvgEntry - StopLoss) * InitialQuantity
-  // We use initialQuantity because Risk is based on the PLANNED size, not remaining size.
-  if (initialStopLoss > 0 && avgEntryPrice > 0 && initialQuantity > 0) {
-     const priceDist = Math.abs(avgEntryPrice - initialStopLoss);
-     riskAmount = priceDist * initialQuantity;
+  // 1. Frozen Risk Logic: Use originalStopLoss (frozen at entry) falling back to initial
+  const stopToUse = safeNum(current.originalStopLoss) || initialStopLoss;
+
+  // 2. Risk Amount ($R) = |AvgEntry - Stop| * Planned Size
+  if (stopToUse > 0 && avgEntryPrice > 0 && plannedQuantity > 0) {
+     riskAmount = Math.abs(avgEntryPrice - stopToUse) * plannedQuantity;
   }
 
-  // B. Calculate Planned R:R
-  // Formula: abs(Target - AvgEntry) / abs(AvgEntry - StopLoss)
-  if (initialStopLoss > 0 && takeProfitTarget > 0 && avgEntryPrice > 0) {
-      const riskDist = Math.abs(avgEntryPrice - initialStopLoss);
+  // 3. Planned Reward & Profit Capture
+  if (stopToUse > 0 && takeProfitTarget > 0 && avgEntryPrice > 0) {
+      const riskDist = Math.abs(avgEntryPrice - stopToUse);
       const rewardDist = Math.abs(takeProfitTarget - avgEntryPrice);
       
       if (riskDist > 0) {
         plannedRR = rewardDist / riskDist;
       }
+
+      // Frozen Planned Reward = |Target - Entry| * Planned Size
+      const plannedRewardAmount = rewardDist * plannedQuantity;
+      if (plannedRewardAmount > 0) {
+        profitCapture = (netPnl / plannedRewardAmount) * 100;
+      }
   }
 
-  // C. Calculate Realized R-Multiple
-  // Formula: NetPnL / RiskAmount
+  // 4. Realized R-Multiple
   if (riskAmount > 0) {
       riskMultiple = netPnl / riskAmount;
+  }
+
+  // 5. Capital Efficiency (HPR)
+  if (peakInvested > 0) {
+    holdingPeriodReturn = (netPnl / peakInvested) * 100;
   }
 
   return { 
     riskAmount: Number(riskAmount.toFixed(2)), 
     plannedRR: Number(plannedRR.toFixed(2)), 
-    riskMultiple: Number(riskMultiple.toFixed(2)) 
+    riskMultiple: Number(riskMultiple.toFixed(2)),
+    profitCapture: Number(profitCapture.toFixed(2)),
+    holdingPeriodReturn: Number(holdingPeriodReturn.toFixed(2))
   };
 };
 
-// --- 4. Time Metrics ---
-export const calculateTimeMetrics = (
+
+/**
+ * 🔄 MASTER FUNCTION
+ * Calculates the new state of a trade document based on a new execution.
+ */
+export const runTradeCalculations = (
   current: Trade,
-  newExec: Execution,
-  isClosed: boolean
+  newExec: Execution
+): Partial<Trade> => {
+  
+  // --- 1. Unpack State ---
+  let netQty = safeNum(current.netQuantity);
+  let avgEntry = safeNum(current.avgEntryPrice);
+  let peakQty = safeNum(current.peakQuantity);
+  let peakInvested = safeNum(current.peakInvested);
+  
+  let avgExit = safeNum(current.avgExitPrice);
+  let totalExitQty = safeNum(current.totalExitQuantity);
+  let totalExitValue = safeNum(current.totalExitValue);
+
+  let totalBuyVal = safeNum(current.totalBuyValue);
+  let totalSellVal = safeNum(current.totalSellValue);
+  let realizedPnl = safeNum(current.realizedPnl);
+  let totalFees = safeNum(current.totalFees) + safeNum(newExec.fees);
+  let totalSlippage = safeNum(current.totalSlippage);
+
+  let plannedQty = safeNum(current.plannedQuantity) || 0;
+  let origStop = safeNum(current.originalStopLoss);
+
+  // --- 2. Process Execution Data ---
+  const price = safeNum(newExec.price);
+  const qty = safeNum(newExec.quantity);
+  const side = newExec.side;
+  const execValue = price * qty;
+
+  if (side === "BUY") totalBuyVal += execValue;
+  else totalSellVal += execValue;
+
+  // Slippage Calculation (Weighted)
+  if (newExec.expectedPrice && newExec.expectedPrice > 0) {
+    totalSlippage += Math.abs(price - newExec.expectedPrice) * qty;
+  }
+
+  // --- 3. Position Logic (Flip/Accumulate/Reduce) ---
+  const currentSign = Math.sign(netQty); 
+  const execSign = side === "BUY" ? 1 : -1;
+  const signedExecQty = qty * execSign;
+  const nextNetQty = netQty + signedExecQty;
+
+  if (currentSign === 0 || currentSign === execSign) {
+    // A. OPENING or ACCUMULATING
+    const currentAbs = Math.abs(netQty);
+    const newTotal = currentAbs + qty;
+    
+    if (newTotal > 0) {
+      avgEntry = ((currentAbs * avgEntry) + (qty * price)) / newTotal;
+    }
+    
+    netQty = nextNetQty;
+
+    // Update Peak Stats
+    const currentInv = Math.abs(netQty) * avgEntry;
+    if (Math.abs(netQty) > peakQty) peakQty = Math.abs(netQty);
+    if (currentInv > peakInvested) peakInvested = currentInv;
+
+    // Initialize Planned Qty on very first entry
+    if (plannedQty === 0) plannedQty = qty;
+
+  } else {
+    // B. REDUCING or FLIPPING
+    const isFlip = (currentSign === 1 && nextNetQty < 0) || (currentSign === -1 && nextNetQty > 0);
+
+    if (isFlip) {
+      // 1. Close old position
+      const closingQty = Math.abs(netQty);
+      realizedPnl += (currentSign === 1) ? (price - avgEntry) * closingQty : (avgEntry - price) * closingQty;
+      
+      totalExitQty += closingQty;
+      totalExitValue += (price * closingQty);
+      avgExit = totalExitValue / totalExitQty;
+
+      // 2. Open new position (the flip remainder)
+      avgEntry = price;
+      netQty = nextNetQty;
+      
+      // Reset Peak for new cycle
+      peakQty = Math.abs(nextNetQty);
+      peakInvested = peakQty * price;
+
+    } else {
+      // SCALE OUT
+      realizedPnl += (currentSign === 1) ? (price - avgEntry) * qty : (avgEntry - price) * qty;
+      
+      totalExitQty += qty;
+      totalExitValue += (price * qty);
+      if (totalExitQty > 0) {
+        avgExit = totalExitValue / totalExitQty;
+      }
+      
+      netQty = nextNetQty;
+    }
+  }
+
+  // Floating point ghost cleanup
+  if (Math.abs(netQty) < 0.000001) netQty = 0;
+
+  // --- 4. Final Financial Metrics ---
+  const grossPnl = totalSellVal - totalBuyVal; 
+  const netPnl = grossPnl - totalFees;
+
+  // Freeze original stop if not set
+  if (origStop === 0 && current.initialStopLoss && current.initialStopLoss > 0) {
+    origStop = current.initialStopLoss;
+  }
+
+  // ROI/Performance PnL (Realized + Unrealized)
+  const currentVal = Math.abs(netQty) * price;
+  const costBasis = Math.abs(netQty) * avgEntry;
+  const unrealized = (Math.sign(netQty) === 1) ? (currentVal - costBasis) : (costBasis - currentVal);
+  const totalPerformancePnl = realizedPnl + unrealized - totalFees;
+
+  const riskMetrics = calculateRiskMetrics(
+    { ...current, originalStopLoss: origStop }, 
+    totalPerformancePnl, 
+    plannedQty, 
+    avgEntry, 
+    peakInvested
+  );
+
+  const timeMetrics = calculateTimeMetrics(current, newExec, netQty === 0, totalPerformancePnl);
+
+  return {
+    netQuantity: netQty,
+    plannedQuantity: plannedQty,
+    peakQuantity: peakQty,
+    avgEntryPrice: avgEntry,
+    avgExitPrice: avgExit,
+    totalExitQuantity: totalExitQty,
+    totalExitValue: totalExitValue,
+    peakInvested,
+    investedAmount: Math.abs(netQty) * avgEntry,
+    totalBuyValue: totalBuyVal,
+    totalSellValue: totalSellVal,
+    totalFees,
+    totalSlippage,
+    grossPnl,
+    realizedPnl,
+    netPnl,
+    returnPercent: riskMetrics.holdingPeriodReturn, // Standard ROI
+    originalStopLoss: origStop,
+    ...riskMetrics,
+    ...timeMetrics,
+    status: netQty === 0 ? "CLOSED" : "OPEN",
+    totalExecutions: (current.totalExecutions || 0) + 1,
+    updatedAt: Timestamp.now()
+  };
+};
+
+/**
+ * ⏳ Time Metrics Helper
+ */
+const calculateTimeMetrics = (
+  current: Trade, 
+  newExec: Execution, 
+  isClosed: boolean, 
+  finalPnl: number
 ) => {
   const entryTime = toMillis(current.entryDate);
   const execTime = toMillis(newExec.date);
   
   let entryDate = current.entryDate;
-  // If this execution is earlier than current start, update start
-  if (entryTime === 0 || (execTime < entryTime && execTime > 0)) {
-      entryDate = newExec.date;
-  }
+  if (entryTime === 0 || (execTime < entryTime && execTime > 0)) entryDate = newExec.date;
 
-  // Update exit date to latest execution
   let exitDate = current.exitDate || newExec.date;
-  if (execTime > toMillis(exitDate)) {
-      exitDate = newExec.date;
-  }
+  if (execTime > toMillis(exitDate)) exitDate = newExec.date;
 
   let durationSeconds = 0;
+  let profitVelocity = 0;
+
   if (isClosed) {
-      const start = toMillis(entryDate);
-      const end = toMillis(exitDate);
-      if (start > 0 && end > 0) {
-          durationSeconds = (end - start) / 1000;
-      }
+    const start = toMillis(entryDate);
+    const end = toMillis(exitDate);
+    if (start > 0 && end > 0) {
+      durationSeconds = (end - start) / 1000;
+      const hours = durationSeconds / 3600;
+      if (hours > 0) profitVelocity = finalPnl / hours;
+    }
   }
 
-  return { entryDate, exitDate, durationSeconds };
-};
-
-/**
- * 🚀 MASTER FUNCTION
- * Orchestrates all calculations to produce the next Trade state.
- */
-export const runTradeCalculations = (
-  currentTrade: Trade,
-  newExec: Execution
-): Partial<Trade> => {
-  
-  // 1. Calculate Aggregates (Qty, Prices)
-  const agg = calculateAggregates(currentTrade, newExec);
-  
-  // 2. Determine Status
-  const status: "OPEN" | "CLOSED" = agg.netQuantity <= 0.000001 ? "CLOSED" : "OPEN";
-  
-  // 3. Calculate PnL
-  // IMPORTANT: We pass currentTrade.avgEntryPrice (before this exec changed it) 
-  // because realized PnL is based on the entry price *at the time of exit*.
-  const financials = calculatePnL(
-      currentTrade, 
-      newExec,
-      currentTrade.avgEntryPrice || agg.avgEntryPrice // Fallback for first trade
-  );
-
-  // 4. Calculate Risk
-  // We use the NEW netPnl, but the INITIAL Quantity
-  const risk = calculateRiskMetrics(
-      { ...currentTrade, ...agg }, 
-      financials.netPnl,
-      agg.initialQuantity,
-      agg.avgEntryPrice
-  );
-
-  // 5. Calculate Time
-  const time = calculateTimeMetrics(currentTrade, newExec, status === "CLOSED");
-
-  // 6. Return Clean Updates
-  return {
-      ...agg,
-      ...financials,
-      ...risk,
-      ...time,
-      status,
-      totalExecutions: (safeNum(currentTrade.totalExecutions) + 1),
-      updatedAt: Timestamp.now()
+  return { 
+    entryDate, 
+    exitDate, 
+    durationSeconds, 
+    profitVelocity: Number(profitVelocity.toFixed(2)) 
   };
 };
