@@ -6,9 +6,9 @@ import { useTrades } from "@/hooks/useTrades";
 import { Trade } from "@/types/trade";
 
 // --- Components ---
-import TradesStatsCards from "@/components/trades/TradesStatsCards";
+// Removed: import TradesStatsCards from "@/components/trades/TradesStatsCards";
 import TradesTable from "@/components/trades/TradesTable";
-import TradeDetailSheet from "@/components/trades/TradeDetailSheet";
+import TradeDetailModal from "@/components/trades/TradeDetailModal"; 
 import EditTradeModal from "@/components/trades/EditTradeModal";
 
 // ------------------------------------------------------------------
@@ -135,15 +135,24 @@ const Trades = () => {
   const { activeAccount } = useWorkspace();
   const userId = auth.currentUser?.uid;
 
-  // ✅ 1. Fetch Data
+  // ✅ 1. Fetch Data (with Pagination Props)
   const { 
     trades, 
+    totalCount, // NEW
     isLoading, 
     updateTrade, 
-    deleteTrade 
+    deleteTrade,
+    // Pagination Controls
+    pageIndex,
+    pageSize,
+    setPageSize,
+    nextPage,
+    prevPage,
+    hasNextPage,
+    hasPrevPage
   } = useTrades(activeAccount?.id, userId);
 
-  // ✅ 2. Filter Data (Using URL Params)
+  // ✅ 2. Filter Data (Using URL Params on current page)
   const filteredTrades = useTradeFilters(trades);
 
   // ✅ 3. Sort Data (Using Filtered Results)
@@ -189,12 +198,9 @@ const Trades = () => {
   // --- Render ---
   return (
     <>
-      <div className="px-4 sm:px-6 lg:px-8 pb-6 pt-4 space-y-4 sm:space-y-6">
+      <div className="px-4 sm:px-6 lg:px-8 pb-6 pt-4 space-y-4 sm:space-y-6 h-[calc(100vh-80px)] flex flex-col">
         
-        {/* Stats Cards - Now reflects filtered data! */}
-        <TradesStatsCards trades={filteredTrades} />
-
-        {/* Main Table */}
+        {/* Main Table (Now takes full height and has pagination) */}
         <TradesTable
           trades={sortedTrades}
           onTradeClick={handleTradeClick}
@@ -202,11 +208,20 @@ const Trades = () => {
           sortDirection={sortDirection}
           onSort={handleSort}
           isLoading={isLoading}
+          // Pagination Props Passed Down
+          totalCount={totalCount}
+          pageIndex={pageIndex}
+          pageSize={pageSize}
+          setPageSize={setPageSize}
+          nextPage={nextPage}
+          prevPage={prevPage}
+          hasNextPage={hasNextPage}
+          hasPrevPage={hasPrevPage}
         />
       </div>
 
-      {/* Detail Sheet */}
-      <TradeDetailSheet
+      {/* Detail Modal */}
+      <TradeDetailModal
         trade={selectedTrade}
         open={detailOpen}
         onOpenChange={setDetailOpen}

@@ -5,10 +5,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Strategy } from "@/types/strategy";
+import { Trade } from "@/types/trade";
 
 // Industry Grade Imports
 import { useTrades } from "@/hooks/useTrades";
 import TradesTable from "@/components/trades/TradesTable";
+import TradeDetailModal from "@/components/trades/TradeDetailModal";
+import EditTradeModal from "@/components/trades/EditTradeModal";
 
 interface StrategyDetailProps {
   strategy: Strategy;
@@ -17,52 +20,132 @@ interface StrategyDetailProps {
   onDelete: () => void;
 }
 
+// Sorting type definition
+type SortField = keyof Trade | "pnl";
+
 const StrategyDetail = ({ strategy, onBack, onEdit, onDelete }: StrategyDetailProps) => {
   const [activeTab, setActiveTab] = useState("rules");
 
-  // 1. Fetch & Filter Trades for this Strategy
-  const { trades, isLoading: isTradesLoading } = useTrades(strategy.accountId, strategy.userId);
+  // --- Local UI State for Table & Pagination ---
+  const [sortField, setSortField] = useState<SortField>("entryDate");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
+  const [pageIndex, setPageIndex] = useState(0);
+  const [pageSize, setPageSize] = useState(25);
+
+  // --- Modal State ---
+  const [selectedTrade, setSelectedTrade] = useState<Trade | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [tradeToEdit, setTradeToEdit] = useState<Trade | null>(null);
+
+  // 1. Fetch Trades
+  const { 
+    trades, 
+    isLoading: isTradesLoading, 
+    updateTrade, 
+    deleteTrade 
+  } = useTrades(strategy.accountId, strategy.userId);
   
+  // 2. Filter Trades for this Strategy
   const strategyTrades = useMemo(() => {
     if (!trades) return [];
     return trades.filter(t => t.strategyId === strategy.id);
   }, [trades, strategy.id]);
 
-  // 2. Calculate ALL Metrics (Live Client-Side)
-  // This replaces the stale 'strategy.metrics' from the DB
+  // 3. Sort Trades (Client-Side)
+  const sortedTrades = useMemo(() => {
+    return [...strategyTrades].sort((a, b) => {
+      let comparison = 0;
+      switch (sortField) {
+        case "entryDate":
+          // Handle Firestore timestamps or Dates
+          const aTime = (a.entryDate as any)?.toMillis ? (a.entryDate as any).toMillis() : new Date(a.entryDate as any).getTime();
+          const bTime = (b.entryDate as any)?.toMillis ? (b.entryDate as any).toMillis() : new Date(b.entryDate as any).getTime();
+          comparison = aTime - bTime;
+          break;
+        case "symbol":
+          comparison = a.symbol.localeCompare(b.symbol);
+          break;
+        case "pnl":
+          comparison = (a.netPnl || 0) - (b.netPnl || 0);
+          break;
+        default:
+          const valA = Number(a[sortField as keyof Trade]) || 0;
+          const valB = Number(b[sortField as keyof Trade]) || 0;
+          comparison = valA - valB;
+      }
+      return sortDirection === "asc" ? comparison : -comparison;
+    });
+  }, [strategyTrades, sortField, sortDirection]);
+
+  // 4. Paginate Trades (Client-Side) for the Table
+  const paginatedTrades = useMemo(() => {
+    const start = pageIndex * pageSize;
+    return sortedTrades.slice(start, start + pageSize);
+  }, [sortedTrades, pageIndex, pageSize]);
+
+  // --- Handlers ---
+  const handleSort = (field: string) => {
+    const validField = field as SortField;
+    if (sortField === validField) {
+      setSortDirection(prev => prev === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(validField);
+      setSortDirection("desc");
+    }
+  };
+
+  const handleTradeClick = (trade: Trade) => {
+    setSelectedTrade(trade);
+    setDetailOpen(true);
+  };
+
+  const handleEditClick = (trade: Trade) => {
+    setTradeToEdit(trade);
+    setDetailOpen(false);
+    setEditModalOpen(true);
+  };
+
+  const handleUpdateTrade = async (updatedData: Partial<Trade>) => {
+    if (!tradeToEdit) return;
+    try {
+      await updateTrade({ trade: tradeToEdit, updates: updatedData });
+      setEditModalOpen(false);
+    } catch (e) {
+      console.error("Update failed", e);
+    }
+  };
+
+  const handleDeleteTrade = async (trade: Trade) => {
+    try {
+      await deleteTrade(trade);
+      setDetailOpen(false);
+    } catch (e) {
+      console.error("Delete failed", e);
+    }
+  };
+
+  // 5. Calculate ALL Metrics (Live Client-Side)
   const liveMetrics = useMemo(() => {
     const totalTrades = strategyTrades.length;
     
     if (totalTrades === 0) {
-      return { 
-        totalTrades: 0, 
-        winRate: 0, 
-        totalPnl: 0, 
-        profitFactor: 0,
-        avgWin: 0, 
-        avgLoss: 0, 
-        expectancy: 0 
-      };
+      return { totalTrades: 0, winRate: 0, totalPnl: 0, profitFactor: 0, avgWin: 0, avgLoss: 0, expectancy: 0 };
     }
 
-    // Sort winners and losers using netPnl (consistent with types/trade.ts)
     const winners = strategyTrades.filter(t => (t.netPnl || 0) > 0);
     const losers = strategyTrades.filter(t => (t.netPnl || 0) <= 0);
 
-    // Financials
     const totalPnl = strategyTrades.reduce((sum, t) => sum + (t.netPnl || 0), 0);
     const totalWinPnl = winners.reduce((sum, t) => sum + (t.netPnl || 0), 0);
-    const totalLossPnl = Math.abs(losers.reduce((sum, t) => sum + (t.netPnl || 0), 0)); // Absolute value for calculations
+    const totalLossPnl = Math.abs(losers.reduce((sum, t) => sum + (t.netPnl || 0), 0));
 
-    // Core Metrics
     const winRate = (winners.length / totalTrades) * 100;
-    const profitFactor = totalLossPnl === 0 ? totalWinPnl : (totalWinPnl / totalLossPnl); // Handle division by zero
+    const profitFactor = totalLossPnl === 0 ? (totalWinPnl > 0 ? 100 : 0) : (totalWinPnl / totalLossPnl);
 
-    // Advanced Metrics
     const avgWin = winners.length > 0 ? totalWinPnl / winners.length : 0;
-    const avgLoss = losers.length > 0 ? (totalLossPnl * -1) / losers.length : 0; // Return negative number for display
+    const avgLoss = losers.length > 0 ? (totalLossPnl * -1) / losers.length : 0;
 
-    // Expectancy = (Win% * AvgWin) - (Loss% * |AvgLoss|)
     const winRateDecimal = winners.length / totalTrades;
     const lossRateDecimal = losers.length / totalTrades;
     const expectancy = (winRateDecimal * avgWin) + (lossRateDecimal * avgLoss);
@@ -71,17 +154,14 @@ const StrategyDetail = ({ strategy, onBack, onEdit, onDelete }: StrategyDetailPr
       totalTrades, 
       winRate, 
       totalPnl, 
-      profitFactor, 
+      profitFactor: Math.min(profitFactor, 100), 
       avgWin, 
       avgLoss, 
       expectancy 
     };
   }, [strategyTrades]);
 
-  // Safe Access to Rules
   const ruleGroups = Array.isArray(strategy.rules) ? strategy.rules : [];
-  
-  // Dynamic Styling based on Live Metrics
   const pnlColor = liveMetrics.totalPnl >= 0 ? "text-emerald-400" : "text-rose-400";
   const winRateColor = liveMetrics.winRate >= 50 ? "text-emerald-400" : "text-rose-400";
 
@@ -90,12 +170,7 @@ const StrategyDetail = ({ strategy, onBack, onEdit, onDelete }: StrategyDetailPr
       {/* --- Header --- */}
       <div className="flex items-start justify-between">
         <div className="flex items-start gap-4">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onBack}
-            className="mt-1"
-          >
+          <Button variant="ghost" size="icon" onClick={onBack} className="mt-1">
             <ArrowLeft weight="regular" className="w-5 h-5" />
           </Button>
           <div>
@@ -130,7 +205,7 @@ const StrategyDetail = ({ strategy, onBack, onEdit, onDelete }: StrategyDetailPr
         </div>
       </div>
 
-      {/* --- Stats Cards (Live Data) --- */}
+      {/* --- Stats Cards --- */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="glass-card p-5 rounded-xl">
           <p className="text-sm text-muted-foreground mb-1">Total Trades</p>
@@ -156,13 +231,13 @@ const StrategyDetail = ({ strategy, onBack, onEdit, onDelete }: StrategyDetailPr
           <p className="text-sm text-muted-foreground mb-1">Profit Factor</p>
           {isTradesLoading ? <Skeleton className="h-8 w-12" /> : (
             <p className="text-2xl font-medium text-foreground">
-              {liveMetrics.profitFactor >= 999 ? "∞" : liveMetrics.profitFactor.toFixed(2)}
+              {liveMetrics.profitFactor >= 100 ? "100+" : liveMetrics.profitFactor.toFixed(2)}
             </p>
           )}
         </div>
       </div>
 
-      {/* --- Performance Metrics (Live Data) --- */}
+      {/* --- Performance Metrics --- */}
       <div className="glass-card p-6 rounded-2xl">
         <h2 className="text-lg font-medium text-foreground mb-4">Performance Metrics</h2>
         {isTradesLoading ? (
@@ -244,7 +319,7 @@ const StrategyDetail = ({ strategy, onBack, onEdit, onDelete }: StrategyDetailPr
           </div>
         </TabsContent>
 
-        {/* 2. Trades Tab (Linked Trades) */}
+        {/* 2. Trades Tab */}
         <TabsContent value="trades" className="mt-4">
           {isTradesLoading ? (
              <div className="space-y-2">
@@ -253,10 +328,22 @@ const StrategyDetail = ({ strategy, onBack, onEdit, onDelete }: StrategyDetailPr
           ) : strategyTrades.length > 0 ? (
              <div className="glass-card rounded-xl overflow-hidden border border-border/50">
                <TradesTable 
-                 trades={strategyTrades} 
-                 isLoading={false} 
-                 onEdit={() => {}} // Read-only in strategy view or pass handlers
-                 onDelete={() => {}}
+                 trades={paginatedTrades} 
+                 onTradeClick={handleTradeClick}
+                 sortField={sortField}
+                 sortDirection={sortDirection}
+                 onSort={handleSort}
+                 isLoading={false}
+                 
+                 // ✅ Pass Pagination Props (Managed Locally for Strategy Subset)
+                 totalCount={strategyTrades.length}
+                 pageIndex={pageIndex}
+                 pageSize={pageSize}
+                 setPageSize={(size) => { setPageSize(size); setPageIndex(0); }}
+                 nextPage={() => setPageIndex(p => p + 1)}
+                 prevPage={() => setPageIndex(p => p - 1)}
+                 hasNextPage={(pageIndex + 1) * pageSize < strategyTrades.length}
+                 hasPrevPage={pageIndex > 0}
                />
              </div>
           ) : (
@@ -280,6 +367,24 @@ const StrategyDetail = ({ strategy, onBack, onEdit, onDelete }: StrategyDetailPr
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* ✅ Modals Integration */}
+      <TradeDetailModal
+        trade={selectedTrade}
+        open={detailOpen}
+        onOpenChange={setDetailOpen}
+        onEdit={handleEditClick}
+        onDelete={handleDeleteTrade}
+      />
+
+      {tradeToEdit && (
+        <EditTradeModal
+          trade={tradeToEdit}
+          open={editModalOpen}
+          onOpenChange={setEditModalOpen}
+          onUpdateTrade={handleUpdateTrade}
+        />
+      )}
     </div>
   );
 };

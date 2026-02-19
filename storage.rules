@@ -1,0 +1,28 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // 🔒 Users can only access their own files
+    // Path: /users/{uid}/...
+    match /users/{userId}/{allPaths=**} {
+
+      // ✅ Read own files
+      allow read: if request.auth != null 
+                  && request.auth.uid == userId;
+
+      // ✅ Write own files
+      // 1. Must be authenticated & match userId
+      // 2. Max size 10MB (Matches your UI limit)
+      // 3. Must be an image
+      allow write: if request.auth != null
+                   && request.auth.uid == userId
+                   && request.resource.size < 10 * 1024 * 1024 
+                   && request.resource.contentType.matches('image/.*');
+    }
+    
+    // 🚫 Block everything else
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

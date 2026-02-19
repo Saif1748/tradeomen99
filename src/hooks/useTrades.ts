@@ -4,51 +4,90 @@ import {
   getTrades, 
   createTrade, 
   updateTrade, 
-  deleteTrade 
+  deleteTrade,
+  PaginatedTrades
 } from "@/services/tradeService";
 import { Trade } from "@/types/trade";
-import { queryKeys } from "@/lib/queryKeys"; // ✅ Centralized Keys for Shared Caching
+import { queryKeys } from "@/lib/queryKeys"; 
+import { useState } from "react";
+import { QueryDocumentSnapshot } from "firebase/firestore";
 
-export const useTrades = (accountId?: string, userId?: string) => {
+export const useTrades = (accountId: string | undefined, userId: string | undefined) => {
   const queryClient = useQueryClient();
 
-  // 1. 🔵 FETCH (Read with Smart Caching)
+  // --- Pagination State ---
+  const [pageSize, setPageSize] = useState(50);
+  const [pageIndex, setPageIndex] = useState(0); // 0-based index
+  const [cursors, setCursors] = useState<(QueryDocumentSnapshot | null)[]>([null]); // Stack of cursors
+
+  // --- 1. 🔵 FETCH (Paginated Read) ---
+  const queryKey = [...queryKeys.tradesByAccount(accountId || ""), "paginated", pageIndex, pageSize];
+
   const { 
-    data: trades = [], 
+    data, 
     isLoading, 
     isError,
     error 
   } = useQuery({
-    // ✅ Matches Dashboard key: ['tradeomen', 'trades', accountId]
-    queryKey: queryKeys.tradesByAccount(accountId || ""), 
-    queryFn: () => {
+    queryKey, 
+    queryFn: async () => {
       if (!accountId) throw new Error("Account ID required");
-      return getTrades(accountId);
+      // Use the cursor for the current page
+      return getTrades(accountId, pageSize, cursors[pageIndex]);
     },
-    enabled: !!accountId, // Only run if we have an account
-    staleTime: 1000 * 60 * 5, // ⚡ Data is fresh for 5 mins (prevents background refetching)
-    gcTime: 1000 * 60 * 30,   // 🗑️ Keep in memory for 30 mins
-    refetchOnWindowFocus: false, // Don't refetch just because user clicked the window
-    retry: 2, // Retry failed requests twice
+    enabled: !!accountId,
+    staleTime: 1000 * 60 * 5, // 5 mins
+    gcTime: 1000 * 60 * 30,   // 30 mins
+    refetchOnWindowFocus: false,
+    placeholderData: (previousData) => previousData, // Keep UI stable while fetching next page
   });
 
-  // 2. 🟢 CREATE (Mutation with Cache Injection)
+  const trades = data?.data || [];
+  const totalCount = data?.totalCount || 0;
+  const hasNextPage = !!data?.lastDoc && trades.length === pageSize;
+  const hasPrevPage = pageIndex > 0;
+
+  // --- Pagination Handlers ---
+  const nextPage = () => {
+    if (!hasNextPage || !data?.lastDoc) return;
+    
+    // Push new cursor to stack
+    const newCursors = [...cursors];
+    newCursors[pageIndex + 1] = data.lastDoc;
+    setCursors(newCursors);
+    setPageIndex((prev) => prev + 1);
+  };
+
+  const prevPage = () => {
+    if (!hasPrevPage) return;
+    setPageIndex((prev) => prev - 1);
+  };
+
+  const handlePageSizeChange = (newSize: number) => {
+    setPageSize(newSize);
+    setPageIndex(0);
+    setCursors([null]); // Reset stack
+  };
+
+  // --- 2. 🟢 CREATE (Mutation) ---
   const createMutation = useMutation({
     mutationFn: (newTradeData: any) => {
       if (!accountId || !userId) throw new Error("Missing Context");
       return createTrade(accountId, userId, newTradeData);
     },
-    onSuccess: (newTrade) => {
-      // ⚡ INSTANT UPDATE: Inject new trade directly into cache
-      // This avoids a costly re-fetch of the entire trade list
-      queryClient.setQueryData(queryKeys.tradesByAccount(accountId!), (old: Trade[] = []) => {
-        return [newTrade, ...old];
+    onSuccess: () => {
+      // Invalidate the FIRST page so the new trade appears immediately
+      queryClient.invalidateQueries({ 
+        queryKey: [...queryKeys.tradesByAccount(accountId || ""), "paginated"] 
       });
       
-      // Also invalidate stats to trigger recalculation
+      // Also invalidate stats
       queryClient.invalidateQueries({ queryKey: queryKeys.stats(accountId!, {}) });
       
       toast.success("Trade logged successfully");
+      // Reset to first page to see the new item
+      setPageIndex(0);
+      setCursors([null]);
     },
     onError: (err) => {
       console.error(err);
@@ -56,65 +95,71 @@ export const useTrades = (accountId?: string, userId?: string) => {
     },
   });
 
-  // 3. 🟡 UPDATE (Optimistic UI)
+  // --- 3. 🟡 UPDATE (Optimistic UI) ---
   const updateMutation = useMutation({
     mutationFn: ({ trade, updates }: { trade: Trade; updates: Partial<Trade> }) => {
       if (!accountId || !userId) throw new Error("Missing Context");
       return updateTrade(trade.id, accountId, userId, trade, updates);
     },
-    // ⚡ OPTIMISTIC UPDATE START
     onMutate: async ({ trade, updates }) => {
-      // Cancel any outgoing refetches (so they don't overwrite our optimistic update)
-      await queryClient.cancelQueries({ queryKey: queryKeys.tradesByAccount(accountId!) });
+      // Cancel outgoing fetches
+      await queryClient.cancelQueries({ queryKey });
 
-      // Snapshot the previous value
-      const previousTrades = queryClient.getQueryData<Trade[]>(queryKeys.tradesByAccount(accountId!));
+      // Snapshot previous data
+      const previousData = queryClient.getQueryData<PaginatedTrades>(queryKey);
 
-      // Optimistically update to the new value
-      if (previousTrades) {
-        queryClient.setQueryData(queryKeys.tradesByAccount(accountId!), (old: Trade[] = []) => {
-          return old.map((t) => 
-            t.id === trade.id ? { ...t, ...updates } : t
-          );
+      // Optimistic update
+      if (previousData) {
+        queryClient.setQueryData<PaginatedTrades>(queryKey, (old) => {
+          if (!old) return old;
+          return {
+            ...old,
+            data: old.data.map((t) => 
+              t.id === trade.id ? { ...t, ...updates } : t
+            )
+          };
         });
       }
 
-      // Return a context object with the snapshotted value
-      return { previousTrades };
+      return { previousData };
     },
-    // ❌ ERROR: Rollback
     onError: (_err, _newTodo, context) => {
-      if (context?.previousTrades) {
-        queryClient.setQueryData(queryKeys.tradesByAccount(accountId!), context.previousTrades);
+      if (context?.previousData) {
+        queryClient.setQueryData(queryKey, context.previousData);
       }
       toast.error("Failed to update trade");
     },
-    // ✅ SETTLED: Sync with server
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.tradesByAccount(accountId!) });
+      queryClient.invalidateQueries({ queryKey });
     },
   });
 
-  // 4. 🔴 DELETE (Optimistic UI)
+  // --- 4. 🔴 DELETE (Optimistic UI) ---
   const deleteMutation = useMutation({
     mutationFn: (trade: Trade) => {
       if (!userId) throw new Error("Missing User");
       return deleteTrade(trade, userId);
     },
     onMutate: async (tradeToDelete) => {
-      await queryClient.cancelQueries({ queryKey: queryKeys.tradesByAccount(accountId!) });
-      const previousTrades = queryClient.getQueryData<Trade[]>(queryKeys.tradesByAccount(accountId!));
+      await queryClient.cancelQueries({ queryKey });
+      const previousData = queryClient.getQueryData<PaginatedTrades>(queryKey);
 
-      // Optimistically remove
-      queryClient.setQueryData(queryKeys.tradesByAccount(accountId!), (old: Trade[] = []) => {
-        return old.filter((t) => t.id !== tradeToDelete.id);
-      });
+      if (previousData) {
+        queryClient.setQueryData<PaginatedTrades>(queryKey, (old) => {
+          if (!old) return old;
+          return {
+            ...old,
+            data: old.data.filter((t) => t.id !== tradeToDelete.id),
+            totalCount: old.totalCount - 1
+          };
+        });
+      }
 
-      return { previousTrades };
+      return { previousData };
     },
     onError: (_err, _variables, context) => {
-      if (context?.previousTrades) {
-        queryClient.setQueryData(queryKeys.tradesByAccount(accountId!), context.previousTrades);
+      if (context?.previousData) {
+        queryClient.setQueryData(queryKey, context.previousData);
       }
       toast.error("Failed to delete trade");
     },
@@ -122,16 +167,28 @@ export const useTrades = (accountId?: string, userId?: string) => {
       toast.success("Trade deleted");
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.tradesByAccount(accountId!) });
+      queryClient.invalidateQueries({ 
+        queryKey: [...queryKeys.tradesByAccount(accountId || ""), "paginated"] 
+      });
     },
   });
 
   return {
     // Data
     trades,
+    totalCount,
     isLoading,
     isError,
     error,
+    
+    // Pagination Controls
+    pageIndex,
+    pageSize,
+    setPageSize: handlePageSizeChange,
+    nextPage,
+    prevPage,
+    hasNextPage,
+    hasPrevPage,
     
     // Actions
     createTrade: createMutation.mutateAsync,

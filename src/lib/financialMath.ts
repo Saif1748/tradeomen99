@@ -7,6 +7,9 @@ import { Timestamp } from "firebase/firestore";
  * Pure functions for Industry-Grade financial precision.
  */
 
+// Small epsilon to handle floating point drift
+const EPSILON = 0.0000001;
+
 // --- Helpers ---
 const safeNum = (val: any): number => {
   const n = parseFloat(val);
@@ -20,10 +23,8 @@ const toMillis = (t: any): number => {
   return new Date(t).getTime();
 };
 
-
 /**
  * ✅ EXPORTED: Risk & Performance Metrics 
- * This is required by tradeService.ts for manual plan updates.
  */
 export const calculateRiskMetrics = (
   current: Trade,
@@ -41,7 +42,7 @@ export const calculateRiskMetrics = (
   let profitCapture = 0;
   let holdingPeriodReturn = 0;
 
-  // 1. Frozen Risk Logic: Use originalStopLoss (frozen at entry) falling back to initial
+  // 1. Frozen Risk Logic
   const stopToUse = safeNum(current.originalStopLoss) || initialStopLoss;
 
   // 2. Risk Amount ($R) = |AvgEntry - Stop| * Planned Size
@@ -60,7 +61,9 @@ export const calculateRiskMetrics = (
 
       // Frozen Planned Reward = |Target - Entry| * Planned Size
       const plannedRewardAmount = rewardDist * plannedQuantity;
+      
       if (plannedRewardAmount > 0) {
+        // Fix: Profit Capture = (Net PnL / Planned Potential Profit)
         profitCapture = (netPnl / plannedRewardAmount) * 100;
       }
   }
@@ -122,7 +125,6 @@ export const runTradeCalculations = (
   if (side === "BUY") totalBuyVal += execValue;
   else totalSellVal += execValue;
 
-  // Slippage Calculation (Weighted)
   if (newExec.expectedPrice && newExec.expectedPrice > 0) {
     totalSlippage += Math.abs(price - newExec.expectedPrice) * qty;
   }
@@ -130,95 +132,102 @@ export const runTradeCalculations = (
   // --- 3. Position Logic (Flip/Accumulate/Reduce) ---
   const currentSign = Math.sign(netQty); 
   const execSign = side === "BUY" ? 1 : -1;
-  const signedExecQty = qty * execSign;
-  const nextNetQty = netQty + signedExecQty;
+  const currentAbsQty = Math.abs(netQty);
 
+  // A. OPENING or ACCUMULATING (Same Direction or Empty)
   if (currentSign === 0 || currentSign === execSign) {
-    // A. OPENING or ACCUMULATING
-    const currentAbs = Math.abs(netQty);
-    const newTotal = currentAbs + qty;
+    const newTotal = currentAbsQty + qty;
     
     if (newTotal > 0) {
-      avgEntry = ((currentAbs * avgEntry) + (qty * price)) / newTotal;
+      avgEntry = ((currentAbsQty * avgEntry) + (qty * price)) / newTotal;
     }
     
-    netQty = nextNetQty;
-
-    // Update Peak Stats
-    const currentInv = Math.abs(netQty) * avgEntry;
-    if (Math.abs(netQty) > peakQty) peakQty = Math.abs(netQty);
-    if (currentInv > peakInvested) peakInvested = currentInv;
+    netQty += (qty * execSign);
 
     // Initialize Planned Qty on very first entry
     if (plannedQty === 0) plannedQty = qty;
 
   } else {
-    // B. REDUCING or FLIPPING
-    const isFlip = (currentSign === 1 && nextNetQty < 0) || (currentSign === -1 && nextNetQty > 0);
+    // B. REDUCING or FLIPPING (Opposite Direction)
+    const closingQty = Math.min(currentAbsQty, qty);
+    const remainderQty = qty - closingQty; // This amount represents the FLIP
 
-    if (isFlip) {
-      // 1. Close old position
-      const closingQty = Math.abs(netQty);
-      realizedPnl += (currentSign === 1) ? (price - avgEntry) * closingQty : (avgEntry - price) * closingQty;
+    // 1. Process Closing Portion
+    if (closingQty > 0) {
+      const pnlChunk = (currentSign === 1) 
+        ? (price - avgEntry) * closingQty 
+        : (avgEntry - price) * closingQty;
       
+      realizedPnl += pnlChunk;
       totalExitQty += closingQty;
       totalExitValue += (price * closingQty);
-      avgExit = totalExitValue / totalExitQty;
-
-      // 2. Open new position (the flip remainder)
-      avgEntry = price;
-      netQty = nextNetQty;
       
-      // Reset Peak for new cycle
-      peakQty = Math.abs(nextNetQty);
-      peakInvested = peakQty * price;
-
-    } else {
-      // SCALE OUT
-      realizedPnl += (currentSign === 1) ? (price - avgEntry) * qty : (avgEntry - price) * qty;
-      
-      totalExitQty += qty;
-      totalExitValue += (price * qty);
       if (totalExitQty > 0) {
         avgExit = totalExitValue / totalExitQty;
       }
-      
-      netQty = nextNetQty;
+
+      // Reduce Net Qty
+      if (currentSign === 1) netQty -= closingQty;
+      else netQty += closingQty;
+    }
+
+    // 2. Process Flip (Remainder)
+    if (remainderQty > EPSILON) {
+       // Reset metrics for the new leg
+       avgEntry = price;
+       netQty = remainderQty * execSign;
+       
+       // Note: realizedPnl carries over as it tracks the "Trade ID" lifecycle
     }
   }
 
   // Floating point ghost cleanup
-  if (Math.abs(netQty) < 0.000001) netQty = 0;
+  if (Math.abs(netQty) < EPSILON) netQty = 0;
 
-  // --- 4. Final Financial Metrics ---
+  // --- 4. Update Peaks (GLOBAL CHECK) ---
+  // We check this at the end to ensure we catch ANY high water mark,
+  // whether it came from accumulation or a large flip.
+  // CRITICAL FIX: We use Math.max to ensure peak never decreases.
+  const currentAbs = Math.abs(netQty);
+  const currentInv = currentAbs * avgEntry;
+
+  if (currentAbs > peakQty) peakQty = currentAbs;
+  if (currentInv > peakInvested) peakInvested = currentInv;
+
+  // --- 5. Final Financial Metrics ---
   const grossPnl = totalSellVal - totalBuyVal; 
-  const netPnl = grossPnl - totalFees;
+  
+  // Calculate Unrealized PnL based on current avgEntry
+  const currentVal = Math.abs(netQty) * price;
+  const costBasis = Math.abs(netQty) * avgEntry;
+  const unrealized = (Math.sign(netQty) === 1) ? (currentVal - costBasis) : (costBasis - currentVal);
+  
+  // Net PnL = Realized + Unrealized - Fees
+  const netPnl = realizedPnl + unrealized - totalFees;
 
-  // Freeze original stop if not set
   if (origStop === 0 && current.initialStopLoss && current.initialStopLoss > 0) {
     origStop = current.initialStopLoss;
   }
 
-  // ROI/Performance PnL (Realized + Unrealized)
-  const currentVal = Math.abs(netQty) * price;
-  const costBasis = Math.abs(netQty) * avgEntry;
-  const unrealized = (Math.sign(netQty) === 1) ? (currentVal - costBasis) : (costBasis - currentVal);
-  const totalPerformancePnl = realizedPnl + unrealized - totalFees;
+  // ✅ Return %: (Net PnL / Total Buy Value) * 100
+  // Fallback to Sell Value for Short-only trades to avoid divide-by-zero
+  const investmentBasis = totalBuyVal > 0 ? totalBuyVal : totalSellVal;
+  const returnPercent = investmentBasis > 0 ? (netPnl / investmentBasis) * 100 : 0;
 
   const riskMetrics = calculateRiskMetrics(
     { ...current, originalStopLoss: origStop }, 
-    totalPerformancePnl, 
+    netPnl, 
     plannedQty, 
     avgEntry, 
     peakInvested
   );
 
-  const timeMetrics = calculateTimeMetrics(current, newExec, netQty === 0, totalPerformancePnl);
+  const timeMetrics = calculateTimeMetrics(current, newExec, netQty === 0, netPnl);
 
   return {
     netQuantity: netQty,
     plannedQuantity: plannedQty,
-    peakQuantity: peakQty,
+    peakQuantity: peakQty, // Now monotonic increasing
     avgEntryPrice: avgEntry,
     avgExitPrice: avgExit,
     totalExitQuantity: totalExitQty,
@@ -229,10 +238,10 @@ export const runTradeCalculations = (
     totalSellValue: totalSellVal,
     totalFees,
     totalSlippage,
-    grossPnl,
+    grossPnl: realizedPnl + unrealized,
     realizedPnl,
     netPnl,
-    returnPercent: riskMetrics.holdingPeriodReturn, // Standard ROI
+    returnPercent, 
     originalStopLoss: origStop,
     ...riskMetrics,
     ...timeMetrics,

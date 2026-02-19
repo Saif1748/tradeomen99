@@ -1,7 +1,14 @@
+// src/hooks/useDashboardStats.ts
 import { useQuery } from "@tanstack/react-query";
-import { getTrades } from "@/services/tradeService";
-import { queryKeys } from "@/lib/queryKeys";
-import { calculateMetrics, DateRange } from "@/lib/analytics";
+import { getTradesInRange, getAggregatedStatsALL } from "@/services/tradeService";
+import { 
+  calculateMetrics, 
+  formatAggregatedMetrics, 
+  getPeriodWindows, 
+  DateRange, 
+  DashboardMetrics, 
+  getZeroMetrics 
+} from "@/lib/analytics";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { useMemo } from "react";
 
@@ -16,38 +23,53 @@ export const useDashboardStats = (filters: DashboardFilters) => {
   const { activeAccount } = useWorkspace();
   const accountId = activeAccount?.id || "";
 
-  // 1. Fetch ALL trades for the account (Cached)
-  const { data: trades = [], isLoading, error } = useQuery({
-    queryKey: queryKeys.tradesByAccount(accountId),
-    queryFn: () => getTrades(accountId),
-    enabled: !!accountId,
-    staleTime: 1000 * 60 * 5, // Cache for 5 mins
+  // 1. Mode Detection
+  // If "ALL", we use server-side aggregation (0 reads).
+  // If Time Range, we fetch specific docs (low reads).
+  const isAllTime = filters.dateRange === "ALL";
+
+  // 2. Query for "ALL TIME" (Aggregation)
+  const { data: aggregatedData, isLoading: isLoadingAgg } = useQuery({
+    queryKey: ["dashboard-agg", accountId, filters],
+    queryFn: () => getAggregatedStatsALL(accountId, filters),
+    enabled: !!accountId && isAllTime,
+    staleTime: 1000 * 60 * 10, // 10 mins cache for aggregates
+    refetchOnWindowFocus: false,
   });
 
-  // 2. Filter & Calculate (Memoized)
-  const stats = useMemo(() => {
-    let filtered = [...trades];
+  // 3. Query for Date Ranges (Fetch Trades)
+  const { data: rangedTrades = [], isLoading: isLoadingRange } = useQuery({
+    queryKey: ["dashboard-range", accountId, filters],
+    queryFn: async () => {
+      // Calculate start date based on range (e.g., 30 days ago)
+      // Note: We fetch "Period + Previous Period" buffer to calculate % change
+      const { prevStart } = getPeriodWindows(filters.dateRange);
+      const now = new Date();
+      return getTradesInRange(accountId, prevStart, now, filters);
+    },
+    enabled: !!accountId && !isAllTime,
+    staleTime: 1000 * 60 * 5, // 5 mins cache for ranges
+    refetchOnWindowFocus: false,
+  });
 
-    // Filter: Strategy
-    if (filters.strategyId) {
-      filtered = filtered.filter(t => t.strategyId === filters.strategyId);
-    }
-    
-    // Filter: Asset Class
-    if (filters.assetClass) {
-      filtered = filtered.filter(t => t.assetClass === filters.assetClass);
-    }
-    
-    // Filter: Tags (Matches ANY)
-    if (filters.tags && filters.tags.length > 0) {
-      filtered = filtered.filter(t => 
-        t.tags?.some(tag => filters.tags?.includes(tag))
-      );
-    }
+  // 4. Compute Final Metrics (Memoized)
+  const stats = useMemo<DashboardMetrics | null>(() => {
+    if (!accountId) return null;
 
-    // Filter: Date Range is handled INSIDE calculateMetrics for comparison logic
-    return calculateMetrics(filtered, filters.dateRange);
-  }, [trades, filters]);
+    if (isAllTime) {
+      // Use Server Aggregated Data (Converted to DashboardMetrics shape)
+      return aggregatedData ? formatAggregatedMetrics(aggregatedData) : getZeroMetrics();
+    } else {
+      // Use Client Calculation on the subset of trades
+      return calculateMetrics(rangedTrades, filters.dateRange);
+    }
+  }, [accountId, isAllTime, aggregatedData, rangedTrades, filters.dateRange]);
 
-  return { stats, trades, isLoading, error };
+  return { 
+    stats, 
+    isLoading: isAllTime ? isLoadingAgg : isLoadingRange, 
+    // Only expose trades if we actually fetched them (for range view).
+    // All-time view does not have a list of trades to show here.
+    trades: isAllTime ? [] : rangedTrades 
+  };
 };

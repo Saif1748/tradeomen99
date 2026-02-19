@@ -1,12 +1,16 @@
-import { useEffect, useState, useMemo } from "react";
-import { CaretUp, CaretDown, TrendUp, TrendDown } from "@phosphor-icons/react";
+import { useEffect, useState } from "react";
+import { CaretUp, CaretDown, TrendUp, TrendDown, CaretLeft, CaretRight } from "@phosphor-icons/react";
 import { format } from "date-fns";
 import { Trade, computeTradeData } from "@/lib/tradesData";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
-  Pagination, PaginationContent, PaginationEllipsis,
-  PaginationItem, PaginationLink, PaginationNext, PaginationPrevious,
-} from "@/components/ui/pagination";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 // ✅ Import Currency Services & Context
 import { getExchangeRates, convertCurrency, ExchangeRates } from "@/services/currencyService";
@@ -18,13 +22,34 @@ interface TradesTableProps {
   sortField: string;
   sortDirection: "asc" | "desc";
   onSort: (field: string) => void;
-  isLoading?: boolean; // Added optional prop for consistency
+  isLoading?: boolean;
+  // ✅ NEW Pagination Props
+  totalCount: number;
+  pageIndex: number;
+  pageSize: number;
+  setPageSize: (size: number) => void;
+  nextPage: () => void;
+  prevPage: () => void;
+  hasNextPage: boolean;
+  hasPrevPage: boolean;
 }
 
-const ITEMS_PER_PAGE = 30;
-
-const TradesTable = ({ trades, onTradeClick, sortField, sortDirection, onSort }: TradesTableProps) => {
-  const [currentPage, setCurrentPage] = useState(1);
+const TradesTable = ({ 
+  trades, 
+  onTradeClick, 
+  sortField, 
+  sortDirection, 
+  onSort,
+  // Pagination Destructuring
+  totalCount,
+  pageIndex,
+  pageSize,
+  setPageSize,
+  nextPage,
+  prevPage,
+  hasNextPage,
+  hasPrevPage
+}: TradesTableProps) => {
   
   // ✅ 1. Currency State
   const { tradingPreferences } = useSettings();
@@ -43,9 +68,6 @@ const TradesTable = ({ trades, onTradeClick, sortField, sortDirection, onSort }:
   // ✅ 3. Helper: Convert & Format Currency
   const formatMoney = (amount: number) => {
     const rate = rates[targetCurrency] || 1;
-    // If base data is USD, we multiply by rate. 
-    // If base data matches account currency, this logic might need adjustment based on your backend storage.
-    // Assuming stored values are standardized or base USD for this display:
     const converted = convertCurrency(amount, rate);
     
     return converted.toLocaleString("en-US", { 
@@ -56,29 +78,7 @@ const TradesTable = ({ trades, onTradeClick, sortField, sortDirection, onSort }:
     });
   };
 
-  const totalPages = Math.max(1, Math.ceil(trades.length / ITEMS_PER_PAGE));
-  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-  const paginatedTrades = trades.slice(startIndex, startIndex + ITEMS_PER_PAGE);
-
-  // Reset page when data or sort changes
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [trades.length, sortField, sortDirection]);
-
-  const getPageNumbers = () => {
-    const pages: (number | "ellipsis")[] = [];
-    if (totalPages <= 7) {
-      for (let i = 1; i <= totalPages; i++) pages.push(i);
-    } else {
-      pages.push(1);
-      if (currentPage > 3) pages.push("ellipsis");
-      for (let i = Math.max(2, currentPage - 1); i <= Math.min(totalPages - 1, currentPage + 1); i++) pages.push(i);
-      if (currentPage < totalPages - 2) pages.push("ellipsis");
-      pages.push(totalPages);
-    }
-    return pages;
-  };
-
+  // Grid Layout Class (Preserved)
   const gridLayout = "grid-cols-[minmax(90px,1fr)_minmax(120px,1.5fr)_minmax(90px,1fr)_minmax(80px,0.8fr)_minmax(80px,1fr)_minmax(100px,1.2fr)_minmax(100px,1.2fr)_minmax(70px,0.8fr)_minmax(110px,1.2fr)_minmax(90px,1fr)]";
 
   const columns = [
@@ -116,6 +116,7 @@ const TradesTable = ({ trades, onTradeClick, sortField, sortDirection, onSort }:
       <div className="hidden lg:flex flex-col w-full h-full">
         <div className="flex-1 w-full overflow-x-auto custom-scrollbar pb-4">
           <div className="min-w-[1000px] space-y-2">
+            
             {/* Header Row */}
             <div className="bg-card/40 border border-border/60 rounded-xl px-5 py-3.5 backdrop-blur-md sticky top-0 z-10 shadow-sm">
               <div className={`grid ${gridLayout} gap-4 items-center`}>
@@ -136,16 +137,14 @@ const TradesTable = ({ trades, onTradeClick, sortField, sortDirection, onSort }:
 
             {/* Trade Rows */}
             <div className="space-y-1.5">
-              {paginatedTrades.map((trade) => {
+              {trades.map((trade) => {
                 const c = computeTradeData(trade);
                 const isWin = (c.pnl ?? 0) > 0;
                 const isLoss = (c.pnl ?? 0) < 0;
 
-                // Robust entry date: accept either field name
                 const entryDate: Date | null | undefined = (c as any).firstExecutionDate ?? (c as any).entryDate ?? null;
                 const entryDateDisplay = entryDate ? format(entryDate, "MMM d") : "—";
 
-                // Safe instrument label
                 const instr = (c.instrumentType || "").toString();
                 const instrShort = instr ? instr.substring(0, 3) : "";
 
@@ -161,6 +160,7 @@ const TradesTable = ({ trades, onTradeClick, sortField, sortDirection, onSort }:
                     onClick={() => onTradeClick(trade)}
                   >
                     <div className={`grid ${gridLayout} gap-4 items-center`}>
+                      
                       {/* Date */}
                       <span className="text-sm text-muted-foreground tabular-nums font-medium">
                         {entryDateDisplay}
@@ -221,12 +221,12 @@ const TradesTable = ({ trades, onTradeClick, sortField, sortDirection, onSort }:
                         {totalQty.toLocaleString()}
                       </span>
 
-                      {/* Avg Entry (Converted) */}
+                      {/* Avg Entry */}
                       <span className="text-sm text-muted-foreground tabular-nums text-right">
                         {formatMoney(avgEntry)}
                       </span>
 
-                      {/* Avg Exit (Converted) */}
+                      {/* Avg Exit */}
                       <span className="text-sm text-muted-foreground tabular-nums text-right">
                         {Number(c.avgExitPrice || 0) > 0
                           ? formatMoney(Number(c.avgExitPrice))
@@ -244,7 +244,7 @@ const TradesTable = ({ trades, onTradeClick, sortField, sortDirection, onSort }:
                         )}
                       </div>
 
-                      {/* Return ($) (Converted) */}
+                      {/* Return ($) */}
                       <span
                         className={`text-sm font-bold tabular-nums text-right ${
                           isWin ? "text-emerald-500" : isLoss ? "text-rose-500" : "text-muted-foreground"
@@ -279,7 +279,7 @@ const TradesTable = ({ trades, onTradeClick, sortField, sortDirection, onSort }:
 
       {/* Mobile Card View */}
       <div className="lg:hidden space-y-3">
-        {paginatedTrades.map((trade) => {
+        {trades.map((trade) => {
           const c = computeTradeData(trade);
           const isWin = (c.pnl ?? 0) > 0;
           const isLoss = (c.pnl ?? 0) < 0;
@@ -337,58 +337,58 @@ const TradesTable = ({ trades, onTradeClick, sortField, sortDirection, onSort }:
         })}
       </div>
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2 border-t border-border/30">
-          <p className="text-xs text-muted-foreground order-2 sm:order-1">
-            Showing <span className="font-medium text-foreground">{startIndex + 1}-{Math.min(startIndex + ITEMS_PER_PAGE, trades.length)}</span> of {trades.length}
-          </p>
-          <div className="order-1 sm:order-2">
-            <Pagination>
-              <PaginationContent className="gap-1">
-                <PaginationItem>
-                  <PaginationPrevious
-                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                    className={`h-8 w-8 p-0 rounded-lg ${currentPage === 1 ? "pointer-events-none opacity-30" : "cursor-pointer hover:bg-secondary"}`}
-                  />
-                </PaginationItem>
-                <div className="hidden sm:flex gap-1">
-                  {getPageNumbers().map((page, index) =>
-                    page === "ellipsis" ? (
-                      <PaginationItem key={`ellipsis-${index}`}>
-                        <PaginationEllipsis />
-                      </PaginationItem>
-                    ) : (
-                      <PaginationItem key={page}>
-                        <PaginationLink
-                          onClick={() => setCurrentPage(page)}
-                          isActive={currentPage === page}
-                          className={`cursor-pointer h-8 w-8 text-xs font-medium rounded-lg transition-all ${
-                            currentPage === page 
-                              ? "bg-primary text-primary-foreground shadow-sm" 
-                              : "text-muted-foreground hover:bg-secondary hover:text-foreground"
-                          }`}
-                        >
-                          {page}
-                        </PaginationLink>
-                      </PaginationItem>
-                    )
-                  )}
-                </div>
-                <span className="sm:hidden text-xs text-muted-foreground px-2 font-medium">
-                  {currentPage} / {totalPages}
-                </span>
-                <PaginationItem>
-                  <PaginationNext
-                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                    className={`h-8 w-8 p-0 rounded-lg ${currentPage === totalPages ? "pointer-events-none opacity-30" : "cursor-pointer hover:bg-secondary"}`}
-                  />
-                </PaginationItem>
-              </PaginationContent>
-            </Pagination>
-          </div>
-        </div>
-      )}
+      {/* ✅ Aesthetic Server-Side Pagination Footer */}
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2 border-t border-border/30 px-2">
+         
+         {/* Page Size Select */}
+         <div className="flex items-center gap-2 text-xs text-muted-foreground order-2 sm:order-1">
+            <span>Rows per page</span>
+            <Select 
+              value={pageSize.toString()} 
+              onValueChange={(v) => setPageSize(Number(v))}
+            >
+              <SelectTrigger className="h-8 w-[70px] text-xs bg-background border-border/60">
+                <SelectValue placeholder={pageSize} />
+              </SelectTrigger>
+              <SelectContent>
+                {[25, 50, 100, 200].map((size) => (
+                  <SelectItem key={size} value={size.toString()} className="text-xs">
+                    {size}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+         </div>
+
+         {/* Navigation Controls */}
+         <div className="order-1 sm:order-2 flex items-center gap-4">
+            <span className="text-xs text-muted-foreground font-medium">
+               Page {pageIndex + 1} <span className="opacity-50 mx-1">/</span> {Math.ceil(Math.max(totalCount, 1) / pageSize)}
+               <span className="ml-2 text-muted-foreground/60">({totalCount} total)</span>
+            </span>
+            
+            <div className="flex items-center gap-1">
+               <Button
+                 variant="outline"
+                 size="icon"
+                 className="h-8 w-8 bg-background border-border/60 hover:bg-secondary/50"
+                 onClick={prevPage}
+                 disabled={!hasPrevPage}
+               >
+                 <CaretLeft className="w-4 h-4" />
+               </Button>
+               <Button
+                 variant="outline"
+                 size="icon"
+                 className="h-8 w-8 bg-background border-border/60 hover:bg-secondary/50"
+                 onClick={nextPage}
+                 disabled={!hasNextPage}
+               >
+                 <CaretRight className="w-4 h-4" />
+               </Button>
+            </div>
+         </div>
+      </div>
     </div>
   );
 };

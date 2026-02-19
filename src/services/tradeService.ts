@@ -9,7 +9,14 @@ import {
   getDocs, 
   orderBy, 
   getDoc, 
-  increment 
+  increment,
+  limit,
+  startAfter,
+  QueryDocumentSnapshot,
+  getCountFromServer,
+  getAggregateFromServer, // ✅ Aggregation Import
+  sum,                    // ✅ Aggregation Import
+  count                   // ✅ Aggregation Import
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Trade, Execution } from "@/types/trade";
@@ -18,6 +25,13 @@ import { runTradeCalculations, calculateRiskMetrics } from "@/lib/financialMath"
 import { logActivityInTransaction } from "./auditService";
 
 const ROOT_COLLECTION = "trades";
+
+// ✅ Pagination Interface
+export interface PaginatedTrades {
+  data: Trade[];
+  lastDoc: QueryDocumentSnapshot | null;
+  totalCount: number;
+}
 
 /**
  * 🛡️ Industry-Grade Sanitization
@@ -66,7 +80,7 @@ export const createTrade = async (accountId: string, userId: string, tradeData: 
     assetClass: tradeData.assetClass || "STOCK",
     status: "OPEN",
     
-    // 📦 Position State (New Industry Model)
+    // 📦 Position State
     netQuantity: 0,
     plannedQuantity: 0, 
     peakQuantity: 0,
@@ -87,7 +101,7 @@ export const createTrade = async (accountId: string, userId: string, tradeData: 
     returnPercent: 0,
     totalExecutions: 0,
     
-    // 🎯 Risk Plan (Frozen Parameters)
+    // 🎯 Risk Plan
     initialStopLoss: tradeData.initialStopLoss ? Number(tradeData.initialStopLoss) : undefined,
     originalStopLoss: tradeData.initialStopLoss ? Number(tradeData.initialStopLoss) : undefined,
     takeProfitTarget: tradeData.takeProfitTarget ? Number(tradeData.takeProfitTarget) : undefined,
@@ -257,20 +271,20 @@ export const updateTrade = async (
   
   let riskUpdates = {};
   if (updates.initialStopLoss || updates.takeProfitTarget) {
-     const mergedTrade = { ...oldTrade, ...updates };
-     
-     // 🛡️ Ensure originalStopLoss is captured if this is the first edit
-     if (!mergedTrade.originalStopLoss && mergedTrade.initialStopLoss) {
+      const mergedTrade = { ...oldTrade, ...updates };
+      
+      // 🛡️ Ensure originalStopLoss is captured if this is the first edit
+      if (!mergedTrade.originalStopLoss && mergedTrade.initialStopLoss) {
         mergedTrade.originalStopLoss = mergedTrade.initialStopLoss;
-     }
+      }
 
-     riskUpdates = calculateRiskMetrics(
-       mergedTrade, 
-       mergedTrade.netPnl || 0, 
-       mergedTrade.plannedQuantity || 0,
-       mergedTrade.avgEntryPrice || 0,
-       mergedTrade.peakInvested || 0
-     );
+      riskUpdates = calculateRiskMetrics(
+        mergedTrade, 
+        mergedTrade.netPnl || 0, 
+        mergedTrade.plannedQuantity || 0,
+        mergedTrade.avgEntryPrice || 0,
+        mergedTrade.peakInvested || 0
+      );
   }
 
   const finalUpdates = sanitize({
@@ -322,11 +336,168 @@ export const deleteTrade = async (trade: Trade, userId: string) => {
   });
 };
 
-export const getTrades = async (accountId: string) => {
-  if (!accountId) return [];
-  const q = query(collection(db, ROOT_COLLECTION), where("accountId", "==", accountId), orderBy("entryDate", "desc"));
-  const snap = await getDocs(q);
-  return snap.docs.map(d => ({ id: d.id, ...d.data() } as Trade));
+/**
+ * 📖 GET TRADES (PAGINATED)
+ */
+export const getTrades = async (
+  accountId: string, 
+  pageSize: number = 50, 
+  lastDoc: QueryDocumentSnapshot | null = null
+): Promise<PaginatedTrades> => {
+  if (!accountId) return { data: [], lastDoc: null, totalCount: 0 };
+
+  const tradesRef = collection(db, ROOT_COLLECTION);
+  
+  // 1. Base Query: Only this account, Sorted by Date
+  let q = query(
+    tradesRef, 
+    where("accountId", "==", accountId), 
+    orderBy("entryDate", "desc"),
+    limit(pageSize)
+  );
+
+  // 2. Apply Cursor if fetching next page
+  if (lastDoc) {
+    q = query(q, startAfter(lastDoc));
+  }
+
+  // 3. Fetch Data Page
+  const snapshot = await getDocs(q);
+  const trades = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Trade));
+
+  // 4. Fetch Total Count (Ideally cached, but fetching here for MVP correctness)
+  const countQuery = query(tradesRef, where("accountId", "==", accountId));
+  const countSnapshot = await getCountFromServer(countQuery);
+  const totalCount = countSnapshot.data().count;
+
+  return {
+    data: trades,
+    lastDoc: snapshot.docs.length > 0 ? snapshot.docs[snapshot.docs.length - 1] : null,
+    totalCount
+  };
+};
+
+// ------------------------------------------------------------------
+// 📊 DASHBOARD ANALYTICS SERVICES (NEW)
+// ------------------------------------------------------------------
+
+/**
+ * 1. Fetch Trades in a Date Range (for 1M, 3M, YTD views)
+ */
+export const getTradesInRange = async (
+  accountId: string, 
+  startDate: Date, 
+  endDate: Date,
+  filters?: { strategyId?: string; assetClass?: string; tags?: string[] }
+) => {
+  const tradesRef = collection(db, ROOT_COLLECTION);
+  
+  let q = query(
+    tradesRef,
+    where("accountId", "==", accountId),
+    where("entryDate", ">=", Timestamp.fromDate(startDate)),
+    where("entryDate", "<=", Timestamp.fromDate(endDate))
+  );
+
+  if (filters?.strategyId && filters.strategyId !== "all") {
+    q = query(q, where("strategyId", "==", filters.strategyId));
+  }
+  if (filters?.assetClass && filters.assetClass !== "all") {
+    q = query(q, where("assetClass", "==", filters.assetClass));
+  }
+  if (filters?.tags && filters.tags.length > 0 && !filters.tags.includes("all")) {
+    q = query(q, where("tags", "array-contains-any", filters.tags));
+  }
+
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Trade));
+};
+
+/**
+ * 2. Server-Side Aggregation for ALL TIME (Robust Fallback for Dev Mode)
+ * Tries aggressive server aggregation first. If index missing, falls back to memory.
+ */
+export const getAggregatedStatsALL = async (
+  accountId: string,
+  filters?: { strategyId?: string; assetClass?: string; tags?: string[] }
+) => {
+  const tradesRef = collection(db, ROOT_COLLECTION);
+  
+  const buildQuery = (extraConstraints: any[] = []) => {
+    let q = query(tradesRef, where("accountId", "==", accountId), ...extraConstraints);
+    
+    if (filters?.strategyId && filters.strategyId !== "all") {
+      q = query(q, where("strategyId", "==", filters.strategyId));
+    }
+    if (filters?.assetClass && filters.assetClass !== "all") {
+      q = query(q, where("assetClass", "==", filters.assetClass));
+    }
+    if (filters?.tags && filters.tags.length > 0 && !filters.tags.includes("all")) {
+        q = query(q, where("tags", "array-contains-any", filters.tags));
+    }
+    return q;
+  };
+
+  try {
+    // Attempt 1: Server-Side Aggregation (Fast, Cheap)
+    // This WILL fail if indexes are missing (standard in dev mode until deployed)
+    const winnersQuery = buildQuery([where("netPnl", ">", 0)]);
+    const losersQuery = buildQuery([where("netPnl", "<", 0)]);
+    const breakevenQuery = buildQuery([where("netPnl", "==", 0)]);
+
+    const [winSnap, lossSnap, breakSnap] = await Promise.all([
+      getAggregateFromServer(winnersQuery, {
+        totalPnl: sum("netPnl"),
+        count: count()
+      }),
+      getAggregateFromServer(losersQuery, {
+        totalPnl: sum("netPnl"),
+        count: count()
+      }),
+      getAggregateFromServer(breakevenQuery, {
+        count: count()
+      })
+    ]);
+
+    return {
+      grossProfit: winSnap.data().totalPnl || 0,
+      grossLoss: Math.abs(lossSnap.data().totalPnl || 0),
+      winningTrades: winSnap.data().count || 0,
+      losingTrades: lossSnap.data().count || 0,
+      breakEvenTrades: breakSnap.data().count || 0
+    };
+
+  } catch (error: any) {
+    // ⚠️ FALLBACK: Client-Side Aggregation (Safe for Dev Mode)
+    // If index is missing, we fetch all trades (up to reasonable limit) and sum locally.
+    // This ensures the UI works immediately while you configure indexes.
+    console.warn("Aggregation Index Missing - Falling back to Client Calc:", error.message);
+    
+    // We limit to 2000 to prevent browser crash if account is huge
+    const fallbackQ = buildQuery([limit(2000)]); 
+    const snapshot = await getDocs(fallbackQ);
+    
+    let grossProfit = 0;
+    let grossLoss = 0;
+    let winningTrades = 0;
+    let losingTrades = 0;
+    let breakEvenTrades = 0;
+
+    snapshot.docs.forEach(doc => {
+      const pnl = doc.data().netPnl || 0;
+      if (pnl > 0) {
+        grossProfit += pnl;
+        winningTrades++;
+      } else if (pnl < 0) {
+        grossLoss += Math.abs(pnl);
+        losingTrades++;
+      } else {
+        breakEvenTrades++;
+      }
+    });
+
+    return { grossProfit, grossLoss, winningTrades, losingTrades, breakEvenTrades };
+  }
 };
 
 export const getTradeById = async (tradeId: string) => {
