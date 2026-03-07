@@ -1,19 +1,16 @@
 import { useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
 import {
   House,
   ChartLine,
   Lightbulb,
   CalendarBlank,
   ChartBar,
-  Globe,
   Robot,
-  CaretLeft,
-  CaretRight,
   Wallet,
-  CaretUpDown,
 } from "@phosphor-icons/react";
+import { ChevronRight, ChevronLeft } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 // ✅ Hooks & Contexts
 import { useWorkspace } from "@/contexts/WorkspaceContext";
@@ -21,14 +18,12 @@ import { useWorkspace } from "@/contexts/WorkspaceContext";
 // ✅ Components
 import { AccountModal } from "@/components/accounts/AccountModal";
 
-// 1. Navigation Configuration
 const navItems = [
   { label: "Dashboard", href: "/dashboard", icon: House },
   { label: "Trades", href: "/trades", icon: ChartLine },
   { label: "Strategies", href: "/strategies", icon: Lightbulb },
   { label: "Calendar", href: "/calendar", icon: CalendarBlank },
   { label: "Reports", href: "/reports", icon: ChartBar },
-
   { label: "AI Chat", href: "/ai-chat", icon: Robot },
 ];
 
@@ -40,132 +35,107 @@ interface AppSidebarProps {
 export const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
   const location = useLocation();
   const { activeAccount } = useWorkspace();
-  
-  // --- Modal States ---
   const [accountModalOpen, setAccountModalOpen] = useState(false);
 
   const formatBalance = (balance: number) => {
-    const formatted = Math.abs(balance).toLocaleString("en-US", {
+    return Math.abs(balance).toLocaleString("en-US", {
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
       style: 'currency',
       currency: activeAccount?.currency || 'USD'
     });
-    return formatted; 
   };
 
   return (
     <>
-      <motion.aside
-        initial={false}
-        animate={{ width: collapsed ? 80 : 260 }} // ✅ Width: 80px / 260px
-        transition={{ duration: 0.3, ease: [0.25, 0.46, 0.45, 0.94] }}
-        className="fixed left-0 top-16 bottom-0 z-40 flex flex-col bg-card border-r border-border/50" 
+      <aside
+        className={cn(
+          "fixed left-0 top-0 h-screen bg-sidebar shadow-sidebar z-50 transition-all duration-300 flex flex-col border-r border-border",
+          collapsed ? "w-[80px]" : "w-[280px]"
+        )}
       >
-        {/* Toggle Button (Vertically Centered) */}
-        <button
-          onClick={onToggle}
-          className="absolute -right-3.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-card border border-border/60 hover:border-primary/50 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors z-10 shadow-sm"
-        >
-          {collapsed ? (
-            <CaretRight weight="bold" className="w-3.5 h-3.5" />
-          ) : (
-            <CaretLeft weight="bold" className="w-3.5 h-3.5" />
-          )}
-        </button>
+        {/* Logo area */}
+        <div className="flex items-center h-16 px-4">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+              <span className="text-primary-foreground font-bold text-sm">T</span>
+            </div>
+            {!collapsed && <span className="font-bold text-lg tracking-tight">Tradeomen</span>}
+          </div>
+        </div>
 
-        {/* Navigation - Takes available space */}
-        <nav className="flex-1 px-3 py-6 overflow-y-auto custom-scrollbar">
-          <ul className="space-y-1">
-            {navItems.map((item) => {
-              const isActive = location.pathname.startsWith(item.href);
-              return (
-                <li key={item.label}>
-                  <NavLink
-                    to={item.href}
-                    className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ${
-                      collapsed ? "justify-center" : ""
-                    } ${
-                      isActive
-                        ? "bg-primary/[0.08] text-foreground font-medium border-l-[3px] border-primary"
-                        : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground border-l-[3px] border-transparent"
-                    }`}
-                    title={collapsed ? item.label : undefined}
-                  >
-                    <item.icon
-                      weight={isActive ? "duotone" : "light"}
-                      className={`w-5 h-5 shrink-0 ${isActive ? "text-primary" : ""}`}
-                    />
-                    <AnimatePresence>
-                      {!collapsed && (
-                        <motion.span
-                          initial={{ opacity: 0, width: 0 }}
-                          animate={{ opacity: 1, width: "auto" }}
-                          exit={{ opacity: 0, width: 0 }}
-                          transition={{ duration: 0.2 }}
-                          className={`text-[15px] whitespace-nowrap overflow-hidden ${isActive ? "font-medium" : "font-normal"}`}
-                        >
-                          {item.label}
-                        </motion.span>
-                      )}
-                    </AnimatePresence>
-                  </NavLink>
-                </li>
-              );
-            })}
-          </ul>
+        {/* Menu label */}
+        {!collapsed && (
+          <div className="px-6 pt-4 pb-2">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+              Menu
+            </span>
+          </div>
+        )}
+
+        {/* Nav items */}
+        <nav className="flex-1 px-3 space-y-0.5 overflow-y-auto scrollbar-sidebar">
+          {navItems.map((item) => {
+            const isActive = location.pathname.startsWith(item.href);
+            return (
+              <NavLink
+                key={item.label}
+                to={item.href}
+                className={cn(
+                  "w-full flex items-center gap-3 h-11 rounded-lg px-3 transition-colors text-sm font-normal",
+                  isActive
+                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                    : "text-sidebar-foreground hover:bg-sidebar-accent/50",
+                  collapsed && "justify-center px-0"
+                )}
+                title={collapsed ? item.label : undefined}
+              >
+                <item.icon weight={isActive ? "fill" : "regular"} className="w-5 h-5 shrink-0" />
+                {!collapsed && <span className="flex-1 text-left truncate">{item.label}</span>}
+              </NavLink>
+            );
+          })}
         </nav>
 
-        {/* Account Selector Section - Anchored at Bottom */}
-        <div className="mt-auto">
-            {/* Divider */}
-            <div className="mx-4 border-t border-border/30 mb-3" />
-            
-            <div className={`px-4 pb-5 ${collapsed ? "px-3" : ""}`}>
-            <button
-                onClick={() => setAccountModalOpen(true)}
-                className={`w-full p-3 rounded-xl bg-secondary/30 hover:bg-secondary/60 transition-colors duration-200 border border-border/30 hover:border-primary/20 ${collapsed ? "p-2" : ""}`}
-            >
-                <div className={`flex items-center ${collapsed ? "justify-center" : "gap-3"}`}>
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center shrink-0 shadow-sm border border-primary/10">
-                    <Wallet weight="duotone" className="w-4 h-4 text-primary" />
-                </div>
-                <AnimatePresence>
-                    {!collapsed && (
-                    <motion.div
-                        initial={{ opacity: 0, width: 0 }}
-                        animate={{ opacity: 1, width: "auto" }}
-                        exit={{ opacity: 0, width: 0 }}
-                        transition={{ duration: 0.2 }}
-                        className="flex-1 text-left overflow-hidden"
-                    >
-                        <div className="flex items-center justify-between">
-                        <div className="min-w-0">
-                            <p className="text-sm font-medium text-foreground truncate">
-                            {activeAccount?.name || "Select Account"}
-                            </p>
-                            {activeAccount && (
-                            <p className={`text-xs font-medium ${activeAccount.balance >= 0 ? "text-emerald-500" : "text-red-400"}`}>
-                                {formatBalance(activeAccount.balance)}
-                            </p>
-                            )}
-                        </div>
-                        <CaretUpDown weight="bold" className="w-3.5 h-3.5 text-muted-foreground/70 shrink-0 ml-2" />
-                        </div>
-                    </motion.div>
-                    )}
-                </AnimatePresence>
-                </div>
-            </button>
-            </div>
+        {/* Account Selector Section */}
+        <div className="p-3">
+          <button
+            onClick={() => setAccountModalOpen(true)}
+            className={cn(
+                "w-full flex items-center gap-3 h-12 rounded-lg px-3 transition-colors",
+                "text-sidebar-foreground hover:bg-sidebar-accent/50 border border-border bg-card/50",
+                collapsed && "justify-center px-0"
+            )}
+          >
+            <Wallet className="w-5 h-5 shrink-0 text-muted-foreground" />
+            {!collapsed && (
+              <div className="flex-1 text-left min-w-0">
+                <p className="text-sm font-medium text-foreground truncate">
+                  {activeAccount?.name || "Select Account"}
+                </p>
+                {activeAccount && (
+                  <p className={cn("text-xs font-medium", activeAccount.balance >= 0 ? "text-success" : "text-loss")}>
+                    {formatBalance(activeAccount.balance)}
+                  </p>
+                )}
+              </div>
+            )}
+          </button>
         </div>
-      </motion.aside>
+      </aside>
 
-      {/* --- Modals --- */}
-      <AccountModal 
-        open={accountModalOpen} 
-        onOpenChange={setAccountModalOpen} 
-      />
+      {/* Toggle button at the edge of sidebar exactly like Aura */}
+      <button
+        onClick={onToggle}
+        className={cn(
+          "fixed top-1/2 -translate-y-1/2 z-[51] w-6 h-6 rounded-full border border-border bg-card flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-all duration-300 shadow-sm",
+          collapsed ? "left-[68px]" : "left-[268px]"
+        )}
+      >
+        {collapsed ? <ChevronRight size={12} /> : <ChevronLeft size={12} />}
+      </button>
+
+      <AccountModal open={accountModalOpen} onOpenChange={setAccountModalOpen} />
     </>
   );
 };

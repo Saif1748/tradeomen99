@@ -7,6 +7,10 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { UserProvider } from "@/contexts/UserContext"; 
 import { WorkspaceProvider } from "@/contexts/WorkspaceContext"; 
 import { SettingsProvider } from "@/contexts/SettingsContext"; // ✅ Import SettingsProvider
+
+// ✅ Import ThemeProvider
+import { ThemeProvider } from "@/contexts/ThemeContext";
+
 import DashboardLayout from "@/components/dashboard/DashboardLayout"; 
 import { ProtectedRoute } from "@/components/ProtectedRoute"; 
 
@@ -43,48 +47,51 @@ const PageLoader = () => (
 );
 
 const App = () => (
-  <QueryClientProvider client={queryClient}>
-    {/* 👑 PROVIDER HIERARCHY:
-      1. UserProvider: Auth state
-      2. SettingsProvider: User Preferences & Currency (Depends on User)
-      3. WorkspaceProvider: Accounts & Data (Depends on User)
-    */}
-    <UserProvider>
-      <SettingsProvider> {/* ✅ Added Provider */}
-        <WorkspaceProvider>
-          <TooltipProvider>
-            <Toaster />
-            <Sonner />
-            <BrowserRouter>
-              <Suspense fallback={<PageLoader />}>
-                <Routes>
-                  {/* --- Public Routes --- */}
-                  <Route path="/" element={<Index />} />
-                  <Route path="/auth" element={<Auth />} />
-                  <Route path="/verify-email" element={<VerifyEmail />} />
+  // ✅ Wrap the entire app inside ThemeProvider
+  <ThemeProvider>
+    <QueryClientProvider client={queryClient}>
+      {/* 👑 PROVIDER HIERARCHY:
+        1. UserProvider: Auth state
+        2. SettingsProvider: User Preferences & Currency (Depends on User)
+        3. WorkspaceProvider: Accounts & Data (Depends on User)
+      */}
+      <UserProvider>
+        <SettingsProvider>
+          <WorkspaceProvider>
+            <TooltipProvider>
+              <Toaster />
+              <Sonner />
+              <BrowserRouter>
+                <Suspense fallback={<PageLoader />}>
+                  <Routes>
+                    {/* --- Public Routes --- */}
+                    <Route path="/" element={<Index />} />
+                    <Route path="/auth" element={<Auth />} />
+                    <Route path="/verify-email" element={<VerifyEmail />} />
 
-                  {/* --- Protected Routes --- */}
-                  <Route element={<ProtectedRoute />}>
-                    <Route element={<DashboardLayout />}>
-                      <Route path="/dashboard" element={<Dashboard />} />
-                      <Route path="/trades" element={<Trades />} />
-                      <Route path="/strategies" element={<Strategies />} />
-                      <Route path="/calendar" element={<Calendar />} />
-                      <Route path="/reports" element={<Reports />} />
-                      <Route path="/markets" element={<Markets />} />
-                      <Route path="/ai-chat" element={<AIChat />} />
+                    {/* --- Protected Routes --- */}
+                    <Route element={<ProtectedRoute />}>
+                      <Route element={<DashboardLayout />}>
+                        <Route path="/dashboard" element={<Dashboard />} />
+                        <Route path="/trades" element={<Trades />} />
+                        <Route path="/strategies" element={<Strategies />} />
+                        <Route path="/calendar" element={<Calendar />} />
+                        <Route path="/reports" element={<Reports />} />
+                        <Route path="/markets" element={<Markets />} />
+                        <Route path="/ai-chat" element={<AIChat />} />
+                      </Route>
                     </Route>
-                  </Route>
 
-                  <Route path="*" element={<NotFound />} />
-                </Routes>
-              </Suspense>
-            </BrowserRouter>
-          </TooltipProvider>
-        </WorkspaceProvider>
-      </SettingsProvider> {/* ✅ Close Provider */}
-    </UserProvider>
-  </QueryClientProvider>
+                    <Route path="*" element={<NotFound />} />
+                  </Routes>
+                </Suspense>
+              </BrowserRouter>
+            </TooltipProvider>
+          </WorkspaceProvider>
+        </SettingsProvider>
+      </UserProvider>
+    </QueryClientProvider>
+  </ThemeProvider>
 );
 
 export default App;
