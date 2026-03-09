@@ -7,7 +7,7 @@ import { PerformanceCharts } from "@/components/dashboard/PerformanceChart";
 import { RecentTrades } from "@/components/dashboard/RecentTrades";
 import { MiniCalendar } from "@/components/dashboard/MiniCalendar";
 import { useDashboardStats } from "@/hooks/useDashboardStats";
-import { useSettings } from "@/contexts/SettingsContext"; // ✅ 1. Import Settings
+import { useSettings } from "@/contexts/SettingsContext";
 
 const Dashboard = () => {
   // 🔥 FETCH REAL DATA (Default to 1 Month view)
@@ -16,13 +16,12 @@ const Dashboard = () => {
   // ✅ 2. Use the Global Formatter (Handles conversion & symbols)
   const { formatCurrency } = useSettings();
 
-  if (isLoading) return <div className="p-8 text-center text-muted-foreground animate-pulse">Loading Dashboard...</div>;
+  if (isLoading) return <div className="text-center text-muted-foreground animate-pulse">Loading Dashboard...</div>;
 
   return (
-    <div className="p-6 lg:p-8">
-
-      {/* Metrics Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+    <div>
+      {/* Metrics Grid - Updated to gap-6 and mb-6 to match visual-canvas exactly */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-6 mb-6">
         
         {/* 1. Net P&L (Currency Converted) */}
         <MetricCard
@@ -76,15 +75,16 @@ const Dashboard = () => {
           value={stats.avgWinLossRatio.toFixed(2)}
           subtitle="Risk/reward ratio"
         >
-          {/* Note: We pass raw numbers here. The Bar chart itself should handle formatting internally if it shows tooltips */}
           <AvgWinLossBar avgWin={stats.avgWin} avgLoss={stats.avgLoss} />
         </MetricCard>
       </div>
 
-      {/* Charts */}
-      <PerformanceCharts />
+      {/* Charts - Added mb-6 wrapper for perfect vertical spacing */}
+      <div className="mb-6">
+        <PerformanceCharts />
+      </div>
 
-      {/* Bottom Section */}
+      {/* Bottom Section - Updated to gap-6 */}
       <div className="grid lg:grid-cols-2 gap-6">
         <RecentTrades />
         <MiniCalendar />

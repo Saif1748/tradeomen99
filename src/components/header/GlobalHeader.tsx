@@ -2,34 +2,15 @@ import { useState, useEffect, useRef } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Search,
-  Crown,
-  Rocket,
-  Zap,
-  LogOut,
-  Settings,
-  Menu,
-  ChevronDown,
-  Command,
-  Plus,
-  TrendingUp,
-  Lightbulb,
-  PenLine,
-  Users,
-  Bell,
-  Eye,
-  Calendar,
-  X,
-  MessageCircle,
-  Palette
+  Search, Crown, Rocket, Zap, LogOut, Settings, Menu, ChevronDown,
+  Command, Plus, TrendingUp, Lightbulb, PenLine, Users, Bell, Eye,
+  Calendar, X, MessageCircle, Palette
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useUser } from "@/contexts/UserContext";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { useSettings, SupportedCurrency } from "@/contexts/SettingsContext";
 import { useTrades } from "@/hooks/useTrades";
-
-// Ensure ThemeContext is used instead of next-themes
 import { useTheme } from "@/contexts/ThemeContext";
 
 import SettingsModal from "@/components/settings/SettingsModal";
@@ -39,19 +20,8 @@ import CreateStrategyModal from "@/components/strategies/CreateStrategyModal";
 import ThemePanel from "@/components/ThemeSettings";
 import { Strategy } from "@/types/strategy";
 
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-} from "@/components/ui/select";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { auth } from "@/lib/firebase";
 import { signOut } from "firebase/auth";
 import { toast } from "sonner";
@@ -87,11 +57,8 @@ export function GlobalHeader({ onMobileMenuOpen }: GlobalHeaderProps) {
   const { profile, plan, user } = useUser();
   const { activeAccount } = useWorkspace();
   const { tradingPreferences, setTradingPreferences } = useSettings();
-  
-  // Custom theme context replacing next-themes
   const { resolvedMode } = useTheme();
 
-  // Initialize Trade Hook
   const { createTrade } = useTrades(activeAccount?.id, user?.uid);
 
   const name = profile?.displayName || "Trader";
@@ -99,7 +66,6 @@ export function GlobalHeader({ onMobileMenuOpen }: GlobalHeaderProps) {
   const isTradesPage = location.pathname === "/trades";
   const isDashboard = location.pathname === "/dashboard";
 
-  // --- Derived Styles ---
   const getPlanIcon = () => {
     if (plan === "PREMIUM") return Crown;
     if (plan === "PRO") return Rocket;
@@ -114,7 +80,6 @@ export function GlobalHeader({ onMobileMenuOpen }: GlobalHeaderProps) {
 
   const PlanIcon = getPlanIcon();
 
-  // --- Handlers ---
   const handleTradeSubmit = async (data: TradeSubmissionPayload) => {
     try {
       if (!activeAccount) {
@@ -144,18 +109,13 @@ export function GlobalHeader({ onMobileMenuOpen }: GlobalHeaderProps) {
   };
 
   const handleCurrencyChange = (value: SupportedCurrency) => {
-    setTradingPreferences({
-      ...tradingPreferences,
-      currency: value
-    });
+    setTradingPreferences({ ...tradingPreferences, currency: value });
     toast.success(`Currency changed to ${value}`);
   };
 
   const [searchValue, setSearchValue] = useState<string>(() => searchParams.get("q") || "");
   useEffect(() => {
-    if (isTradesPage) {
-      setSearchValue(searchParams.get("q") || "");
-    }
+    if (isTradesPage) setSearchValue(searchParams.get("q") || "");
   }, [searchParams, isTradesPage]);
 
   const handleSearchChange = (val: string) => {
@@ -184,7 +144,10 @@ export function GlobalHeader({ onMobileMenuOpen }: GlobalHeaderProps) {
 
   return (
     <>
-      <header className="sticky top-0 z-40 h-16 bg-sidebar backdrop-blur-[20px] border-b border-border shadow-header flex items-center justify-between px-6">
+      {/* Replaced <header> with <div className="w-full h-full..."> 
+        DashboardLayout is already acting as the <header>. 
+      */}
+      <div className="w-full h-full flex items-center justify-between px-6 bg-transparent">
         
         {/* --- Left side: Menu toggle & Account selector --- */}
         <div className="flex items-center gap-3">
@@ -205,7 +168,7 @@ export function GlobalHeader({ onMobileMenuOpen }: GlobalHeaderProps) {
               </span>
               <ChevronDown size={16} className="text-muted-foreground hidden sm:block group-hover:text-foreground transition-colors" />
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-56">
+            <DropdownMenuContent align="start" className="w-56 z-[60]">
               <DropdownMenuItem className="text-sm">Manage Accounts</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -225,8 +188,8 @@ export function GlobalHeader({ onMobileMenuOpen }: GlobalHeaderProps) {
               >
                 <div
                   className={cn(
-                    "flex items-center gap-2 bg-card border border-border rounded-lg px-3 py-2 w-full transition-colors",
-                    searchFocused && "border-primary ring-1 ring-primary/20"
+                    "flex items-center gap-2 bg-card/50 border border-border rounded-lg px-3 py-2 w-full transition-colors",
+                    searchFocused && "border-primary ring-1 ring-primary/20 bg-card"
                   )}
                 >
                   <Search size={16} className={cn("text-muted-foreground transition-colors", searchFocused && "text-primary")} />
@@ -266,7 +229,7 @@ export function GlobalHeader({ onMobileMenuOpen }: GlobalHeaderProps) {
                 <Plus size={18} />
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuContent align="end" className="w-48 z-[60]">
               <DropdownMenuItem onClick={() => setTradeModalOpen(true)} className="cursor-pointer gap-2 py-2">
                 <TrendingUp size={16} className="text-primary" /> Add Trade
               </DropdownMenuItem>
@@ -279,14 +242,14 @@ export function GlobalHeader({ onMobileMenuOpen }: GlobalHeaderProps) {
             </DropdownMenuContent>
           </DropdownMenu>
 
-          {/* Currency Selector styled like Date Filter */}
+          {/* Currency Selector */}
           <Select value={tradingPreferences.currency} onValueChange={handleCurrencyChange}>
             <SelectTrigger className="hidden sm:flex items-center gap-2 bg-card border border-border rounded-lg px-3 py-2 h-9 text-sm focus:ring-0 focus:ring-offset-0">
               <span className="text-foreground">
                 {currencies.find(c => c.value === tradingPreferences.currency)?.symbol} {tradingPreferences.currency}
               </span>
             </SelectTrigger>
-            <SelectContent align="end">
+            <SelectContent align="end" className="z-[60]">
               {currencies.map((c) => (
                 <SelectItem key={c.value} value={c.value} className="text-sm cursor-pointer">
                   <div className="flex items-center gap-2">
@@ -298,7 +261,7 @@ export function GlobalHeader({ onMobileMenuOpen }: GlobalHeaderProps) {
             </SelectContent>
           </Select>
 
-          {/* Dashboard Design Icons */}
+          {/* Icons */}
           <button className="hidden sm:flex w-9 h-9 rounded-full items-center justify-center text-muted-foreground hover:text-foreground transition-colors relative">
             <Users size={20} className="text-success" />
             <span className="absolute top-1 right-1 w-2 h-2 bg-loss rounded-full" />
@@ -308,7 +271,6 @@ export function GlobalHeader({ onMobileMenuOpen }: GlobalHeaderProps) {
             <Eye size={20} />
           </button>
 
-          {/* Date filter */}
           <div className="hidden lg:flex items-center gap-2 bg-card border border-border rounded-lg px-3 py-2 h-9">
             <Calendar size={16} className="text-muted-foreground" />
             <span className="text-sm text-foreground">All Time</span>
@@ -349,7 +311,7 @@ export function GlobalHeader({ onMobileMenuOpen }: GlobalHeaderProps) {
               </button>
             </DropdownMenuTrigger>
 
-            <DropdownMenuContent align="end" className="w-64">
+            <DropdownMenuContent align="end" className="w-64 z-[60]">
               <div className="px-3 py-3 bg-muted/30 rounded-lg mb-2 mx-1 mt-1 border border-border/40">
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-semibold text-foreground">{name}</p>
@@ -371,7 +333,7 @@ export function GlobalHeader({ onMobileMenuOpen }: GlobalHeaderProps) {
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
-      </header>
+      </div>
 
       {/* --- Modals & Panels --- */}
       <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
@@ -396,5 +358,5 @@ export function GlobalHeader({ onMobileMenuOpen }: GlobalHeaderProps) {
     </>
   );
 } 
- 
+
 export default GlobalHeader;

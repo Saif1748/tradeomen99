@@ -1,264 +1,429 @@
 import { useState, useMemo } from "react";
-import { CalendarBlank, CaretLeft, CaretRight } from "@phosphor-icons/react";
-import { 
-  format, 
-  startOfMonth, 
-  endOfMonth, 
-  startOfWeek, 
-  endOfWeek, 
-  eachDayOfInterval, 
-  isSameDay, 
-  isSameMonth,
-  addMonths,
-  subMonths
-} from "date-fns";
+import { useNavigate } from "react-router-dom";
+import { cn } from "@/lib/utils";
+import { ChevronLeft, ChevronRight, ArrowLeft, TrendingUp, TrendingDown } from "lucide-react";
 
-// Services & Hooks
+// --- Services & Hooks ---
 import { useTrades } from "@/hooks/useTrades";
-import { useJournal } from "@/hooks/useJournal";
-import { useStrategies } from "@/hooks/useStrategies";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { useUser } from "@/contexts/UserContext";
-import { useSettings } from "@/contexts/SettingsContext"; // ✅ 1. Import Settings
-import { convertCurrency } from "@/services/currencyService"; // ✅ 2. Import Conversion Service
+import { useSettings } from "@/contexts/SettingsContext";
+import { convertCurrency } from "@/services/currencyService";
 
-// Components
-import CalendarGrid from "@/components/calendar/CalendarGrid";
-import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
-import { DayData, Trade } from "@/lib/calendarData";
+// --- Types & Constants ---
+type DayTrade = { pnl: number; wins: number; losses: number; tradeIds: string[]; symbols: string[] };
 
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const DAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
+
+// --- Utility Functions ---
+function getMonthDays(year: number, month: number) {
+  const firstDay = new Date(year, month, 1);
+  let startDay = firstDay.getDay() - 1;
+  if (startDay < 0) startDay = 6;
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const prevMonthDays = new Date(year, month, 0).getDate();
+
+  const cells: { day: number; inMonth: boolean; dateStr: string }[] = [];
+  for (let i = startDay - 1; i >= 0; i--) {
+    const d = prevMonthDays - i;
+    const m = month === 0 ? 12 : month;
+    const y = month === 0 ? year - 1 : year;
+    cells.push({ day: d, inMonth: false, dateStr: `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}` });
+  }
+  for (let d = 1; d <= daysInMonth; d++) {
+    cells.push({ day: d, inMonth: true, dateStr: `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}` });
+  }
+  while (cells.length < 42) {
+    const d = cells.length - startDay - daysInMonth + 1;
+    const m = month + 2 > 12 ? 1 : month + 2;
+    const y = month + 2 > 12 ? year + 1 : year;
+    cells.push({ day: d, inMonth: false, dateStr: `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}` });
+  }
+  return cells;
+}
+
+function getHeatmapColor(pnl: number) {
+  if (pnl > 2000) return "bg-success/40 border-success/50";
+  if (pnl > 0) return "bg-success/20 border-success/30";
+  if (pnl < -500) return "bg-loss/40 border-loss/50";
+  if (pnl < 0) return "bg-loss/20 border-loss/30";
+  return "";
+}
+
+function formatPnl(v: number, symbol: string) {
+  const prefix = v >= 0 ? "+" : "-";
+  return `${prefix}${symbol}${Math.abs(v).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+}
+
+function getTodayStr() {
+  const t = new Date();
+  return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
+}
+
+function getMonthSummary(year: number, month: number, tradesMap: Record<string, DayTrade>) {
+  let totalPnl = 0, totalWins = 0, totalLosses = 0;
+  Object.entries(tradesMap).forEach(([dateStr, trade]) => {
+    const [y, m] = dateStr.split('-');
+    if (parseInt(y) === year && parseInt(m) - 1 === month) {
+      totalPnl += trade.pnl;
+      totalWins += trade.wins;
+      totalLosses += trade.losses;
+    }
+  });
+  return { totalPnl, totalWins, totalLosses, hasTrades: totalWins + totalLosses > 0 };
+}
+
+// ─── Components ───
+
+function MonthCard({ 
+  year, month, onClick, isCurrentMonth, tradesByDate, currencySymbol 
+}: { 
+  year: number; month: number; onClick: () => void; isCurrentMonth: boolean; tradesByDate: Record<string, DayTrade>; currencySymbol: string;
+}) {
+  const cells = getMonthDays(year, month);
+  const summary = getMonthSummary(year, month, tradesByDate);
+  const todayStr = getTodayStr();
+
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "card-boundary rounded-2xl bg-card p-4 text-left transition-all duration-200 cursor-pointer group hover:border-primary/30",
+        isCurrentMonth && "ring-1 ring-primary/40"
+      )}
+    >
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">
+          {MONTHS[month]}
+        </h3>
+      </div>
+
+      {summary.hasTrades ? (
+        <div className="flex items-center gap-2 mb-2">
+          <span className={cn("text-xs font-bold", summary.totalPnl >= 0 ? "text-success" : "text-loss")}>
+            {formatPnl(summary.totalPnl, currencySymbol)}
+          </span>
+          <span className="text-[10px] text-text-secondary">{summary.totalWins} Wins</span>
+        </div>
+      ) : (
+        <div className="h-5 mb-2" />
+      )}
+
+      <div className="grid grid-cols-7 gap-px">
+        {DAYS.map((d) => (
+          <div key={d} className="text-[8px] text-text-secondary text-center font-medium pb-0.5">{d}</div>
+        ))}
+        {cells.slice(0, 42).map((cell, i) => {
+          const trade = tradesByDate[cell.dateStr];
+          return (
+            <div
+              key={i}
+              className={cn(
+                "aspect-square flex items-center justify-center text-[9px] rounded transition-colors",
+                !cell.inMonth && "text-text-disabled/30",
+                cell.inMonth && !trade && "text-text-secondary",
+                cell.inMonth && trade && cn(getHeatmapColor(trade.pnl), "font-semibold"),
+                cell.dateStr === todayStr && cell.inMonth && "ring-1 ring-primary text-primary font-bold"
+              )}
+            >
+              {cell.day}
+            </div>
+          );
+        })}
+      </div>
+    </button>
+  );
+}
+
+function MonthDetail({ 
+  year, month, onBack, tradesByDate, currencySymbol 
+}: { 
+  year: number; month: number; onBack: () => void; tradesByDate: Record<string, DayTrade>; currencySymbol: string;
+}) {
+  const navigate = useNavigate();
+  const cells = getMonthDays(year, month);
+  const summary = getMonthSummary(year, month, tradesByDate);
+  const todayStr = getTodayStr();
+  
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const selectedTrade = selectedDate ? tradesByDate[selectedDate] : null;
+
+  return (
+    <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+      <div className="flex items-center gap-4">
+        <button
+          onClick={onBack}
+          className="w-9 h-9 rounded-xl flex items-center justify-center text-text-secondary hover:text-foreground hover:bg-secondary transition-colors"
+        >
+          <ArrowLeft size={18} />
+        </button>
+        <div>
+          <h2 className="text-xl font-bold text-foreground">{MONTHS[month]} {year}</h2>
+          {summary.hasTrades && (
+            <div className="flex items-center gap-2 mt-0.5">
+              <span className={cn("text-sm font-bold", summary.totalPnl >= 0 ? "text-success" : "text-loss")}>
+                {formatPnl(summary.totalPnl, currencySymbol)}
+              </span>
+              <span className="text-xs text-text-secondary">
+                {summary.totalWins} Wins · {summary.totalLosses} Losses
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="flex gap-6 flex-col xl:flex-row">
+        {/* Calendar Grid */}
+        <div className="flex-1 card-boundary rounded-2xl bg-card p-5">
+          <div className="grid grid-cols-7 gap-2 mb-2">
+            {DAYS.map((d) => (
+              <div key={d} className="text-xs font-semibold text-text-secondary text-center py-1">{d}</div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-7 gap-2">
+            {cells.slice(0, 42).map((cell, i) => {
+              const trade = tradesByDate[cell.dateStr];
+              const selected = selectedDate === cell.dateStr;
+              return (
+                <div
+                  key={i}
+                  onClick={() => cell.inMonth && setSelectedDate(cell.dateStr)}
+                  className={cn(
+                    "aspect-square rounded-xl flex flex-col items-center justify-center text-sm transition-all relative border border-transparent",
+                    !cell.inMonth && "text-muted-foreground/25 cursor-default",
+                    cell.inMonth && !trade && "text-muted-foreground hover:bg-secondary/50 cursor-pointer",
+                    cell.inMonth && trade && cn(getHeatmapColor(trade.pnl), "cursor-pointer hover:scale-105"),
+                    cell.dateStr === todayStr && cell.inMonth && "ring-2 ring-primary font-bold text-primary",
+                    selected && "ring-2 ring-primary scale-105"
+                  )}
+                >
+                  {cell.day}
+                  {cell.inMonth && trade && (
+                    <span className={cn("text-[10px] font-bold", trade.pnl >= 0 ? "text-success" : "text-loss")}>
+                      {formatPnl(trade.pnl, currencySymbol)}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Legend */}
+          <div className="flex items-center justify-center gap-4 mt-4 pt-4 border-t border-divider">
+            <div className="flex items-center gap-1.5">
+              <div className="w-3 h-3 rounded bg-success/40" />
+              <span className="text-[10px] text-text-secondary">Big Win</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-3 h-3 rounded bg-success/20" />
+              <span className="text-[10px] text-text-secondary">Win</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-3 h-3 rounded bg-loss/20" />
+              <span className="text-[10px] text-text-secondary">Loss</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-3 h-3 rounded bg-loss/40" />
+              <span className="text-[10px] text-text-secondary">Big Loss</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Side Panel */}
+        <div className="w-full xl:w-80 space-y-4 shrink-0">
+          <div className="card-boundary rounded-2xl bg-card p-5">
+            <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-4">
+              {selectedTrade ? `Trade on ${selectedDate}` : "Select a day"}
+            </h4>
+            {selectedTrade ? (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-text-secondary">P&L</span>
+                  <div className="flex items-center gap-1.5">
+                    {selectedTrade.pnl >= 0 ? <TrendingUp size={14} className="text-success" /> : <TrendingDown size={14} className="text-loss" />}
+                    <span className={cn("text-lg font-bold", selectedTrade.pnl >= 0 ? "text-success" : "text-loss")}>
+                      {formatPnl(selectedTrade.pnl, currencySymbol)}
+                    </span>
+                  </div>
+                </div>
+                <div className="h-px bg-divider" />
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-text-secondary">Wins</span>
+                  <span className="text-sm font-semibold text-success">{selectedTrade.wins}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-text-secondary">Losses</span>
+                  <span className="text-sm font-semibold text-loss">{selectedTrade.losses}</span>
+                </div>
+                <div className="pt-2 space-y-1.5">
+                  {selectedTrade.tradeIds.map((id, idx) => (
+                    <button
+                      key={id}
+                      onClick={() => navigate(`/trades/${id}`)}
+                      className="w-full text-left text-xs px-3 py-2 rounded-lg bg-secondary/50 hover:bg-secondary text-foreground transition-colors flex items-center justify-between"
+                    >
+                      <span className="font-medium">{selectedTrade.symbols[idx]}</span>
+                      <ChevronRight size={12} className="text-text-secondary" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-text-secondary">Click on a date with trades to see details.</p>
+            )}
+          </div>
+
+          <div className="card-boundary rounded-2xl bg-card p-5 space-y-3">
+            <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider">Monthly Stats</h4>
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-text-secondary">Total P&L</span>
+              <span className={cn("text-sm font-bold", summary.totalPnl >= 0 ? "text-success" : "text-loss")}>
+                {formatPnl(summary.totalPnl, currencySymbol)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-text-secondary">Win Rate</span>
+              <span className="text-sm font-semibold text-foreground">
+                {summary.totalWins + summary.totalLosses > 0
+                  ? `${Math.round((summary.totalWins / (summary.totalWins + summary.totalLosses)) * 100)}%`
+                  : "—"}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-text-secondary">Total Trades</span>
+              <span className="text-sm font-semibold text-foreground">{summary.totalWins + summary.totalLosses}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Component ───
 const Calendar = () => {
   const { activeAccount } = useWorkspace();
   const { profile } = useUser();
-  
-  // ✅ 3. Get Currency Settings
   const { exchangeRate, getCurrencySymbol } = useSettings();
   const currencySymbol = getCurrencySymbol();
 
+  const [year, setYear] = useState(new Date().getFullYear());
+  const [selectedMonth, setSelectedMonth] = useState<number | null>(null);
   const today = new Date();
-  const [currentDate, setCurrentDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
-  const [colorMode, setColorMode] = useState<'pnl' | 'winrate'>('pnl');
 
-  // 🔥 1. Fetch REAL Data
+  // Fetch real trades
   const { trades } = useTrades(activeAccount?.id, profile?.uid);
-  const { notesMap, saveNote } = useJournal(activeAccount?.id, currentDate);
-  const { strategies } = useStrategies(activeAccount?.id);
 
-  // 🔥 2. Create Strategy Lookup Map (ID -> Name)
-  const strategyMap = useMemo(() => {
-    const map = new Map<string, string>();
-    if (strategies) {
-      strategies.forEach(s => map.set(s.id, s.name));
-    }
-    return map;
-  }, [strategies]);
-
-  // 🔥 3. Aggregate Real Data for the Calendar
-  const monthData = useMemo(() => {
-    const data = new Map<string, DayData>();
+  // Aggregate Data by Date
+  const tradesByDate = useMemo(() => {
+    const map: Record<string, DayTrade> = {};
     
-    // Calculate the grid range
-    const monthStart = startOfMonth(currentDate);
-    const monthEnd = endOfMonth(currentDate);
-    const calendarStart = startOfWeek(monthStart);
-    const calendarEnd = endOfWeek(monthEnd);
-
-    const days = eachDayOfInterval({ start: calendarStart, end: calendarEnd });
-
-    days.forEach(day => {
-      const dateKey = format(day, "yyyy-MM-dd");
-      const dateString = day.toDateString(); 
-
-      // Filter trades for this specific day
-      const dayTrades = trades.filter(t => {
-        const entry = t.entryDate instanceof Date 
-          ? t.entryDate 
-          : (typeof t.entryDate.toDate === 'function' ? t.entryDate.toDate() : new Date(t.entryDate));
-        return isSameDay(entry, day);
-      });
+    trades.forEach((t) => {
+      if (!t.entryDate) return;
       
-      // Calculate Stats (Raw USD first)
-      const rawTotalPnL = dayTrades.reduce((sum, t) => sum + (t.netPnl || 0), 0);
+      const dateObj = t.entryDate instanceof Date 
+        ? t.entryDate 
+        : (typeof t.entryDate.toDate === 'function' ? t.entryDate.toDate() : new Date(t.entryDate));
       
-      // ✅ 4. Convert Daily P&L to Selected Currency
-      const totalPnL = convertCurrency(rawTotalPnL, exchangeRate);
+      const y = dateObj.getFullYear();
+      const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+      const d = String(dateObj.getDate()).padStart(2, '0');
+      const dateKey = `${y}-${m}-${d}`;
 
-      const wins = dayTrades.filter(t => (t.netPnl || 0) > 0).length;
-      const totalTrades = dayTrades.length;
-      const winRate = totalTrades > 0 ? Math.round((wins / totalTrades) * 100) : 0;
-
-      // Note from Journal
-      const note = notesMap.get(dateKey);
-
-      if (totalTrades > 0 || note) {
-        // Map Firestore trades to Calendar interface
-        const mappedTrades: Trade[] = dayTrades.map(t => {
-          const entry = t.entryDate instanceof Date ? t.entryDate : t.entryDate.toDate();
-          
-          let exitTime = "-";
-          if (t.exitDate) {
-             const exit = t.exitDate instanceof Date ? t.exitDate : (typeof t.exitDate.toDate === 'function' ? t.exitDate.toDate() : null);
-             if (exit) exitTime = format(exit, "HH:mm");
-          }
-
-          const strategyName = t.strategyId 
-            ? (strategyMap.get(t.strategyId) || "Unknown Strategy") 
-            : "Discretionary";
-
-          return {
-            id: t.id,
-            symbol: t.symbol,
-            direction: t.direction.toLowerCase() as 'long' | 'short',
-            // ✅ Convert Trade P&L individually
-            pnl: convertCurrency(t.netPnl || 0, exchangeRate),
-            entryTime: format(entry, "HH:mm"),
-            exitTime: exitTime,
-            strategy: strategyName
-          };
-        });
-
-        // Sort by PnL
-        mappedTrades.sort((a, b) => b.pnl - a.pnl);
-        const bestTrade = mappedTrades.length > 0 ? mappedTrades[0] : null;
-        const worstTrade = mappedTrades.length > 0 ? mappedTrades[mappedTrades.length - 1] : null;
-
-        // Determine Emotion (Logic works same for converted values)
-        let emotion: 'positive' | 'neutral' | 'negative' = 'neutral';
-        if (totalPnL > 0) emotion = 'positive';
-        if (totalPnL < 0) emotion = 'negative';
-
-        // Best Strategy
-        const strategyCount: Record<string, number> = {};
-        mappedTrades.filter(t => t.pnl > 0).forEach(t => {
-          strategyCount[t.strategy] = (strategyCount[t.strategy] || 0) + 1;
-        });
-        const bestStrategy = Object.keys(strategyCount).sort((a, b) => strategyCount[b] - strategyCount[a])[0] || "-";
-
-        data.set(dateString, {
-          date: day,
-          trades: mappedTrades,
-          totalPnL, // Now in Local Currency
-          winRate,
-          tradeCount: totalTrades,
-          emotion,
-          bestStrategy,
-          bestTrade,
-          worstTrade,
-          note
-        });
+      if (!map[dateKey]) {
+        map[dateKey] = { pnl: 0, wins: 0, losses: 0, tradeIds: [], symbols: [] };
       }
+      
+      // Convert PnL to Local Currency based on Settings
+      const convertedPnL = convertCurrency(t.netPnl || 0, exchangeRate);
+      
+      map[dateKey].pnl += convertedPnL;
+      map[dateKey].tradeIds.push(t.id);
+      map[dateKey].symbols.push(t.symbol);
+      
+      if ((t.netPnl || 0) >= 0) map[dateKey].wins++;
+      else map[dateKey].losses++;
     });
 
-    return data;
-  }, [currentDate, trades, notesMap, strategyMap, exchangeRate]); // ✅ Added exchangeRate dependency
-
-  // 4. Calculate Header Stats
-  const monthStats = useMemo(() => {
-    const validDays = Array.from(monthData.values()).filter(d => isSameMonth(d.date, currentDate) && d.tradeCount > 0);
-    
-    if (validDays.length === 0) return { monthlyPnL: 0, winRate: 0, totalTrades: 0, tradingDays: 0 };
-
-    // This sum is already in Local Currency because monthData is converted
-    const monthlyPnL = validDays.reduce((sum, d) => sum + d.totalPnL, 0);
-    const totalTrades = validDays.reduce((sum, d) => sum + d.tradeCount, 0);
-    const totalWins = validDays.reduce((sum, d) => sum + (d.winRate * d.tradeCount / 100), 0);
-    const winRate = totalTrades > 0 ? Math.round((totalWins / totalTrades) * 100) : 0;
-
-    return {
-      monthlyPnL,
-      winRate,
-      totalTrades,
-      tradingDays: validDays.length
-    };
-  }, [monthData, currentDate]);
-
-  const monthName = currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-
-  // ✅ 5. Updated Formatter for Local Currency
-  const formatPnL = (val: number) => {
-    // Uses global symbol + locale string
-    return `${currencySymbol}${Math.abs(val).toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
-  };
-
-  // Handlers
-  const handleSaveNote = (date: Date, note: string) => saveNote({ date, content: note });
-  const prevMonth = () => setCurrentDate(d => subMonths(d, 1));
-  const nextMonth = () => setCurrentDate(d => addMonths(d, 1));
-  const goToday = () => setCurrentDate(new Date());
+    return map;
+  }, [trades, exchangeRate]);
 
   return (
-    <>
-      <div className="px-4 sm:px-6 lg:px-8 pb-6 pt-4 space-y-4 sm:space-y-6">
-        
-        {/* Stats Row */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4">
-           <div className="glass-card p-3 sm:p-5 rounded-xl sm:rounded-2xl">
-            <span className="text-[10px] sm:text-sm text-muted-foreground block mb-0.5">Monthly P&L</span>
-            {/* ✅ Updated P&L Display */}
-            <span className={cn("text-lg sm:text-2xl font-semibold", monthStats.monthlyPnL >= 0 ? "text-emerald-500" : "text-rose-500")}>
-              {monthStats.monthlyPnL >= 0 ? "+" : "-"}{formatPnL(monthStats.monthlyPnL)}
-            </span>
-           </div>
-           
-           <div className="glass-card p-3 sm:p-5 rounded-xl sm:rounded-2xl">
-             <span className="text-[10px] sm:text-sm text-muted-foreground block mb-0.5">Win Rate</span>
-             <span className="text-lg sm:text-2xl font-semibold text-foreground">{monthStats.winRate}%</span>
-           </div>
-           
-           <div className="glass-card p-3 sm:p-5 rounded-xl sm:rounded-2xl">
-             <span className="text-[10px] sm:text-sm text-muted-foreground block mb-0.5">Trades</span>
-             <span className="text-lg sm:text-2xl font-semibold text-foreground">{monthStats.totalTrades}</span>
-           </div>
-           
-           <div className="glass-card p-3 sm:p-5 rounded-xl sm:rounded-2xl">
-             <span className="text-[10px] sm:text-sm text-muted-foreground block mb-0.5">Active Days</span>
-             <span className="text-lg sm:text-2xl font-semibold text-foreground">{monthStats.tradingDays}</span>
-           </div>
-        </div>
-
-        {/* Calendar Grid Container */}
-        <div className="glass-card p-3 sm:p-6 rounded-xl sm:rounded-2xl">
-          {/* Header Controls (removed PageHeader — Calendar title removed) */}
-          <div className="flex items-center justify-between gap-2 mb-4">
-             <div className="flex items-center gap-1 sm:gap-3">
-               <Button variant="outline" size="icon" onClick={prevMonth} className="h-8 w-8 sm:h-9 sm:w-9">
-                 <CaretLeft weight="bold" className="w-4 h-4" />
-               </Button>
-               <Button variant="outline" size="icon" onClick={nextMonth} className="h-8 w-8 sm:h-9 sm:w-9">
-                 <CaretRight weight="bold" className="w-4 h-4" />
-               </Button>
-               <h2 className="text-base sm:text-xl font-semibold text-foreground ml-1 sm:ml-2">{monthName}</h2>
-               <Button variant="ghost" size="sm" onClick={goToday} className="hidden sm:inline-flex ml-2 text-xs">Today</Button>
-             </div>
-             
-             {/* Color Mode Toggle */}
-             <div className="flex items-center gap-1 bg-secondary/50 p-1 rounded-lg">
-                <button 
-                  onClick={() => setColorMode('pnl')} 
-                  className={cn("px-3 py-1.5 text-xs sm:text-sm font-medium rounded-md transition-all", colorMode === 'pnl' ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground")}
-                >
-                  P&L
-                </button>
-                <button 
-                  onClick={() => setColorMode('winrate')} 
-                  className={cn("px-3 py-1.5 text-xs sm:text-sm font-medium rounded-md transition-all", colorMode === 'winrate' ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground")}
-                >
-                  Win Rate
-                </button>
-             </div>
-          </div>
-
-          <CalendarGrid
-            year={currentDate.getFullYear()}
-            month={currentDate.getMonth()}
-            monthData={monthData}
-            colorMode={colorMode}
-            onSaveNote={handleSaveNote}
-          />
+    <div>
+      {/* Page header */}
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground tracking-tight">Calendar</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">Visualize your trading activity across the year</p>
         </div>
       </div>
-    </>
+
+      {selectedMonth !== null ? (
+        <MonthDetail 
+          year={year} 
+          month={selectedMonth} 
+          onBack={() => setSelectedMonth(null)} 
+          tradesByDate={tradesByDate}
+          currencySymbol={currencySymbol}
+        />
+      ) : (
+        <div className="animate-in fade-in zoom-in-95 duration-200">
+          {/* Year navigation */}
+          <div className="flex items-center justify-center gap-4 mb-5">
+            <button
+              onClick={() => setYear((y) => y - 1)}
+              className="w-9 h-9 rounded-xl bg-card card-boundary flex items-center justify-center text-text-secondary hover:text-foreground hover:border-primary/40 transition-colors"
+            >
+              <ChevronLeft size={18} />
+            </button>
+            <span className="text-2xl font-bold text-primary tabular-nums">{year}</span>
+            <button
+              onClick={() => setYear((y) => y + 1)}
+              className="w-9 h-9 rounded-xl bg-card card-boundary flex items-center justify-center text-text-secondary hover:text-foreground hover:border-primary/40 transition-colors"
+            >
+              <ChevronRight size={18} />
+            </button>
+          </div>
+
+          {/* Legend */}
+          <div className="flex items-center justify-center gap-5 mb-5 flex-wrap">
+            <div className="flex items-center gap-1.5">
+              <div className="w-3 h-3 rounded bg-success/40" />
+              <span className="text-[10px] text-text-secondary">Big Win (&gt;2k)</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-3 h-3 rounded bg-success/20" />
+              <span className="text-[10px] text-text-secondary">Win</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-3 h-3 rounded bg-loss/20" />
+              <span className="text-[10px] text-text-secondary">Loss</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-3 h-3 rounded bg-loss/40" />
+              <span className="text-[10px] text-text-secondary">Big Loss (&lt;-500)</span>
+            </div>
+          </div>
+
+          {/* Month grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {MONTHS.map((_, i) => (
+              <MonthCard
+                key={i}
+                year={year}
+                month={i}
+                onClick={() => setSelectedMonth(i)}
+                isCurrentMonth={year === today.getFullYear() && i === today.getMonth()}
+                tradesByDate={tradesByDate}
+                currencySymbol={currencySymbol}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
 };
 

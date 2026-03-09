@@ -1,6 +1,12 @@
 import { useState, useMemo } from "react";
-import { Sword, FolderOpen } from "@phosphor-icons/react";
-import { Button } from "@/components/ui/button";
+import { 
+  Plus, 
+  TrendingUp, 
+  ArrowUpRight, 
+  ArrowDownRight, 
+  Activity,
+  FolderOpen
+} from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -11,25 +17,19 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import StrategyStatsCards from "@/components/strategies/StrategyStatsCards";
 import StrategyCard from "@/components/strategies/StrategyCard";
 import CreateStrategyModal from "@/components/strategies/CreateStrategyModal";
 import EditStrategyModal from "@/components/strategies/EditStrategyModal";
 import StrategyDetail from "@/components/strategies/StrategyDetail";
 import { Skeleton } from "@/components/ui/skeleton";
-import { toast } from "sonner";
 
 // --- Industry Grade Imports ---
 import { auth } from "@/lib/firebase";
 import { useWorkspace } from "@/contexts/WorkspaceContext"; 
-import { useStrategies } from "@/hooks/useStrategies"; // ✅ Use the Hook
+import { useStrategies } from "@/hooks/useStrategies";
 import { Strategy, TradingStyle } from "@/types/strategy";
 
-// Constants
-const STRATEGY_STYLES: TradingStyle[] = ["SCALP", "DAY_TRADE", "SWING", "POSITION", "INVESTMENT"];
-
 const Strategies = () => {
-  // removed useDashboard / PageHeader usage per request
   const { activeAccount } = useWorkspace();
   const userId = auth.currentUser?.uid;
   
@@ -47,10 +47,6 @@ const Strategies = () => {
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  
-  // Filters (removed search & style UI but keep state if needed later)
-  const [searchQuery, setSearchQuery] = useState("");
-  const [styleFilter, setStyleFilter] = useState("all");
 
   // Stats Calculation (Memoized from Hook Data)
   const stats = useMemo(() => {
@@ -66,25 +62,12 @@ const Strategies = () => {
     return { totalStrategies, combinedTrades, totalPnl, avgWinRate };
   }, [strategies]);
 
-  // Filter Logic (kept, but UI controls removed)
-  const filteredStrategies = useMemo(() => {
-    return strategies.filter(s => {
-      const matchesSearch = s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (s.description || "").toLowerCase().includes(searchQuery.toLowerCase());
-      
-      const matchesStyle = styleFilter === "all" || s.style === styleFilter;
-      
-      return matchesSearch && matchesStyle;
-    });
-  }, [strategies, searchQuery, styleFilter]);
-
   // Handlers
   const handleCreateStrategy = async (newStrategyData: any) => {
     try {
       await createStrategy(newStrategyData);
       setCreateModalOpen(false);
     } catch (error) {
-      // Hook handles toasts; keep this to prevent modal auto-close on error
       console.error("create strategy failed", error);
     }
   };
@@ -115,7 +98,7 @@ const Strategies = () => {
   if (selectedStrategy) {
     return (
       <>
-        <div className="px-4 sm:px-6 lg:px-8 pb-6 pt-4 animate-in fade-in zoom-in-95 duration-200">
+        <div className="animate-in fade-in zoom-in-95 duration-200">
           <StrategyDetail
             strategy={selectedStrategy}
             onBack={() => setSelectedStrategy(null)}
@@ -155,60 +138,95 @@ const Strategies = () => {
     );
   }
 
-  // --- Render: List View (header removed, buttons removed, search/filter removed) ---
+  // --- Render: Main List View ---
   return (
     <>
-      <div className="px-4 sm:px-6 lg:px-8 pb-6 pt-4 space-y-4 sm:space-y-6">
-        
-        {/* Loading Skeleton for Stats */}
+      <div>
+        {/* Page header */}
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground tracking-tight">Strategies</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">Track and manage your trading strategies</p>
+          </div>
+          <button
+            onClick={() => setCreateModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors shadow-md shadow-primary/20"
+          >
+            <Plus size={16} /> Add Strategy
+          </button>
+        </div>
+
+        {/* Loading Skeleton for Stats OR Real Stats */}
         {isLoading ? (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-               {[1,2,3,4].map(i => <Skeleton key={i} className="h-24 w-full rounded-xl" />)}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+               {[1,2,3].map(i => <Skeleton key={i} className="h-28 w-full rounded-2xl" />)}
             </div>
         ) : (
-            <StrategyStatsCards
-              totalStrategies={stats.totalStrategies}
-              combinedTrades={stats.combinedTrades}
-              avgWinRate={stats.avgWinRate}
-              totalPnl={stats.totalPnl}
-            />
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+              <div className="bg-card border border-border rounded-2xl p-5 card-boundary">
+                <p className="text-xs text-muted-foreground mb-1 font-medium uppercase tracking-wider">Total PnL</p>
+                <div className="flex items-end gap-2">
+                  <span className={`text-2xl font-bold tabular-nums ${stats.totalPnl >= 0 ? "text-success" : "text-loss"}`}>
+                    {stats.totalPnl >= 0 ? "+" : ""}{stats.totalPnl.toFixed(2)}
+                  </span>
+                  {stats.totalPnl >= 0 ? <ArrowUpRight size={18} className="text-success mb-0.5" /> : <ArrowDownRight size={18} className="text-loss mb-0.5" />}
+                </div>
+              </div>
+              <div className="bg-card border border-border rounded-2xl p-5 card-boundary">
+                <p className="text-xs text-muted-foreground mb-1 font-medium uppercase tracking-wider">Avg Win Rate</p>
+                <div className="flex items-end gap-2">
+                  <span className="text-2xl font-bold tabular-nums text-foreground">{stats.avgWinRate.toFixed(1)}%</span>
+                  <TrendingUp size={18} className="text-primary mb-0.5" />
+                </div>
+              </div>
+              <div className="bg-card border border-border rounded-2xl p-5 card-boundary">
+                <p className="text-xs text-muted-foreground mb-1 font-medium uppercase tracking-wider">Total Trades</p>
+                <div className="flex items-end gap-2">
+                  <span className="text-2xl font-bold tabular-nums text-foreground">{stats.combinedTrades}</span>
+                  <Activity size={18} className="text-primary mb-0.5" />
+                </div>
+              </div>
+            </div>
         )}
-
-        {/* Removed Search & Filter UI as requested */}
 
         {/* Strategy Cards Grid */}
-        {isLoading ? (
-           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
-              {[1, 2, 3].map(i => <Skeleton key={i} className="h-[200px] w-full rounded-xl" />)}
-           </div>
-        ) : filteredStrategies.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-            {filteredStrategies.map(strategy => (
-              <StrategyCard
-                key={strategy.id}
-                strategy={strategy}
-                onClick={() => setSelectedStrategy(strategy)}
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="glass-card p-12 rounded-2xl text-center flex flex-col items-center border border-dashed border-border/60">
-            <div className="w-16 h-16 bg-secondary/50 rounded-full flex items-center justify-center mb-4">
-                <FolderOpen className="w-8 h-8 text-muted-foreground" />
+        <div>
+          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">Your Strategies</h2>
+          
+          {isLoading ? (
+             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
+                {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-[200px] w-full rounded-2xl" />)}
+             </div>
+          ) : strategies.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5 animate-in fade-in slide-in-from-bottom-2 duration-300">
+              {strategies.map(strategy => (
+                <StrategyCard
+                  key={strategy.id}
+                  strategy={strategy}
+                  onClick={() => setSelectedStrategy(strategy)}
+                />
+              ))}
             </div>
-            <h3 className="text-lg font-medium text-foreground mb-1">No strategies found</h3>
-            <p className="text-muted-foreground mb-6 max-w-sm">
-              {searchQuery || styleFilter !== "all"
-                ? "Try adjusting your search or filters."
-                : "Create your first strategy to start tracking your edge."}
-            </p>
-            {!searchQuery && styleFilter === "all" && activeAccount && (
-               <Button onClick={() => setCreateModalOpen(true)} className="glow-button text-white">
-                 Create Strategy
-               </Button>
-            )}
-          </div>
-        )}
+          ) : (
+            <div className="bg-card p-12 rounded-2xl text-center flex flex-col items-center border border-dashed border-border/60 card-boundary">
+              <div className="w-16 h-16 bg-secondary/50 rounded-full flex items-center justify-center mb-4">
+                  <FolderOpen className="w-8 h-8 text-muted-foreground" />
+              </div>
+              <h3 className="text-lg font-medium text-foreground mb-1">No strategies found</h3>
+              <p className="text-muted-foreground mb-6 max-w-sm">
+                Create your first strategy to start tracking your trading edge.
+              </p>
+              {activeAccount && (
+                 <button 
+                   onClick={() => setCreateModalOpen(true)} 
+                   className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors shadow-md shadow-primary/20"
+                  >
+                   <Plus size={16} /> Create Strategy
+                 </button>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       <CreateStrategyModal

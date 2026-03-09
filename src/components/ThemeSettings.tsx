@@ -1,5 +1,6 @@
-import { useState } from "react";
-import { X, RotateCcw, Maximize2, Sun, Moon, Monitor, Palette } from "lucide-react";
+import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
+import { X, RotateCcw, Maximize2, Sun, Moon, Monitor } from "lucide-react";
 import { useTheme, ThemeMode, ThemePreset, ThemeFont } from "@/contexts/ThemeContext";
 import { cn } from "@/lib/utils";
 import { Slider } from "@/components/ui/slider";
@@ -33,6 +34,12 @@ interface ThemePanelProps {
 
 const ThemePanel = ({ open, onClose }: ThemePanelProps) => {
   const { mode, setMode, preset, setPreset, font, setFont, fontSize, setFontSize } = useTheme();
+  
+  // Need to ensure we only render the portal on the client side
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const handleReset = () => {
     setMode("dark");
@@ -41,26 +48,27 @@ const ThemePanel = ({ open, onClose }: ThemePanelProps) => {
     setFontSize(16);
   };
 
-  if (!open) return null;
+  if (!open || !mounted) return null;
 
-  return (
+  // Portaling the modal to document.body forces it to escape the header's CSS filter
+  return createPortal(
     <>
       {/* Backdrop */}
-      <div className="fixed inset-0 z-[60]" onClick={onClose} />
+      <div className="fixed inset-0 z-[100] bg-background/40 backdrop-blur-sm transition-all" onClick={onClose} />
       
       {/* Panel */}
-      <div className="fixed right-0 top-0 h-full w-[320px] bg-card border-l border-border z-[70] shadow-sidebar overflow-y-auto scrollbar-sidebar">
+      <div className="fixed right-0 top-0 h-full w-[320px] bg-card border-l border-border z-[110] shadow-sidebar overflow-y-auto scrollbar-sidebar animate-slide-in-right">
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-border">
           <h2 className="text-lg font-semibold text-foreground">Themes</h2>
           <div className="flex items-center gap-2">
-            <button onClick={() => {}} className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors">
+            <button onClick={() => {}} className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
               <Maximize2 size={16} />
             </button>
-            <button onClick={handleReset} className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors">
+            <button onClick={handleReset} className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
               <RotateCcw size={16} />
             </button>
-            <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors">
+            <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
               <X size={16} />
             </button>
           </div>
@@ -102,7 +110,7 @@ const ThemePanel = ({ open, onClose }: ThemePanelProps) => {
                     "flex items-center justify-center h-16 rounded-xl border-2 transition-all",
                     preset === p.id
                       ? "border-primary bg-primary/5 shadow-md"
-                      : "border-border hover:border-muted-foreground/30"
+                      : "border-border hover:border-muted-foreground/30 hover:bg-secondary/50"
                   )}
                 >
                   <div className="flex gap-0.5">
@@ -129,7 +137,7 @@ const ThemePanel = ({ open, onClose }: ThemePanelProps) => {
                     "flex flex-col items-center justify-center h-20 rounded-xl border-2 transition-all gap-2",
                     font === f.id
                       ? "border-primary bg-primary/5"
-                      : "border-border hover:border-muted-foreground/30"
+                      : "border-border hover:border-muted-foreground/30 hover:bg-secondary/50"
                   )}
                 >
                   <span className="text-lg font-medium text-foreground" style={{ fontFamily: `'${f.id}', sans-serif` }}>
@@ -155,7 +163,7 @@ const ThemePanel = ({ open, onClose }: ThemePanelProps) => {
               min={12}
               max={20}
               step={1}
-              className="w-full"
+              className="w-full cursor-pointer"
             />
             <div className="flex justify-between mt-1">
               <span className="text-[10px] text-muted-foreground">12px</span>
@@ -164,7 +172,8 @@ const ThemePanel = ({ open, onClose }: ThemePanelProps) => {
           </div>
         </div>
       </div>
-    </>
+    </>,
+    document.body
   );
 };
 

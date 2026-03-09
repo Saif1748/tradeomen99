@@ -26,7 +26,7 @@ const DashboardLayout = () => {
   }, []);
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex">
+    <div className="min-h-screen bg-background text-foreground">
       {/* Sidebar */}
       <AppSidebar
         collapsed={sidebarCollapsed}
@@ -37,25 +37,29 @@ const DashboardLayout = () => {
         onClose={() => setMobileMenuOpen(false)} 
       />
 
-      {/* Main Content Area - Push layout based on Aura */}
-      <div 
+      {/* Header - Margin pushed exactly like visual-canvas */}
+      <header 
         className={cn(
-          "flex-1 flex flex-col min-h-screen transition-all duration-300",
+          "sticky top-0 z-40 h-16 bg-sidebar/80 backdrop-blur-[20px] border-b border-border shadow-header transition-all duration-300 flex items-center",
           !isMobile && (sidebarCollapsed ? "ml-[80px]" : "ml-[280px]")
         )}
       >
-        {/* Aura-style sticky header */}
-        <div className="sticky top-0 z-40 h-16 bg-sidebar/80 backdrop-blur-[20px] border-b border-border shadow-header">
-            <GlobalHeader onMobileMenuOpen={() => setMobileMenuOpen(true)} />
+        <div className="w-full">
+          <GlobalHeader onMobileMenuOpen={() => setMobileMenuOpen(true)} />
         </div>
-        
-        {/* Main Content Scrollable Area */}
-        <main className="flex-1 p-6 overflow-x-hidden">
-          <div className="mx-auto max-w-7xl">
-            <Outlet context={{ onMobileMenuOpen: () => setMobileMenuOpen(true) } satisfies DashboardContextType} />
-          </div>
-        </main>
-      </div>
+      </header>
+      
+      {/* Main Content Area - Padding and margins exactly matched to visual-canvas */}
+      <main 
+        className={cn(
+          "transition-all duration-300 p-6 pb-16",
+          !isMobile && (sidebarCollapsed ? "ml-[80px]" : "ml-[280px]")
+        )}
+      >
+        <div className="mx-auto max-w-7xl">
+          <Outlet context={{ onMobileMenuOpen: () => setMobileMenuOpen(true) } satisfies DashboardContextType} />
+        </div>
+      </main>
     </div>
   );
 };

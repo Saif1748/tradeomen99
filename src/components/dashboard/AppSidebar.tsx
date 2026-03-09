@@ -1,15 +1,16 @@
 import { useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import {
-  House,
-  ChartLine,
+  LayoutDashboard,
+  Table2,
   Lightbulb,
-  CalendarBlank,
-  ChartBar,
-  Robot,
-  Wallet,
-} from "@phosphor-icons/react";
-import { ChevronRight, ChevronLeft } from "lucide-react";
+  CalendarDays,
+  BarChart3,
+  Sparkles,
+  ChevronRight,
+  ChevronLeft,
+  Wallet
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // ✅ Hooks & Contexts
@@ -19,12 +20,13 @@ import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { AccountModal } from "@/components/accounts/AccountModal";
 
 const navItems = [
-  { label: "Dashboard", href: "/dashboard", icon: House },
-  { label: "Trades", href: "/trades", icon: ChartLine },
+  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { label: "Trades", href: "/trades", icon: Table2 },
   { label: "Strategies", href: "/strategies", icon: Lightbulb },
-  { label: "Calendar", href: "/calendar", icon: CalendarBlank },
-  { label: "Reports", href: "/reports", icon: ChartBar },
-  { label: "AI Chat", href: "/ai-chat", icon: Robot },
+  { label: "Calendar", href: "/calendar", icon: CalendarDays },
+  { label: "Reports", href: "/reports", icon: BarChart3 },
+  { label: "AI Chat", href: "/ai-chat", icon: Sparkles, badge: "NEW" },
+  { label: "Notebook", href: "/notebook", icon: Table2 },
 ];
 
 interface AppSidebarProps {
@@ -50,31 +52,33 @@ export const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
     <>
       <aside
         className={cn(
-          "fixed left-0 top-0 h-screen bg-sidebar shadow-sidebar z-50 transition-all duration-300 flex flex-col border-r border-border",
+          "fixed top-0 left-0 h-screen z-50 transition-all duration-300 flex flex-col sidebar-container",
           collapsed ? "w-[80px]" : "w-[280px]"
         )}
       >
         {/* Logo area */}
-        <div className="flex items-center h-16 px-4">
+        <div className="flex items-center h-16 px-5">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-              <span className="text-primary-foreground font-bold text-sm">T</span>
+            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-foreground font-bold text-lg">
+              T
             </div>
-            {!collapsed && <span className="font-bold text-lg tracking-tight">Tradeomen</span>}
+            {!collapsed && (
+              <span className="text-sm font-bold text-foreground tracking-wide">Tradeomen</span>
+            )}
           </div>
         </div>
 
         {/* Menu label */}
         {!collapsed && (
-          <div className="px-6 pt-4 pb-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+          <div className="px-6 py-2">
+            <span className="text-xs font-semibold uppercase tracking-wider text-text-secondary opacity-60">
               Menu
             </span>
           </div>
         )}
 
         {/* Nav items */}
-        <nav className="flex-1 px-3 space-y-0.5 overflow-y-auto scrollbar-sidebar">
+        <nav className="flex-1 px-3 space-y-0.5 overflow-y-auto pb-4">
           {navItems.map((item) => {
             const isActive = location.pathname.startsWith(item.href);
             return (
@@ -85,13 +89,22 @@ export const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
                   "w-full flex items-center gap-3 h-11 rounded-lg px-3 transition-colors text-sm font-normal",
                   isActive
                     ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                    : "text-sidebar-foreground hover:bg-sidebar-accent/50",
+                    : "text-text-secondary hover:bg-sidebar-accent/50 hover:text-foreground",
                   collapsed && "justify-center px-0"
                 )}
                 title={collapsed ? item.label : undefined}
               >
-                <item.icon weight={isActive ? "fill" : "regular"} className="w-5 h-5 shrink-0" />
-                {!collapsed && <span className="flex-1 text-left truncate">{item.label}</span>}
+                <item.icon size={20} className="shrink-0" />
+                {!collapsed && (
+                  <>
+                    <span className="flex-1 text-left truncate">{item.label}</span>
+                    {item.badge && (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-primary text-primary-foreground">
+                        {item.badge}
+                      </span>
+                    )}
+                  </>
+                )}
               </NavLink>
             );
           })}
@@ -102,12 +115,12 @@ export const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
           <button
             onClick={() => setAccountModalOpen(true)}
             className={cn(
-                "w-full flex items-center gap-3 h-12 rounded-lg px-3 transition-colors",
-                "text-sidebar-foreground hover:bg-sidebar-accent/50 border border-border bg-card/50",
-                collapsed && "justify-center px-0"
+              "w-full flex items-center gap-3 h-12 rounded-lg px-3 transition-colors",
+              "text-text-secondary hover:bg-sidebar-accent/50 hover:text-foreground border border-divider bg-transparent",
+              collapsed && "justify-center px-0"
             )}
           >
-            <Wallet className="w-5 h-5 shrink-0 text-muted-foreground" />
+            <Wallet size={20} className="shrink-0" />
             {!collapsed && (
               <div className="flex-1 text-left min-w-0">
                 <p className="text-sm font-medium text-foreground truncate">
@@ -122,18 +135,16 @@ export const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
             )}
           </button>
         </div>
-      </aside>
 
-      {/* Toggle button at the edge of sidebar exactly like Aura */}
-      <button
-        onClick={onToggle}
-        className={cn(
-          "fixed top-1/2 -translate-y-1/2 z-[51] w-6 h-6 rounded-full border border-border bg-card flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-all duration-300 shadow-sm",
-          collapsed ? "left-[68px]" : "left-[268px]"
-        )}
-      >
-        {collapsed ? <ChevronRight size={12} /> : <ChevronLeft size={12} />}
-      </button>
+        {/* Edge toggle button — perfectly matched to visual-canvas styling */}
+        <button
+          onClick={onToggle}
+          className="absolute top-1/2 -translate-y-1/2 -right-3.5 w-7 h-7 rounded-full border border-sidebar-border shadow-md flex items-center justify-center text-text-secondary hover:text-foreground hover:border-primary/40 transition-all duration-200 z-10"
+          style={{ backgroundColor: "hsl(var(--sidebar-background))" }}
+        >
+          {collapsed ? <ChevronRight size={13} /> : <ChevronLeft size={13} />}
+        </button>
+      </aside>
 
       <AccountModal open={accountModalOpen} onOpenChange={setAccountModalOpen} />
     </>

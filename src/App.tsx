@@ -17,6 +17,7 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 // Preload images
 import "@/assets/tradeomen-logo.png";
 import "@/assets/tradeomen-icon.png";
+import Notebook from "./pages/Notebook";
 
 // Lazy load pages
 const Index = lazy(() => import("./pages/Index"));
@@ -79,6 +80,8 @@ const App = () => (
                         <Route path="/reports" element={<Reports />} />
                         <Route path="/markets" element={<Markets />} />
                         <Route path="/ai-chat" element={<AIChat />} />
+                        
+                        <Route path="/notebook" element={<Notebook />} />
                       </Route>
                     </Route>
 

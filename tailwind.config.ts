@@ -2,7 +2,12 @@ import type { Config } from "tailwindcss";
 
 export default {
   darkMode: ["class"],
-  content: ["./pages/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}", "./app/**/*.{ts,tsx}", "./src/**/*.{ts,tsx}"],
+  content: [
+    "./pages/**/*.{ts,tsx}",
+    "./components/**/*.{ts,tsx}",
+    "./app/**/*.{ts,tsx}",
+    "./src/**/*.{ts,tsx}",
+  ],
   prefix: "",
   theme: {
     container: {
@@ -14,7 +19,7 @@ export default {
     },
     extend: {
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
+        sans: ["Inter", "system-ui", "sans-serif"],
       },
       colors: {
         border: "hsl(var(--border))",
@@ -68,11 +73,24 @@ export default {
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
         },
+        // Retained from your original config to prevent breaking existing components
+        surface: "hsl(var(--surface))",
+        "text-secondary": "hsl(var(--text-secondary))",
+        "text-disabled": "hsl(var(--text-disabled))",
+        divider: "hsl(var(--divider))",
+        success: "hsl(var(--success))",
+        loss: "hsl(var(--loss))",
       },
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
+      },
+      boxShadow: {
+        // Essential shadows for the exact Tradeomen/Aura look
+        card: "0px 0px 2px rgba(0,0,0,0.2), 0px 12px 24px -4px rgba(0,0,0,0.12)",
+        sidebar: "8px 0 24px -4px hsl(213 22% 5% / 0.18)",
+        header: "0 4px 16px -4px hsl(213 22% 5% / 0.15)",
       },
       keyframes: {
         "accordion-down": {
