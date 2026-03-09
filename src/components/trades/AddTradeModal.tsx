@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox"; // ✅ Imported Checkbox
 import {
   Dialog,
   DialogContent,
@@ -61,6 +62,7 @@ export interface TradeSubmissionPayload {
   initialStopLoss: number;
   takeProfitTarget: number;
   strategyId: string | null;
+  strategyRulesFollowed: string[]; // ✅ NEW: Included in payload
   tags: string[];
   notes: string;
   screenshots: string[];
@@ -106,12 +108,12 @@ const AddTradeModal: React.FC<AddTradeModalProps> = ({
 
   // --- Form State ---
   const [assetClass, setAssetClass] = useState<AssetClass>("STOCK");
-  // REMOVED: const [direction, setDirection] = useState<TradeDirection>("LONG");
   const [symbol, setSymbol] = useState("");
   const [stopLoss, setStopLoss] = useState("");
   const [target, setTarget] = useState("");
   
   const [selectedStrategyId, setSelectedStrategyId] = useState<string>("");
+  const [strategyRulesFollowed, setStrategyRulesFollowed] = useState<string[]>([]); // ✅ NEW STATE
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
   const [notes, setNotes] = useState("");
@@ -136,11 +138,20 @@ const AddTradeModal: React.FC<AddTradeModalProps> = ({
   }, [createNewExecution]);
 
   // --- Derived Direction Logic ---
-  // The first execution defines the trade direction
   const derivedDirection: TradeDirection = useMemo(() => {
     if (executions.length === 0) return "LONG";
     return executions[0].side === "BUY" ? "LONG" : "SHORT";
   }, [executions]);
+
+  // --- Derived Strategy Logic ---
+  const selectedStrategy = useMemo(() => 
+    availableStrategies.find(s => s.id === selectedStrategyId), 
+  [availableStrategies, selectedStrategyId]);
+
+  // Reset rules when strategy changes
+  useEffect(() => {
+    setStrategyRulesFollowed([]);
+  }, [selectedStrategyId]);
 
   // --- Load Strategies ---
   useEffect(() => {
@@ -157,11 +168,11 @@ const AddTradeModal: React.FC<AddTradeModalProps> = ({
   const resetForm = useCallback(() => {
     setActiveTab("trade");
     setAssetClass("STOCK");
-    // setDirection("LONG"); // Removed
     setSymbol("");
     setStopLoss("");
     setTarget("");
     setSelectedStrategyId("");
+    setStrategyRulesFollowed([]); // ✅ Reset rules
     setSelectedTags([]);
     setTagInput("");
     setNotes("");
@@ -179,9 +190,7 @@ const AddTradeModal: React.FC<AddTradeModalProps> = ({
 
   // --- Handlers ---
   const addExecution = useCallback(() => {
-    // Default new row side to match the FIRST execution (Entry side)
     const defaultSide = executions.length > 0 ? executions[0].side : "BUY";
-    
     setExecutions(prev => [...prev, {
       id: uuidv4(),
       side: defaultSide,
@@ -210,6 +219,12 @@ const AddTradeModal: React.FC<AddTradeModalProps> = ({
 
   const handleRemoveTag = useCallback((tag: string) => {
     setSelectedTags(prev => prev.filter((t) => t !== tag));
+  }, []);
+
+  const toggleRule = useCallback((rule: string) => {
+    setStrategyRulesFollowed(prev => 
+      prev.includes(rule) ? prev.filter(r => r !== rule) : [...prev, rule]
+    );
   }, []);
 
   // --- Image Handling ---
@@ -340,10 +355,11 @@ const AddTradeModal: React.FC<AddTradeModalProps> = ({
       const payload: TradeSubmissionPayload = {
         symbol: symbol.toUpperCase().trim(),
         assetClass,
-        direction: derivedDirection, // 🟢 Uses derived direction
+        direction: derivedDirection,
         initialStopLoss: safeFloat(stopLoss),
         takeProfitTarget: safeFloat(target),
         strategyId: selectedStrategyId || null,
+        strategyRulesFollowed, // ✅ NEW: Sent to backend
         tags: selectedTags,
         notes: notes.trim(),
         screenshots: uploadedUrls,
@@ -381,7 +397,6 @@ const AddTradeModal: React.FC<AddTradeModalProps> = ({
               Log Trade
               {isSubmitting && <SpinnerGap className="animate-spin text-muted-foreground w-4 h-4" />}
             </h2>
-            {/* Display Inferred Direction */}
             <Badge variant="outline" className={`
                 text-xs font-bold px-2 py-0.5 border-transparent
                 ${derivedDirection === "LONG" 
@@ -458,8 +473,6 @@ const AddTradeModal: React.FC<AddTradeModalProps> = ({
                       </SelectContent>
                     </Select>
                   </div>
-
-                  {/* REMOVED MANUAL DIRECTION SELECTOR */}
 
                   <div className="space-y-2">
                     <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Take Profit</Label>
@@ -588,6 +601,47 @@ const AddTradeModal: React.FC<AddTradeModalProps> = ({
                       )}
                     </SelectContent>
                   </Select>
+
+                  {/* ✅ NEW: Dynamic Strategy Checklist */}
+                  <AnimatePresence>
+                    {selectedStrategy && selectedStrategy.rules && selectedStrategy.rules.length > 0 && (
+                      <motion.div 
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="mt-4 p-4 bg-secondary/10 border border-border/30 rounded-xl space-y-4"
+                      >
+                        <Label className="text-xs font-semibold text-primary uppercase tracking-wide">
+                          Execution Checklist
+                        </Label>
+                        <div className="space-y-4">
+                          {selectedStrategy.rules.map(group => (
+                            <div key={group.id} className="space-y-2.5">
+                              <h4 className="text-xs font-medium text-muted-foreground">{group.name}</h4>
+                              <div className="space-y-2">
+                                {group.items.map(item => (
+                                  <div key={item} className="flex items-start space-x-3">
+                                    <Checkbox 
+                                      id={`add-rule-${item}`} 
+                                      checked={strategyRulesFollowed.includes(item)}
+                                      onCheckedChange={() => toggleRule(item)}
+                                      className="mt-0.5"
+                                    />
+                                    <label 
+                                      htmlFor={`add-rule-${item}`} 
+                                      className="text-sm text-foreground leading-snug cursor-pointer peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                                    >
+                                      {item}
+                                    </label>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
 
                 <div className="space-y-4">

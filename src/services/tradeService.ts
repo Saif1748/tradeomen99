@@ -108,6 +108,7 @@ export const createTrade = async (accountId: string, userId: string, tradeData: 
     riskAmount: 0,
     riskMultiple: 0,
     strategyId: tradeData.strategyId || null,
+    strategyRulesFollowed: tradeData.strategyRulesFollowed || [], // ✅ NEW: Tracks checklist adherence
 
     // Meta
     tags: tradeData.tags || [],

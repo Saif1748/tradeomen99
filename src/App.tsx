@@ -26,6 +26,7 @@ const Auth = lazy(() => import("./pages/Auth"));
 const VerifyEmail = lazy(() => import("./pages/VerifyEmail"));
 const Calendar = lazy(() => import("./pages/Calendar"));
 const Trades = lazy(() => import("./pages/Trades"));
+const TradeDetail = lazy(() => import("./pages/TradeDetail")); // ✅ Added TradeDetail import
 const Strategies = lazy(() => import("./pages/Strategies"));
 const Reports = lazy(() => import("./pages/Reports"));
 const Markets = lazy(() => import("./pages/Markets"));
@@ -75,6 +76,7 @@ const App = () => (
                       <Route element={<DashboardLayout />}>
                         <Route path="/dashboard" element={<Dashboard />} />
                         <Route path="/trades" element={<Trades />} />
+                        <Route path="/trades/:id" element={<TradeDetail />} /> {/* ✅ Added Route */}
                         <Route path="/strategies" element={<Strategies />} />
                         <Route path="/calendar" element={<Calendar />} />
                         <Route path="/reports" element={<Reports />} />

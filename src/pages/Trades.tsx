@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { auth } from "@/lib/firebase";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { useTrades } from "@/hooks/useTrades";
@@ -28,7 +28,6 @@ import {
 } from "@/components/ui/select";
 
 // --- Components ---
-import TradeDetailModal from "@/components/trades/TradeDetailModal"; 
 import EditTradeModal from "@/components/trades/EditTradeModal";
 import AddTradeModal, { TradeSubmissionPayload } from "@/components/trades/AddTradeModal";
 
@@ -251,6 +250,7 @@ const Trades = () => {
   const { activeAccount } = useWorkspace();
   const userId = auth.currentUser?.uid;
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
 
   // ✅ 1. Fetch Data
   const { 
@@ -259,7 +259,6 @@ const Trades = () => {
     isLoading, 
     createTrade,
     updateTrade, 
-    deleteTrade,
     pageIndex,
     pageSize,
     setPageSize,
@@ -281,8 +280,6 @@ const Trades = () => {
   const netPnl = filteredTrades.reduce((s, t) => s + (t.netPnl || 0), 0);
 
   // UI State
-  const [selectedTrade, setSelectedTrade] = useState<Trade | null>(null);
-  const [detailOpen, setDetailOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [tradeToEdit, setTradeToEdit] = useState<Trade | null>(null);
   const [addModalOpen, setAddModalOpen] = useState(false);
@@ -298,15 +295,8 @@ const Trades = () => {
   };
 
   const handleTradeClick = useCallback((trade: Trade) => {
-    setSelectedTrade(trade);
-    setDetailOpen(true);
-  }, []);
-
-  const handleEditClick = (trade: Trade) => {
-    setTradeToEdit(trade);
-    setDetailOpen(false);
-    setEditModalOpen(true);
-  };
+    navigate(`/trades/${trade.id}`);
+  }, [navigate]);
 
   const handleUpdateTrade = async (updatedData: Partial<Trade>) => {
     if (!tradeToEdit) return;
@@ -315,15 +305,6 @@ const Trades = () => {
       setEditModalOpen(false);
     } catch (e) {
       console.error("Update failed", e);
-    }
-  };
-
-  const handleDeleteTrade = async (trade: Trade) => {
-    try {
-      await deleteTrade(trade);
-      setDetailOpen(false);
-    } catch (e) {
-      console.error("Delete failed", e);
     }
   };
 
@@ -460,15 +441,6 @@ const Trades = () => {
           </div>
         )}
       </div>
-
-      {/* Modals */}
-      <TradeDetailModal
-        trade={selectedTrade}
-        open={detailOpen}
-        onOpenChange={setDetailOpen}
-        onEdit={handleEditClick}
-        onDelete={handleDeleteTrade}
-      />
 
       {tradeToEdit && (
         <EditTradeModal

@@ -42,6 +42,7 @@ export interface Trade {
   accountId: string;   // 🔒 CRITICAL: Workspace Isolation Key
   userId: string;      // 👤 Owner of the trade record
   strategyId?: string; // 🔗 Link to Strategy ID
+  strategyRulesFollowed?: string[]; // ✅ NEW: Tracks which specific checklist items were followed
   
   // ✅ AUDIT TRAIL
   createdBy?: string;
@@ -52,6 +53,7 @@ export interface Trade {
   direction: TradeDirection;
   assetClass: AssetClass;
   status: TradeStatus;
+  
   
   // --- 3. Live Aggregates (The "State") ---
   // Updated atomically via Transaction. Allows O(1) reads.
