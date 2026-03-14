@@ -157,3 +157,7 @@ export const calculateTradeStats = (trades: Trade[]) => {
       : { pnl: 0, symbol: "-", date: null },
   };
 };
+
+// Fallback mocks for UI that hasn't migrated to real data yet
+export const generateMockTrades = (): Trade[] => [];
+export const strategies: string[] = ["SCALP", "DAY_TRADE", "SWING", "POSITION"];

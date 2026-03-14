@@ -28,4 +28,26 @@ functions/lib/
 functions/.env
 dataconnect
 
+# Environment files
 .env
+.env.local
+.env.*.local
+
+# Build results and temporary files
+build_results.txt
+diff.txt
+lint.json
+lint_output.txt
+lint_results.txt
+lint_output_utf8.txt
+
+# MCP Data
+.mcp/
+mcp-local/
+
+# Firebase/Cloud Logs
+*-debug.log*
+firebase-debug.log*
+firestore-debug.log*
+pubsub-debug.log*
+ui-debug.log*

@@ -5,6 +5,9 @@ import { Strategy } from "@/types/strategy";
 import { getTradeById, getTradeExecutions } from "@/services/tradeService";
 import { getStrategies } from "@/services/strategyService";
 import { format } from "date-fns";
+import { useWorkspace } from "@/contexts/WorkspaceContext";
+import { useUser } from "@/contexts/UserContext";
+import { useNotebook } from "@/hooks/useNotebook";
 import {
   ArrowLeft,
   TrendingUp,
@@ -21,6 +24,10 @@ import {
   Tag,
   Layers,
   Gauge,
+  BookOpen,
+  Plus,
+  Save,
+  ExternalLink,
 } from "lucide-react";
 import { SpinnerGap } from "@phosphor-icons/react";
 
@@ -67,6 +74,8 @@ function StatCard({ icon: Icon, label, value, color, sublabel }: {
 export default function TradeDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { activeAccount } = useWorkspace();
+  const { user } = useUser();
   const [activeTab, setActiveTab] = useState<"overview" | "executions" | "analysis" | "journal">("overview");
 
   // Dynamic Data State
@@ -74,6 +83,43 @@ export default function TradeDetail() {
   const [executions, setExecutions] = useState<Execution[]>([]);
   const [linkedStrategy, setLinkedStrategy] = useState<Strategy | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Notebook hook for trade note
+  const { notes, createNote, saveNote, isLoading: notesLoading } = useNotebook(activeAccount?.id);
+
+  // Find the linked notebook note for this trade
+  const tradeNote = notes.find((n) => n.tradeId === id && !n.isTrashed) ?? null;
+
+  // Local state for inline editing in Journal tab
+  const [noteContent, setNoteContent] = useState("");
+  const [noteTitle, setNoteTitle] = useState("");
+  const [noteSaving, setNoteSaving] = useState(false);
+
+  // Sync local editor state when the linked note loads / changes
+  useEffect(() => {
+    if (tradeNote) {
+      setNoteTitle(tradeNote.title);
+      setNoteContent(tradeNote.content);
+    }
+  }, [tradeNote?.id]);
+
+  const handleCreateTradeNote = () => {
+    if (!user || !id) return;
+    createNote({
+      title: trade ? `Trade Note — ${trade.symbol}` : "Trade Note",
+      content: "",
+      category: "Trade Note",
+      tradeId: id,
+      userId: user.uid,
+    });
+  };
+
+  const handleSaveTradeNote = async () => {
+    if (!tradeNote || !activeAccount?.id) return;
+    setNoteSaving(true);
+    await saveNote(tradeNote.id, { title: noteTitle, content: noteContent });
+    setNoteSaving(false);
+  };
 
   // Fetch Data from Firebase
   useEffect(() => {
@@ -84,7 +130,7 @@ export default function TradeDetail() {
         const fetchedTrade = await getTradeById(id);
         if (fetchedTrade) {
           setTrade(fetchedTrade);
-          
+
           // Fetch linked executions
           const execs = await getTradeExecutions(id);
           setExecutions(execs);
@@ -152,16 +198,14 @@ export default function TradeDetail() {
             <div>
               <div className="flex items-center gap-3 mb-0.5">
                 <h1 className="text-2xl font-bold text-foreground tracking-tight">{trade.symbol}</h1>
-                <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold capitalize ${
-                  trade.status?.toLowerCase() === "closed" ? "bg-muted text-muted-foreground"
-                  : trade.status?.toLowerCase() === "open" ? "bg-success/12 text-success"
-                  : "bg-primary/12 text-primary"
-                }`}>
+                <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold capitalize ${trade.status?.toLowerCase() === "closed" ? "bg-muted text-muted-foreground"
+                    : trade.status?.toLowerCase() === "open" ? "bg-success/12 text-success"
+                      : "bg-primary/12 text-primary"
+                  }`}>
                   {trade.status}
                 </span>
-                <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold capitalize ${
-                  trade.direction?.toLowerCase() === "long" ? "bg-success/12 text-success" : "bg-loss/12 text-loss"
-                }`}>
+                <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold capitalize ${trade.direction?.toLowerCase() === "long" ? "bg-success/12 text-success" : "bg-loss/12 text-loss"
+                  }`}>
                   {trade.direction}
                 </span>
               </div>
@@ -199,11 +243,10 @@ export default function TradeDetail() {
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`px-4 py-2.5 text-sm font-semibold whitespace-nowrap border-b-2 -mb-px transition-colors ${
-              activeTab === tab.id
+            className={`px-4 py-2.5 text-sm font-semibold whitespace-nowrap border-b-2 -mb-px transition-colors ${activeTab === tab.id
                 ? "border-primary text-foreground"
                 : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
+              }`}
           >
             {tab.label}
           </button>
@@ -263,7 +306,7 @@ export default function TradeDetail() {
               <div className="space-y-3">
                 {linkedStrategy.rules.map(group => {
                   const total = group.items.length;
-                  
+
                   // Match checked rules with the new string array implementation
                   const checked = group.items.filter(item => {
                     const itemName = typeof item === 'string' ? item : (item as any).text;
@@ -274,9 +317,8 @@ export default function TradeDetail() {
                     <div key={group.id} className="border border-border rounded-xl overflow-hidden">
                       <div className="px-4 py-2.5 bg-secondary/10 flex items-center justify-between">
                         <span className="text-xs font-bold text-foreground">{group.name}</span>
-                        <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
-                          checked === total && total > 0 ? "bg-success/15 text-success" : "bg-muted text-muted-foreground"
-                        }`}>
+                        <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${checked === total && total > 0 ? "bg-success/15 text-success" : "bg-muted text-muted-foreground"
+                          }`}>
                           {checked}/{total}
                         </span>
                       </div>
@@ -325,9 +367,8 @@ export default function TradeDetail() {
                 </div>
                 <div className="w-16 shrink-0">
                   <p className="text-[11px] text-muted-foreground">Side</p>
-                  <span className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full capitalize ${
-                    exec.side?.toLowerCase() === "buy" ? "bg-success/15 text-success" : "bg-loss/15 text-loss"
-                  }`}>
+                  <span className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full capitalize ${exec.side?.toLowerCase() === "buy" ? "bg-success/15 text-success" : "bg-loss/15 text-loss"
+                    }`}>
                     {exec.side}
                   </span>
                 </div>
@@ -352,7 +393,7 @@ export default function TradeDetail() {
           ))}
 
           {executions.length === 0 && (
-              <div className="p-12 text-center text-muted-foreground">No executions recorded.</div>
+            <div className="p-12 text-center text-muted-foreground">No executions recorded.</div>
           )}
 
           {/* Execution summary */}
@@ -490,15 +531,80 @@ export default function TradeDetail() {
             </div>
           </div>
 
-          {/* Notes */}
+          {/* Notes (trade.notes field) */}
           <div className="bg-card rounded-2xl card-boundary border border-border/50 p-5">
             <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-              <MessageSquare size={14} className="text-muted-foreground" /> Notes
+              <MessageSquare size={14} className="text-muted-foreground" /> Trade Notes (from Trade Form)
             </h3>
             {trade.notes ? (
               <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{trade.notes}</p>
             ) : (
               <p className="text-sm text-muted-foreground italic">No notes recorded</p>
+            )}
+          </div>
+
+          {/* Notebook Trade Note */}
+          <div className="bg-card rounded-2xl card-boundary border border-border/50 p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                <BookOpen size={14} className="text-muted-foreground" /> Notebook Note
+              </h3>
+              {tradeNote && (
+                <button
+                  onClick={() => navigate(`/notebook`)}
+                  className="flex items-center gap-1.5 text-xs text-primary hover:underline"
+                >
+                  <ExternalLink size={12} /> Open in Notebook
+                </button>
+              )}
+            </div>
+
+            {notesLoading ? (
+              <div className="h-20 rounded-xl bg-secondary/30 animate-pulse" />
+            ) : tradeNote ? (
+              <div className="space-y-3">
+                <input
+                  type="text"
+                  value={noteTitle}
+                  onChange={(e) => setNoteTitle(e.target.value)}
+                  placeholder="Note title..."
+                  className="w-full bg-secondary/40 border border-border rounded-xl px-3 py-2 text-sm font-semibold text-foreground focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all"
+                />
+                <textarea
+                  value={noteContent}
+                  onChange={(e) => setNoteContent(e.target.value)}
+                  placeholder="Write your trade analysis, observations, and lessons..."
+                  rows={6}
+                  className="w-full bg-secondary/40 border border-border rounded-xl px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-all resize-none leading-relaxed"
+                />
+                <div className="flex items-center justify-between">
+                  <p className="text-[11px] text-muted-foreground">
+                    Last updated {tradeNote.updatedAt ? format(tradeNote.updatedAt.toDate(), "MMM d, yyyy 'at' h:mm a") : ""}
+                  </p>
+                  <button
+                    onClick={handleSaveTradeNote}
+                    disabled={noteSaving}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 transition-colors disabled:opacity-60"
+                  >
+                    <Save size={12} />
+                    {noteSaving ? "Saving..." : "Save Note"}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center text-center py-8 border-2 border-dashed border-border rounded-xl">
+                <BookOpen size={24} className="text-muted-foreground/40 mb-2" />
+                <p className="text-sm font-medium text-foreground">No notebook note yet</p>
+                <p className="text-xs text-muted-foreground mt-1 max-w-[220px]">
+                  Create a dedicated Trade Note for this trade to capture your deeper analysis.
+                </p>
+                <button
+                  onClick={handleCreateTradeNote}
+                  className="mt-3 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors"
+                >
+                  <Plus size={12} /> Create Trade Note
+                </button>
+              </div>
             )}
           </div>
 

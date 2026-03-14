@@ -45,11 +45,11 @@ const ChatHistorySidebar = ({
         initial={{ x: "-100%" }}
         animate={{ x: isOpen ? 0 : "-100%" }}
         transition={{ duration: 0.3, ease: [0.25, 0.46, 0.45, 0.94] }}
-        className="fixed left-0 top-0 h-full w-80 max-w-[85vw] bg-card/95 backdrop-blur-xl border-r border-glass-border z-50 flex flex-col"
+        className="fixed left-0 top-0 h-full w-80 max-w-[85vw] bg-card card-boundary border-r border-border z-50 flex flex-col shadow-2xl"
       >
         {/* Header */}
         <div className="flex items-center justify-between p-4">
-          <h2 className="text-base font-medium text-foreground">Chat History</h2>
+          <h2 className="text-sm font-medium text-foreground tracking-wide">Chat History</h2>
           <Button
             variant="ghost"
             size="icon"
@@ -67,7 +67,7 @@ const ChatHistorySidebar = ({
               onNewChat();
               onClose();
             }}
-            className="w-full h-10 gap-2 rounded-xl bg-primary/15 text-primary hover:bg-primary/25 border border-primary/30"
+            className="w-full h-10 gap-2 rounded-xl bg-primary/10 text-primary font-medium hover:bg-primary/20 border border-primary/20 shadow-sm"
             variant="ghost"
           >
             <Plus weight="bold" className="w-4 h-4" />
@@ -83,8 +83,8 @@ const ChatHistorySidebar = ({
                 <div className="w-12 h-12 rounded-full bg-secondary/50 flex items-center justify-center mb-3">
                   <ChatCircle weight="regular" className="w-6 h-6 text-muted-foreground" />
                 </div>
-                <p className="text-sm text-muted-foreground">No chat history yet</p>
-                <p className="text-xs text-muted-foreground/70 mt-1">
+                <p className="text-sm text-foreground font-medium">No chat history yet</p>
+                <p className="text-xs text-muted-foreground mt-1">
                   Start a new conversation to begin
                 </p>
               </div>
@@ -96,10 +96,10 @@ const ChatHistorySidebar = ({
                     onSelectChat(chat.id);
                     onClose();
                   }}
-                  className={`w-full text-left p-3 rounded-xl transition-colors ${
+                  className={`w-full text-left p-3 rounded-xl transition-all duration-150 ${
                     currentChatId === chat.id
-                      ? "bg-primary/15 text-primary"
-                      : "text-foreground hover:bg-secondary/50"
+                      ? "bg-primary/10 text-primary shadow-sm"
+                      : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
                   }`}
                 >
                   <p className="text-sm font-medium truncate">{chat.title}</p>

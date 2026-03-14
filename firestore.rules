@@ -84,8 +84,18 @@ service cloud.firestore {
         allow create: if hasAccessToAccount(getAccountData(accountId));
       }
 
-      // ✅ NEW: Journal (Calendar Notes) Sub-collection
+      // ✅ Journal (Calendar Notes) Sub-collection
       match /journal/{noteId} {
+        allow read, write: if hasAccessToAccount(getAccountData(accountId));
+      }
+
+      // ✅ NEW: Notebook Notes Sub-collection
+      match /notes/{noteId} {
+        allow read, write: if hasAccessToAccount(getAccountData(accountId));
+      }
+
+      // ✅ NEW: Notebook Custom Folders Sub-collection
+      match /noteFolders/{folderId} {
         allow read, write: if hasAccessToAccount(getAccountData(accountId));
       }
     }

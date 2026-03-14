@@ -8,3 +8,9 @@ typings/
 # Node.js dependency directory
 node_modules/
 *.local
+
+# Temporary files and logs
+*.log
+lint_out.txt
+lint_output.txt
+lint_output_utf8.txt

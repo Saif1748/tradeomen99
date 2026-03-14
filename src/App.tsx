@@ -31,6 +31,7 @@ const Strategies = lazy(() => import("./pages/Strategies"));
 const Reports = lazy(() => import("./pages/Reports"));
 const Markets = lazy(() => import("./pages/Markets"));
 const AIChat = lazy(() => import("./pages/AIChat"));
+const CustomDashboard = lazy(() => import("./pages/CustomDashboard"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 const queryClient = new QueryClient({
@@ -82,7 +83,7 @@ const App = () => (
                         <Route path="/reports" element={<Reports />} />
                         <Route path="/markets" element={<Markets />} />
                         <Route path="/ai-chat" element={<AIChat />} />
-                        
+                        <Route path="/custom-dashboard" element={<CustomDashboard />} />
                         <Route path="/notebook" element={<Notebook />} />
                       </Route>
                     </Route>

@@ -1,15 +1,16 @@
 import { useState, useMemo } from "react";
-import { 
-  ArrowLeft, 
-  ChevronDown, 
-  ChevronUp, 
-  DollarSign, 
-  BarChart3, 
-  Target, 
-  TrendingUp, 
-  TrendingDown, 
-  CheckCircle2, 
-  Circle, 
+import { useNavigate } from "react-router-dom";
+import {
+  ArrowLeft,
+  ChevronDown,
+  ChevronUp,
+  DollarSign,
+  BarChart3,
+  Target,
+  TrendingUp,
+  TrendingDown,
+  CheckCircle2,
+  Circle,
   Activity,
   Pencil,
   Trash2,
@@ -22,7 +23,6 @@ import { cn } from "@/lib/utils";
 
 // --- Industry Grade Imports ---
 import { useTrades } from "@/hooks/useTrades";
-import TradeDetailModal from "@/components/trades/TradeDetailModal";
 import EditTradeModal from "@/components/trades/EditTradeModal";
 import {
   Select,
@@ -70,24 +70,24 @@ function MetricRow({ icon: Icon, label, value, color }: { icon: React.ElementTyp
 
 function TradeRowCard({ trade, onClick }: { trade: Trade; onClick: () => void }) {
   const isWin = (trade.netPnl || 0) >= 0;
-  
+
   const entryTime = getDateMillis(trade.entryDate);
   const exitTime = getDateMillis(trade.exitDate);
   const durationSeconds = exitTime && entryTime ? (exitTime - entryTime) / 1000 : 0;
-  
+
   const holdStr = durationSeconds
     ? durationSeconds >= 86400
       ? `${Math.floor(durationSeconds / 86400)} DAYS`
       : durationSeconds >= 3600
-      ? `${Math.floor(durationSeconds / 3600)} HR`
-      : `${Math.ceil(durationSeconds / 60)} MIN`
+        ? `${Math.floor(durationSeconds / 3600)} HR`
+        : `${Math.ceil(durationSeconds / 60)} MIN`
     : "-";
 
-  const qty = trade.quantity || trade.plannedQuantity || 0;
-  const entryPrice = trade.entryPrice || trade.avgEntryPrice || 0;
-  const exitPrice = trade.exitPrice || trade.avgExitPrice || 0;
+  const qty = trade.plannedQuantity || 0;
+  const entryPrice = trade.avgEntryPrice || 0;
+  const exitPrice = trade.avgExitPrice || 0;
   const pnl = trade.netPnl || 0;
-  
+
   let returnPercent = trade.returnPercent || 0;
   if (!returnPercent && entryPrice && qty) {
     const invested = entryPrice * qty;
@@ -113,9 +113,8 @@ function TradeRowCard({ trade, onClick }: { trade: Trade; onClick: () => void })
         <div className="w-16 shrink-0">
           <p className="text-xs text-text-secondary">Status</p>
           <span
-            className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full ${
-              isWin ? "bg-success/15 text-success" : "bg-loss/15 text-loss"
-            }`}
+            className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full ${isWin ? "bg-success/15 text-success" : "bg-loss/15 text-loss"
+              }`}
           >
             <span className={`w-1.5 h-1.5 rounded-full ${isWin ? "bg-success" : "bg-loss"}`} />
             {isWin ? "WIN" : "LOSS"}
@@ -161,6 +160,7 @@ function TradeRowCard({ trade, onClick }: { trade: Trade; onClick: () => void })
 // 🚀 MAIN COMPONENT
 // ------------------------------------------------------------------
 export default function StrategyDetail({ strategy, onBack, onEdit, onDelete }: StrategyDetailProps) {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<"details" | "trades">("details");
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
@@ -171,14 +171,12 @@ export default function StrategyDetail({ strategy, onBack, onEdit, onDelete }: S
   const [pageSize, setPageSize] = useState(25);
 
   // Modals
-  const [selectedTrade, setSelectedTrade] = useState<Trade | null>(null);
-  const [detailOpen, setDetailOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [tradeToEdit, setTradeToEdit] = useState<Trade | null>(null);
 
   // Data Fetching
   const { trades, updateTrade, deleteTrade } = useTrades(strategy.accountId, strategy.userId);
-  
+
   const strategyTrades = useMemo(() => {
     if (!trades) return [];
     return trades.filter(t => t.strategyId === strategy.id);
@@ -290,7 +288,7 @@ export default function StrategyDetail({ strategy, onBack, onEdit, onDelete }: S
             </div>
           </div>
         </div>
-        
+
         {/* Actions */}
         <div className="flex gap-2 shrink-0">
           <button onClick={onEdit} className="w-9 h-9 rounded-lg border border-border flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors">
@@ -308,11 +306,10 @@ export default function StrategyDetail({ strategy, onBack, onEdit, onDelete }: S
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
-            className={`px-4 py-2.5 text-sm font-semibold capitalize transition-colors border-b-2 -mb-px ${
-              activeTab === tab
-                ? "border-primary text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
+            className={`px-4 py-2.5 text-sm font-semibold capitalize transition-colors border-b-2 -mb-px ${activeTab === tab
+              ? "border-primary text-foreground"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
           >
             {tab === "trades" ? `Trades (${liveMetrics.totalTrades})` : "Strategy Detail"}
           </button>
@@ -346,11 +343,11 @@ export default function StrategyDetail({ strategy, onBack, onEdit, onDelete }: S
             <div className="bg-card rounded-2xl card-boundary p-5">
               <h3 className="text-sm font-semibold text-foreground mb-4">Performance Metrics</h3>
               <div className="space-y-4">
-                <MetricRow 
-                  icon={DollarSign} 
-                  label="Net PnL" 
-                  value={`${liveMetrics.totalPnl >= 0 ? "+" : ""}${liveMetrics.totalPnl.toFixed(2)}`} 
-                  color={liveMetrics.totalPnl >= 0 ? "text-success" : "text-loss"} 
+                <MetricRow
+                  icon={DollarSign}
+                  label="Net PnL"
+                  value={`${liveMetrics.totalPnl >= 0 ? "+" : ""}${liveMetrics.totalPnl.toFixed(2)}`}
+                  color={liveMetrics.totalPnl >= 0 ? "text-success" : "text-loss"}
                 />
                 <div className="grid grid-cols-2 gap-4">
                   <MetricRow icon={Activity} label="Total Trades" value={String(liveMetrics.totalTrades)} />
@@ -382,7 +379,7 @@ export default function StrategyDetail({ strategy, onBack, onEdit, onDelete }: S
                     const gId = group.id || group.name || `group-${index}`;
                     const isOpen = expandedGroups.has(gId);
                     const items = group.items || [];
-                    
+
                     return (
                       <div key={gId} className="border border-border rounded-xl overflow-hidden">
                         <button
@@ -403,7 +400,7 @@ export default function StrategyDetail({ strategy, onBack, onEdit, onDelete }: S
                               const isObj = typeof item === "object";
                               const checked = isObj ? item.checked : true;
                               const text = isObj ? item.text : item;
-                              
+
                               return (
                                 <div key={isObj ? item.id : i} className="flex items-start gap-2.5">
                                   {checked ? (
@@ -440,7 +437,7 @@ export default function StrategyDetail({ strategy, onBack, onEdit, onDelete }: S
         <div className="space-y-3">
           {paginatedTrades.length > 0 ? (
             paginatedTrades.map(trade => (
-              <TradeRowCard key={trade.id} trade={trade} onClick={() => { setSelectedTrade(trade); setDetailOpen(true); }} />
+              <TradeRowCard key={trade.id} trade={trade} onClick={() => navigate(`/trades/${trade.id}`)} />
             ))
           ) : (
             <div className="bg-card border border-border rounded-2xl p-12 text-center">
@@ -471,9 +468,9 @@ export default function StrategyDetail({ strategy, onBack, onEdit, onDelete }: S
                   <span className="text-xs text-text-secondary">
                     {pageIndex * pageSize + 1}-{Math.min((pageIndex + 1) * pageSize, strategyTrades.length)} of {strategyTrades.length}
                   </span>
-                  <button 
-                    onClick={() => setPageIndex(p => p - 1)} 
-                    disabled={pageIndex === 0} 
+                  <button
+                    onClick={() => setPageIndex(p => p - 1)}
+                    disabled={pageIndex === 0}
                     className="w-8 h-8 rounded-lg border border-border flex items-center justify-center text-text-secondary hover:text-foreground hover:border-primary/30 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                   >
                     <ChevronLeft size={15} />
@@ -481,9 +478,9 @@ export default function StrategyDetail({ strategy, onBack, onEdit, onDelete }: S
                   <span className="w-8 h-8 rounded-lg bg-primary/15 border border-primary/30 flex items-center justify-center text-sm font-semibold text-primary">
                     {pageIndex + 1}
                   </span>
-                  <button 
-                    onClick={() => setPageIndex(p => p + 1)} 
-                    disabled={(pageIndex + 1) * pageSize >= strategyTrades.length} 
+                  <button
+                    onClick={() => setPageIndex(p => p + 1)}
+                    disabled={(pageIndex + 1) * pageSize >= strategyTrades.length}
                     className="w-8 h-8 rounded-lg border border-border flex items-center justify-center text-text-secondary hover:text-foreground hover:border-primary/30 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                   >
                     <ChevronRight size={15} />
@@ -496,14 +493,6 @@ export default function StrategyDetail({ strategy, onBack, onEdit, onDelete }: S
       )}
 
       {/* ✅ Modals Integration */}
-      <TradeDetailModal
-        trade={selectedTrade}
-        open={detailOpen}
-        onOpenChange={setDetailOpen}
-        onEdit={(t) => { setTradeToEdit(t); setDetailOpen(false); setEditModalOpen(true); }}
-        onDelete={async (t) => { await deleteTrade(t); setDetailOpen(false); }}
-      />
-
       {tradeToEdit && (
         <EditTradeModal
           trade={tradeToEdit}

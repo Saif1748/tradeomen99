@@ -9,24 +9,21 @@ import {
   Sparkles,
   ChevronRight,
   ChevronLeft,
-  Wallet
+  Wallet,
+  LayoutGrid,
+  BookOpen
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-// ✅ Hooks & Contexts
-import { useWorkspace } from "@/contexts/WorkspaceContext";
-
-// ✅ Components
-import { AccountModal } from "@/components/accounts/AccountModal";
-
 const navItems = [
-  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { label: "Trades", href: "/trades", icon: Table2 },
-  { label: "Strategies", href: "/strategies", icon: Lightbulb },
-  { label: "Calendar", href: "/calendar", icon: CalendarDays },
-  { label: "Reports", href: "/reports", icon: BarChart3 },
-  { label: "AI Chat", href: "/ai-chat", icon: Sparkles, badge: "NEW" },
-  { label: "Notebook", href: "/notebook", icon: Table2 },
+  { label: "Dashboard",        href: "/dashboard",        icon: LayoutDashboard },
+  { label: "Custom Dashboard",  href: "/custom-dashboard",  icon: LayoutGrid },
+  { label: "Trades",            href: "/trades",            icon: Table2 },
+  { label: "Strategies",        href: "/strategies",        icon: Lightbulb },
+  { label: "Calendar",          href: "/calendar",          icon: CalendarDays },
+  { label: "Reports",           href: "/reports",           icon: BarChart3 },
+  { label: "AI Chat",           href: "/ai-chat",           icon: Sparkles,       badge: "NEW" },
+  { label: "Notebook",          href: "/notebook",          icon: BookOpen },
 ];
 
 interface AppSidebarProps {
@@ -36,17 +33,6 @@ interface AppSidebarProps {
 
 export const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
   const location = useLocation();
-  const { activeAccount } = useWorkspace();
-  const [accountModalOpen, setAccountModalOpen] = useState(false);
-
-  const formatBalance = (balance: number) => {
-    return Math.abs(balance).toLocaleString("en-US", {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-      style: 'currency',
-      currency: activeAccount?.currency || 'USD'
-    });
-  };
 
   return (
     <>
@@ -110,32 +96,6 @@ export const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
           })}
         </nav>
 
-        {/* Account Selector Section */}
-        <div className="p-3">
-          <button
-            onClick={() => setAccountModalOpen(true)}
-            className={cn(
-              "w-full flex items-center gap-3 h-12 rounded-lg px-3 transition-colors",
-              "text-text-secondary hover:bg-sidebar-accent/50 hover:text-foreground border border-divider bg-transparent",
-              collapsed && "justify-center px-0"
-            )}
-          >
-            <Wallet size={20} className="shrink-0" />
-            {!collapsed && (
-              <div className="flex-1 text-left min-w-0">
-                <p className="text-sm font-medium text-foreground truncate">
-                  {activeAccount?.name || "Select Account"}
-                </p>
-                {activeAccount && (
-                  <p className={cn("text-xs font-medium", activeAccount.balance >= 0 ? "text-success" : "text-loss")}>
-                    {formatBalance(activeAccount.balance)}
-                  </p>
-                )}
-              </div>
-            )}
-          </button>
-        </div>
-
         {/* Edge toggle button — perfectly matched to visual-canvas styling */}
         <button
           onClick={onToggle}
@@ -145,8 +105,6 @@ export const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
           {collapsed ? <ChevronRight size={13} /> : <ChevronLeft size={13} />}
         </button>
       </aside>
-
-      <AccountModal open={accountModalOpen} onOpenChange={setAccountModalOpen} />
     </>
   );
 };

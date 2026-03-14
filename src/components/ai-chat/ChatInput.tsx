@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, KeyboardEvent } from "react";
+import React, { useState, useRef, useEffect, KeyboardEvent } from "react";
 import { motion } from "framer-motion";
 import {
   Plus,
@@ -32,7 +32,7 @@ const contextChips = [
   { label: "Strategy review", icon: FileText },
 ];
 
-const ChatInput = ({ onSend, isLoading, centered, onClearChat }: ChatInputProps) => {
+const ChatInput = React.memo(({ onSend, isLoading, centered, onClearChat }: ChatInputProps) => {
   const [message, setMessage] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -56,11 +56,8 @@ const ChatInput = ({ onSend, isLoading, centered, onClearChat }: ChatInputProps)
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    // Submit on Enter without shift
     if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       handleSend();
     }
@@ -74,35 +71,35 @@ const ChatInput = ({ onSend, isLoading, centered, onClearChat }: ChatInputProps)
   return (
     <motion.div
       layout
-      className={`w-full max-w-3xl mx-auto ${centered ? "px-4" : "px-4 pb-4"}`}
+      className={`w-full mx-auto ${centered ? "px-4" : "px-4 pb-4"}`}
     >
-      {/* Context Chips */}
-      <div className="flex flex-wrap gap-2 mb-3 justify-center">
+      {/* Context Chips - Cleaner look */}
+      <div className="flex flex-wrap gap-2 mb-4 justify-center">
         {contextChips.map((chip) => {
           const Icon = chip.icon;
           return (
             <button
               key={chip.label}
               onClick={() => handleChipClick(chip.label)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-normal text-muted-foreground border border-border/50 bg-secondary/30 hover:bg-secondary/60 hover:text-foreground hover:border-border transition-all duration-200"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-muted-foreground bg-secondary/40 border border-border hover:bg-secondary hover:text-foreground transition-all duration-200"
             >
-              <Icon weight="regular" className="w-3.5 h-3.5" />
+              <Icon weight="regular" className="w-[14px] h-[14px]" />
               {chip.label}
             </button>
           );
         })}
       </div>
 
-      {/* Input Container */}
-      <div className="relative">
-        <div className="flex items-end gap-2 p-2 rounded-[28px] bg-secondary/40 backdrop-blur-xl border border-border/30 focus-within:border-primary/30 transition-colors">
+      {/* Input Container - Clean pill style matching site aesthetics */}
+      <div className="relative max-w-3xl mx-auto shadow-sm">
+        <div className="flex items-end gap-2 p-2 rounded-2xl bg-secondary/40 border border-border focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/20 transition-all">
           {/* Plus Menu */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-9 w-9 rounded-full text-muted-foreground hover:text-foreground hover:bg-secondary/60 flex-shrink-0"
+                className="h-10 w-10 rounded-full text-muted-foreground hover:text-foreground hover:bg-background flex-shrink-0"
               >
                 <Plus weight="bold" className="w-5 h-5" />
               </Button>
@@ -145,7 +142,7 @@ const ChatInput = ({ onSend, isLoading, centered, onClearChat }: ChatInputProps)
             placeholder="Ask TradeOmen anything..."
             rows={1}
             disabled={isLoading}
-            className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground resize-none focus:outline-none py-2 px-1 max-h-[200px] leading-relaxed"
+            className="flex-1 bg-transparent text-[15px] text-foreground placeholder:text-muted-foreground resize-none focus:outline-none py-2.5 px-2 max-h-[200px] leading-relaxed"
           />
 
           {/* Microphone */}
@@ -153,29 +150,34 @@ const ChatInput = ({ onSend, isLoading, centered, onClearChat }: ChatInputProps)
             variant="ghost"
             size="icon"
             disabled={!!message}
-            className="h-9 w-9 rounded-full text-muted-foreground hover:text-foreground hover:bg-secondary/60 flex-shrink-0 disabled:opacity-30"
+            className="h-10 w-10 rounded-full text-muted-foreground hover:text-foreground hover:bg-background flex-shrink-0 disabled:opacity-30 mb-0.5"
           >
             <Microphone weight="regular" className="w-5 h-5" />
           </Button>
 
-          {/* Send Button */}
           <Button
             onClick={handleSend}
             disabled={!message.trim() || isLoading}
-            className="h-9 w-9 rounded-full glow-button flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+            className={`h-10 w-10 rounded-xl flex-shrink-0 transition-colors mb-0.5 ${
+              message.trim() && !isLoading
+                ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                : "bg-muted text-muted-foreground cursor-not-allowed"
+            }`}
             size="icon"
           >
-            <PaperPlaneTilt weight="fill" className="w-4 h-4" />
+            <PaperPlaneTilt weight="fill" className="w-[18px] h-[18px]" />
           </Button>
         </div>
       </div>
 
       {/* Disclaimer */}
-      <p className="text-[11px] text-muted-foreground text-center mt-3">
+      <p className="text-xs text-muted-foreground text-center mt-3 font-medium">
         TradeOmen can make mistakes. Check important information.
       </p>
     </motion.div>
   );
-};
+});
+
+ChatInput.displayName = "ChatInput";
 
 export default ChatInput;

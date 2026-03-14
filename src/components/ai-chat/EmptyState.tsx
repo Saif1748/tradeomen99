@@ -30,19 +30,16 @@ const EmptyState = () => {
     >
       {/* Icon */}
       <div className="flex justify-center mb-6">
-        <div className="relative">
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-glow-primary to-glow-secondary flex items-center justify-center">
-            <Lightning weight="fill" className="w-8 h-8 text-primary-foreground" />
-          </div>
-          <div className="absolute -inset-2 bg-gradient-to-br from-glow-primary/30 to-glow-secondary/30 rounded-3xl blur-xl -z-10" />
+        <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20 shadow-inner">
+          <Lightning weight="fill" className="w-8 h-8 text-primary" />
         </div>
       </div>
 
       {/* Title */}
-      <h1 className="text-2xl font-semibold text-foreground tracking-tight-premium mb-2">
+      <h1 className="text-2xl font-semibold text-foreground tracking-tight mb-2">
         How can I help you today?
       </h1>
-      <p className="text-muted-foreground text-sm max-w-md mx-auto">
+      <p className="text-muted-foreground text-[15px] max-w-md mx-auto">
         I'm your AI trading assistant. Ask me about your trades, strategies, or market analysis.
       </p>
 
@@ -56,11 +53,11 @@ const EmptyState = () => {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.3, delay: index * 0.1 }}
-              className="p-4 rounded-xl bg-secondary/30 border border-border/30 text-left hover:bg-secondary/50 transition-colors cursor-pointer"
+              className="bg-card rounded-2xl card-boundary border border-border/50 shadow-sm p-5 hover:border-border transition-colors cursor-pointer text-left"
             >
-              <Icon weight="regular" className="w-5 h-5 text-primary mb-2" />
-              <p className="text-sm font-medium text-foreground">{feature.title}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">{feature.description}</p>
+              <Icon weight="regular" className="w-6 h-6 text-primary mb-3" />
+              <p className="text-sm font-semibold text-foreground">{feature.title}</p>
+              <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">{feature.description}</p>
             </motion.div>
           );
         })}

@@ -32,13 +32,13 @@ const DashboardLayout = () => {
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
       />
-      <MobileSidebar 
-        open={mobileMenuOpen} 
-        onClose={() => setMobileMenuOpen(false)} 
+      <MobileSidebar
+        open={mobileMenuOpen}
+        onClose={() => setMobileMenuOpen(false)}
       />
 
       {/* Header - Margin pushed exactly like visual-canvas */}
-      <header 
+      <header
         className={cn(
           "sticky top-0 z-40 h-16 bg-sidebar/80 backdrop-blur-[20px] border-b border-border shadow-header transition-all duration-300 flex items-center",
           !isMobile && (sidebarCollapsed ? "ml-[80px]" : "ml-[280px]")
@@ -48,9 +48,9 @@ const DashboardLayout = () => {
           <GlobalHeader onMobileMenuOpen={() => setMobileMenuOpen(true)} />
         </div>
       </header>
-      
+
       {/* Main Content Area - Padding and margins exactly matched to visual-canvas */}
-      <main 
+      <main
         className={cn(
           "transition-all duration-300 p-6 pb-16",
           !isMobile && (sidebarCollapsed ? "ml-[80px]" : "ml-[280px]")

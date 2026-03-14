@@ -22,6 +22,7 @@ import { Strategy } from "@/types/strategy";
 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
+import { AccountModal } from "@/components/accounts/AccountModal";
 import { auth } from "@/lib/firebase";
 import { signOut } from "firebase/auth";
 import { toast } from "sonner";
@@ -48,6 +49,7 @@ export function GlobalHeader({ onMobileMenuOpen }: GlobalHeaderProps) {
   const [tradeModalOpen, setTradeModalOpen] = useState(false);
   const [strategyModalOpen, setStrategyModalOpen] = useState(false);
   const [themePanelOpen, setThemePanelOpen] = useState(false);
+  const [accountModalOpen, setAccountModalOpen] = useState(false);
 
   const location = useLocation();
   const navigate = useNavigate();
@@ -113,6 +115,15 @@ export function GlobalHeader({ onMobileMenuOpen }: GlobalHeaderProps) {
     toast.success(`Currency changed to ${value}`);
   };
 
+  const formatBalance = (balance: number) => {
+    return Math.abs(balance).toLocaleString("en-US", {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+      style: 'currency',
+      currency: activeAccount?.currency || 'USD'
+    });
+  };
+
   const [searchValue, setSearchValue] = useState<string>(() => searchParams.get("q") || "");
   useEffect(() => {
     if (isTradesPage) setSearchValue(searchParams.get("q") || "");
@@ -158,20 +169,25 @@ export function GlobalHeader({ onMobileMenuOpen }: GlobalHeaderProps) {
             <Menu size={20} />
           </button>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger className="flex items-center gap-3 outline-none group cursor-pointer">
-              <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center group-hover:bg-accent transition-colors">
-                <Users size={16} className="text-muted-foreground group-hover:text-foreground transition-colors" />
-              </div>
-              <span className="text-sm font-medium text-foreground group-hover:opacity-80 transition-opacity hidden sm:block">
-                {activeAccount?.name || "No Accounts"}
+          <button 
+            onClick={() => setAccountModalOpen(true)}
+            className="flex items-center gap-3 outline-none group cursor-pointer px-2 py-1.5 rounded-lg hover:bg-muted/50 transition-colors border border-transparent hover:border-border"
+          >
+            <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center group-hover:bg-accent transition-colors">
+              <Crown size={16} className="text-muted-foreground group-hover:text-foreground transition-colors" />
+            </div>
+            <div className="hidden sm:flex flex-col text-left">
+              <span className="text-sm font-semibold text-foreground leading-tight">
+                {activeAccount?.name || "Select Account"}
               </span>
-              <ChevronDown size={16} className="text-muted-foreground hidden sm:block group-hover:text-foreground transition-colors" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-56 z-[60]">
-              <DropdownMenuItem className="text-sm">Manage Accounts</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+              {activeAccount && (
+                <span className={cn("text-xs font-medium", activeAccount.balance >= 0 ? "text-success" : "text-loss")}>
+                  {formatBalance(activeAccount.balance)}
+                </span>
+              )}
+            </div>
+            <ChevronDown size={14} className="text-muted-foreground hidden sm:block ml-1 opacity-50 group-hover:opacity-100 transition-opacity" />
+          </button>
         </div>
 
         {/* --- Center: Global Search --- */}
@@ -242,56 +258,16 @@ export function GlobalHeader({ onMobileMenuOpen }: GlobalHeaderProps) {
             </DropdownMenuContent>
           </DropdownMenu>
 
-          {/* Currency Selector */}
-          <Select value={tradingPreferences.currency} onValueChange={handleCurrencyChange}>
-            <SelectTrigger className="hidden sm:flex items-center gap-2 bg-card border border-border rounded-lg px-3 py-2 h-9 text-sm focus:ring-0 focus:ring-offset-0">
-              <span className="text-foreground">
-                {currencies.find(c => c.value === tradingPreferences.currency)?.symbol} {tradingPreferences.currency}
-              </span>
-            </SelectTrigger>
-            <SelectContent align="end" className="z-[60]">
-              {currencies.map((c) => (
-                <SelectItem key={c.value} value={c.value} className="text-sm cursor-pointer">
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-muted-foreground w-4 text-center">{c.symbol}</span>
-                    <span>{c.label}</span>
-                  </div>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          {/* Icons */}
-          <button className="hidden sm:flex w-9 h-9 rounded-full items-center justify-center text-muted-foreground hover:text-foreground transition-colors relative">
-            <Users size={20} className="text-success" />
-            <span className="absolute top-1 right-1 w-2 h-2 bg-loss rounded-full" />
-          </button>
-          
-          <button className="hidden sm:flex w-9 h-9 rounded-full items-center justify-center text-muted-foreground hover:text-foreground transition-colors">
-            <Eye size={20} />
-          </button>
-
-          <div className="hidden lg:flex items-center gap-2 bg-card border border-border rounded-lg px-3 py-2 h-9">
-            <Calendar size={16} className="text-muted-foreground" />
-            <span className="text-sm text-foreground">All Time</span>
-            <X size={14} className="text-muted-foreground cursor-pointer hover:text-foreground" />
-          </div>
-
-          <button className="w-9 h-9 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors">
-            <Bell size={20} />
+          <button className="w-9 h-9 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
+            <Bell size={18} />
           </button>
 
           {/* Theme Toggle Panel Button */}
           <button
             onClick={() => setThemePanelOpen(true)}
-            className="w-9 h-9 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+            className="w-9 h-9 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
           >
-            <Palette size={20} />
-          </button>
-
-          <button className="hidden sm:flex w-9 h-9 rounded-full items-center justify-center text-muted-foreground hover:text-foreground transition-colors relative">
-            <MessageCircle size={20} />
-            <span className="absolute top-1 right-1 w-2 h-2 bg-loss rounded-full" />
+            <Palette size={18} />
           </button>
 
           {/* Profile Dropdown */}
@@ -336,6 +312,7 @@ export function GlobalHeader({ onMobileMenuOpen }: GlobalHeaderProps) {
       </div>
 
       {/* --- Modals & Panels --- */}
+      <AccountModal open={accountModalOpen} onOpenChange={setAccountModalOpen} />
       <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
 
       <AddTradeModal

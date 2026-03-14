@@ -1,14 +1,14 @@
-import { 
-  collection, 
-  doc, 
-  runTransaction, 
-  serverTimestamp, 
-  Timestamp, 
-  query, 
-  where, 
-  getDocs, 
-  orderBy, 
-  getDoc, 
+import {
+  collection,
+  doc,
+  runTransaction,
+  serverTimestamp,
+  Timestamp,
+  query,
+  where,
+  getDocs,
+  orderBy,
+  getDoc,
   increment,
   limit,
   startAfter,
@@ -74,15 +74,15 @@ export const createTrade = async (accountId: string, userId: string, tradeData: 
     userId,
     createdBy: userId,
     updatedBy: userId,
-    
+
     symbol: tradeData.symbol?.toUpperCase() || "UNKNOWN",
-    direction: tradeData.direction || "LONG", 
+    direction: tradeData.direction || "LONG",
     assetClass: tradeData.assetClass || "STOCK",
     status: "OPEN",
-    
+
     // 📦 Position State
     netQuantity: 0,
-    plannedQuantity: 0, 
+    plannedQuantity: 0,
     peakQuantity: 0,
     avgEntryPrice: 0,
     avgExitPrice: 0,
@@ -90,7 +90,7 @@ export const createTrade = async (accountId: string, userId: string, tradeData: 
     totalExitValue: 0,
     investedAmount: 0,
     peakInvested: 0,
-    
+
     // 💰 Financials
     totalBuyValue: 0,
     totalSellValue: 0,
@@ -100,7 +100,7 @@ export const createTrade = async (accountId: string, userId: string, tradeData: 
     netPnl: 0,
     returnPercent: 0,
     totalExecutions: 0,
-    
+
     // 🎯 Risk Plan
     initialStopLoss: tradeData.initialStopLoss ? Number(tradeData.initialStopLoss) : undefined,
     originalStopLoss: tradeData.initialStopLoss ? Number(tradeData.initialStopLoss) : undefined,
@@ -122,30 +122,30 @@ export const createTrade = async (accountId: string, userId: string, tradeData: 
 
   // 2. ⚡ PROCESS INITIAL EXECUTIONS
   const initialExecutions: Execution[] = [];
-  
-  if (tradeData.executions && Array.isArray(tradeData.executions)) {
-      tradeData.executions.forEach((execData: any) => {
-          const execRef = doc(collection(db, "temp")); 
-          const exec: Execution = {
-              id: execRef.id, 
-              tradeId,
-              userId,
-              accountId,
-              date: toTimestamp(execData.date),
-              side: execData.side,
-              price: Number(execData.price) || 0,
-              quantity: Number(execData.quantity) || 0,
-              fees: Number(execData.fees) || 0,
-              expectedPrice: execData.expectedPrice ? Number(execData.expectedPrice) : undefined,
-              notes: execData.notes || ""
-          };
-          
-          initialExecutions.push(exec);
 
-          // 🧮 Iteratively run calculations to build state
-          const updates = runTradeCalculations(newTrade, exec);
-          newTrade = { ...newTrade, ...updates } as Trade;
-      });
+  if (tradeData.executions && Array.isArray(tradeData.executions)) {
+    tradeData.executions.forEach((execData: any) => {
+      const execRef = doc(collection(db, "temp"));
+      const exec: Execution = {
+        id: execRef.id,
+        tradeId,
+        userId,
+        accountId,
+        date: toTimestamp(execData.date),
+        side: execData.side,
+        price: Number(execData.price) || 0,
+        quantity: Number(execData.quantity) || 0,
+        fees: Number(execData.fees) || 0,
+        expectedPrice: execData.expectedPrice ? Number(execData.expectedPrice) : undefined,
+        notes: execData.notes || ""
+      };
+
+      initialExecutions.push(exec);
+
+      // 🧮 Iteratively run calculations to build state
+      const updates = runTradeCalculations(newTrade, exec);
+      newTrade = { ...newTrade, ...updates } as Trade;
+    });
   }
 
   // 3. Atomic Write
@@ -156,34 +156,34 @@ export const createTrade = async (accountId: string, userId: string, tradeData: 
 
       // Set Executions with sanitization
       initialExecutions.forEach(exec => {
-          const eRef = doc(collection(db, ROOT_COLLECTION, tradeId, "executions"), exec.id);
-          transaction.set(eRef, sanitize(exec));
+        const eRef = doc(collection(db, ROOT_COLLECTION, tradeId, "executions"), exec.id);
+        transaction.set(eRef, sanitize(exec));
       });
-      
-      const cashImpact = newTrade.netPnl; 
+
+      const cashImpact = newTrade.netPnl;
 
       if (Math.abs(cashImpact) > 0.001) {
-          const accountRef = doc(db, "accounts", accountId);
-          const ledgerRef = doc(collection(db, "accounts", accountId, "ledger"));
-          
-          transaction.update(accountRef, {
-              balance: increment(cashImpact),
-              updatedAt: serverTimestamp()
-          });
+        const accountRef = doc(db, "accounts", accountId);
+        const ledgerRef = doc(collection(db, "accounts", accountId, "ledger"));
 
-          transaction.set(ledgerRef, sanitize({
-              id: ledgerRef.id,
-              accountId,
-              userId,
-              type: cashImpact > 0 ? "PROFIT" : "LOSS",
-              amount: Math.abs(cashImpact),
-              description: `Initial Fill: ${newTrade.symbol}`,
-              date: Timestamp.now()
-          }));
+        transaction.update(accountRef, {
+          balance: increment(cashImpact),
+          updatedAt: serverTimestamp()
+        });
+
+        transaction.set(ledgerRef, sanitize({
+          id: ledgerRef.id,
+          accountId,
+          userId,
+          type: cashImpact > 0 ? "PROFIT" : "LOSS",
+          amount: Math.abs(cashImpact),
+          description: `Initial Fill: ${newTrade.symbol}`,
+          date: Timestamp.now()
+        }));
       }
 
       logActivityInTransaction(
-        transaction, accountId, userId, "CREATE", "TRADE", tradeId, 
+        transaction, accountId, userId, "CREATE", "TRADE", tradeId,
         `Trade Opened: ${newTrade.symbol} (${newTrade.direction})`,
         { symbol: newTrade.symbol, netPnl: newTrade.netPnl }
       );
@@ -226,33 +226,33 @@ export const addExecution = async (tradeId: string, userId: string, execData: Pa
 
     transaction.set(execRef, newExec);
     transaction.update(tradeRef, sanitize({
-        ...updates,
-        updatedBy: userId,
-        updatedAt: serverTimestamp()
+      ...updates,
+      updatedBy: userId,
+      updatedAt: serverTimestamp()
     }));
 
     const balanceImpact = (updates.netPnl || 0) - (currentTrade.netPnl || 0);
 
     if (Math.abs(balanceImpact) > 0.001 && accountId) {
-        const accountRef = doc(db, "accounts", accountId);
-        const ledgerRef = doc(collection(db, "accounts", accountId, "ledger"));
+      const accountRef = doc(db, "accounts", accountId);
+      const ledgerRef = doc(collection(db, "accounts", accountId, "ledger"));
 
-        transaction.update(accountRef, { balance: increment(balanceImpact), updatedAt: serverTimestamp() });
+      transaction.update(accountRef, { balance: increment(balanceImpact), updatedAt: serverTimestamp() });
 
-        transaction.set(ledgerRef, sanitize({
-            id: ledgerRef.id,
-            accountId,
-            userId,
-            type: balanceImpact > 0 ? "PROFIT" : "LOSS",
-            amount: Math.abs(balanceImpact),
-            description: `Execution Added: ${currentTrade.symbol}`,
-            date: Timestamp.now()
-        }));
+      transaction.set(ledgerRef, sanitize({
+        id: ledgerRef.id,
+        accountId,
+        userId,
+        type: balanceImpact > 0 ? "PROFIT" : "LOSS",
+        amount: Math.abs(balanceImpact),
+        description: `Execution Added: ${currentTrade.symbol}`,
+        date: Timestamp.now()
+      }));
     }
 
-    logActivityInTransaction(transaction, accountId, userId, "CREATE", "EXECUTION", newExec.id, 
-        `Filled ${newExec.quantity} @ ${newExec.price} on ${currentTrade.symbol}`,
-        { price: newExec.price, qty: newExec.quantity }
+    logActivityInTransaction(transaction, accountId, userId, "CREATE", "EXECUTION", newExec.id,
+      `Filled ${newExec.quantity} @ ${newExec.price} on ${currentTrade.symbol}`,
+      { price: newExec.price, qty: newExec.quantity }
     );
   });
 };
@@ -262,44 +262,44 @@ export const addExecution = async (tradeId: string, userId: string, execData: Pa
  * Recalculates metrics based on frozen risk model.
  */
 export const updateTrade = async (
-  tradeId: string, 
-  accountId: string, 
-  userId: string, 
-  oldTrade: Trade, 
+  tradeId: string,
+  accountId: string,
+  userId: string,
+  oldTrade: Trade,
   updates: Partial<Trade>
 ) => {
   const ref = doc(db, ROOT_COLLECTION, tradeId);
-  
+
   let riskUpdates = {};
   if (updates.initialStopLoss || updates.takeProfitTarget) {
-      const mergedTrade = { ...oldTrade, ...updates };
-      
-      // 🛡️ Ensure originalStopLoss is captured if this is the first edit
-      if (!mergedTrade.originalStopLoss && mergedTrade.initialStopLoss) {
-        mergedTrade.originalStopLoss = mergedTrade.initialStopLoss;
-      }
+    const mergedTrade = { ...oldTrade, ...updates };
 
-      riskUpdates = calculateRiskMetrics(
-        mergedTrade, 
-        mergedTrade.netPnl || 0, 
-        mergedTrade.plannedQuantity || 0,
-        mergedTrade.avgEntryPrice || 0,
-        mergedTrade.peakInvested || 0
-      );
+    // 🛡️ Ensure originalStopLoss is captured if this is the first edit
+    if (!mergedTrade.originalStopLoss && mergedTrade.initialStopLoss) {
+      mergedTrade.originalStopLoss = mergedTrade.initialStopLoss;
+    }
+
+    riskUpdates = calculateRiskMetrics(
+      mergedTrade,
+      mergedTrade.netPnl || 0,
+      mergedTrade.plannedQuantity || 0,
+      mergedTrade.avgEntryPrice || 0,
+      mergedTrade.peakInvested || 0
+    );
   }
 
   const finalUpdates = sanitize({
-      ...updates,
-      ...riskUpdates,
-      updatedBy: userId, 
-      updatedAt: serverTimestamp() 
+    ...updates,
+    ...riskUpdates,
+    updatedBy: userId,
+    updatedAt: serverTimestamp()
   });
 
   await runTransaction(db, async (t) => {
-      t.update(ref, finalUpdates);
-      logActivityInTransaction(t, accountId, userId, "UPDATE", "TRADE", tradeId, 
-        `Plan Revised: ${oldTrade.symbol}`, updates
-      );
+    t.update(ref, finalUpdates);
+    logActivityInTransaction(t, accountId, userId, "UPDATE", "TRADE", tradeId,
+      `Plan Revised: ${oldTrade.symbol}`, updates
+    );
   });
 };
 
@@ -316,21 +316,21 @@ export const deleteTrade = async (trade: Trade, userId: string) => {
     transaction.delete(tradeRef);
     execsSnap.docs.forEach(doc => transaction.delete(doc.ref));
 
-    const reverseAmount = (trade.netPnl || 0) * -1; 
-    
+    const reverseAmount = (trade.netPnl || 0) * -1;
+
     if (Math.abs(reverseAmount) > 0.001) {
-       const accountRef = doc(db, "accounts", accountId);
-       const ledgerRef = doc(collection(db, "accounts", accountId, "ledger"));
-       
-       transaction.update(accountRef, { balance: increment(reverseAmount), updatedAt: serverTimestamp() });
-       
-       transaction.set(ledgerRef, sanitize({
-           id: ledgerRef.id, accountId, userId,
-           type: reverseAmount > 0 ? "PROFIT" : "LOSS",
-           amount: Math.abs(reverseAmount),
-           description: `Trade Deletion Reversal: ${trade.symbol}`,
-           date: Timestamp.now()
-       }));
+      const accountRef = doc(db, "accounts", accountId);
+      const ledgerRef = doc(collection(db, "accounts", accountId, "ledger"));
+
+      transaction.update(accountRef, { balance: increment(reverseAmount), updatedAt: serverTimestamp() });
+
+      transaction.set(ledgerRef, sanitize({
+        id: ledgerRef.id, accountId, userId,
+        type: reverseAmount > 0 ? "PROFIT" : "LOSS",
+        amount: Math.abs(reverseAmount),
+        description: `Trade Deletion Reversal: ${trade.symbol}`,
+        date: Timestamp.now()
+      }));
     }
 
     logActivityInTransaction(transaction, accountId, userId, "DELETE", "TRADE", trade.id, `Trade Deleted: ${trade.symbol}`);
@@ -341,18 +341,18 @@ export const deleteTrade = async (trade: Trade, userId: string) => {
  * 📖 GET TRADES (PAGINATED)
  */
 export const getTrades = async (
-  accountId: string, 
-  pageSize: number = 50, 
+  accountId: string,
+  pageSize: number = 50,
   lastDoc: QueryDocumentSnapshot | null = null
 ): Promise<PaginatedTrades> => {
   if (!accountId) return { data: [], lastDoc: null, totalCount: 0 };
 
   const tradesRef = collection(db, ROOT_COLLECTION);
-  
+
   // 1. Base Query: Only this account, Sorted by Date
   let q = query(
-    tradesRef, 
-    where("accountId", "==", accountId), 
+    tradesRef,
+    where("accountId", "==", accountId),
     orderBy("entryDate", "desc"),
     limit(pageSize)
   );
@@ -386,13 +386,13 @@ export const getTrades = async (
  * 1. Fetch Trades in a Date Range (for 1M, 3M, YTD views)
  */
 export const getTradesInRange = async (
-  accountId: string, 
-  startDate: Date, 
+  accountId: string,
+  startDate: Date,
   endDate: Date,
   filters?: { strategyId?: string; assetClass?: string; tags?: string[] }
 ) => {
   const tradesRef = collection(db, ROOT_COLLECTION);
-  
+
   let q = query(
     tradesRef,
     where("accountId", "==", accountId),
@@ -423,10 +423,10 @@ export const getAggregatedStatsALL = async (
   filters?: { strategyId?: string; assetClass?: string; tags?: string[] }
 ) => {
   const tradesRef = collection(db, ROOT_COLLECTION);
-  
+
   const buildQuery = (extraConstraints: any[] = []) => {
     let q = query(tradesRef, where("accountId", "==", accountId), ...extraConstraints);
-    
+
     if (filters?.strategyId && filters.strategyId !== "all") {
       q = query(q, where("strategyId", "==", filters.strategyId));
     }
@@ -434,7 +434,7 @@ export const getAggregatedStatsALL = async (
       q = query(q, where("assetClass", "==", filters.assetClass));
     }
     if (filters?.tags && filters.tags.length > 0 && !filters.tags.includes("all")) {
-        q = query(q, where("tags", "array-contains-any", filters.tags));
+      q = query(q, where("tags", "array-contains-any", filters.tags));
     }
     return q;
   };
@@ -473,11 +473,11 @@ export const getAggregatedStatsALL = async (
     // If index is missing, we fetch all trades (up to reasonable limit) and sum locally.
     // This ensures the UI works immediately while you configure indexes.
     console.warn("Aggregation Index Missing - Falling back to Client Calc:", error.message);
-    
+
     // We limit to 2000 to prevent browser crash if account is huge
-    const fallbackQ = buildQuery([limit(2000)]); 
+    const fallbackQ = buildQuery([limit(2000)]);
     const snapshot = await getDocs(fallbackQ);
-    
+
     let grossProfit = 0;
     let grossLoss = 0;
     let winningTrades = 0;
@@ -510,4 +510,32 @@ export const getTradeExecutions = async (tradeId: string) => {
   const q = query(collection(db, ROOT_COLLECTION, tradeId, "executions"), orderBy("date", "asc"));
   const snap = await getDocs(q);
   return snap.docs.map(d => d.data() as Execution);
+};
+
+/**
+ * 📒 Lightweight trade list for the Notebook Trade-Note picker.
+ * Returns only the fields needed for display — no pagination overhead.
+ */
+export const getAllTradesSimple = async (accountId: string): Promise<Pick<Trade, "id" | "symbol" | "direction" | "assetClass" | "entryDate" | "netPnl" | "status" | "notes">[]> => {
+  if (!accountId) return [];
+  const q = query(
+    collection(db, ROOT_COLLECTION),
+    where("accountId", "==", accountId),
+    orderBy("entryDate", "desc"),
+    limit(500)
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map(d => {
+    const data = d.data();
+    return {
+      id: d.id,
+      symbol: data.symbol,
+      direction: data.direction,
+      assetClass: data.assetClass,
+      entryDate: data.entryDate,
+      netPnl: data.netPnl,
+      status: data.status,
+      notes: data.notes ?? "",
+    };
+  });
 };
